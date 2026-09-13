@@ -141,6 +141,7 @@ async def start_background_task(rag, background_tasks, *, work, backstop_release
             background_tasks, work=work, backstop_release=backstop_release
         )
     startup_error = None
+    cleanup_completed = False
 
     async def capture_failure(started):
         nonlocal startup_error
@@ -150,13 +151,19 @@ async def start_background_task(rag, background_tasks, *, work, backstop_release
             startup_error = error
             raise
 
+    async def confirmed_backstop():
+        nonlocal cleanup_completed
+        await backstop_release()
+        cleanup_completed = True
+
     try:
         return await start_reserved_background_task(
-            background_tasks, work=capture_failure, backstop_release=backstop_release
+            background_tasks, work=capture_failure, backstop_release=confirmed_backstop
         )
     except RuntimeError:
-        # The legacy starter already joined the child and released its local
-        # reservation. Do not turn a typed admission refusal into HTTP 500.
-        if startup_error is not None:
+        # Cleanup failures take precedence over the child's admission error.
+        # Only successful backstop completion proves this is the legacy
+        # starter's wrapper, rather than a RuntimeError raised by cleanup.
+        if cleanup_completed and startup_error is not None:
             raise startup_error
         raise
