@@ -1594,8 +1594,19 @@ def create_app(args):
             # Note: initialize_storages() now auto-initializes pipeline_status for rag.workspace
             await rag.initialize_storages()
 
-            # Data migration regardless of storage implementation
-            await rag.check_and_migrate_data()
+            # Distributed replicas verify only; operators provision/migrate
+            # through explicit maintenance before starting writer processes.
+            from lightrag.distributed.runtime import get_runtime
+
+            runtime = get_runtime(rag)
+            if runtime is None:
+                await rag.check_and_migrate_data()
+            else:
+                await rag.apipeline_start_polling(
+                    interval=float(
+                        os.getenv("LIGHTRAG_DISTRIBUTED_POLL_INTERVAL", "1.0")
+                    )
+                )
 
             # Admission control needs a doc_status backend that can count
             # strictly (LR2 §9.1). Probe once here so an unsupported backend
@@ -1626,9 +1637,20 @@ def create_app(args):
             # child's finally releases its reservation while shared state is
             # still alive. Resists repeated cancellation; a deferred shutdown
             # cancellation is re-raised only after storage/shared-state cleanup.
-            shutdown_cancel = await drain_reserved_background_tasks(
-                app.state.background_tasks
-            )
+            from lightrag.distributed.runtime import get_runtime
+
+            if get_runtime(rag) is not None:
+                await rag.apipeline_stop_polling()
+                # Drain rather than cancelling unknown in-flight backend writes.
+                # An external hard-stop still leaves durable recovery evidence.
+                from lightrag.api.distributed import drain_background_tasks
+
+                await drain_background_tasks(app.state.background_tasks)
+                shutdown_cancel = None
+            else:
+                shutdown_cancel = await drain_reserved_background_tasks(
+                    app.state.background_tasks
+                )
 
             # Clean up database connections
             await rag.finalize_storages()
@@ -1695,6 +1717,10 @@ def create_app(args):
     }
 
     app = FastAPI(**app_kwargs)
+    from lightrag.distributed import CoordinationError
+    from lightrag.api.distributed import coordination_error_handler
+
+    app.add_exception_handler(CoordinationError, coordination_error_handler)
 
     # Custom validation error handler, shaped per endpoint (see the
     # module-level function for why it is not a closure).
@@ -2459,6 +2485,7 @@ def create_app(args):
         rag = LightRAG(
             working_dir=args.working_dir,
             workspace=args.workspace,
+            distributed_input_dir=args.input_dir,
             llm_model_func=create_llm_model_func(args.llm_binding),
             llm_model_name=args.llm_model,
             llm_model_max_async=args.max_async,
@@ -2537,6 +2564,10 @@ def create_app(args):
     # Add routes
     # root_path is set on the app for reverse proxy support;
     # routes stay at their natural paths and are prefixed by the proxy or uvicorn --root-path
+    # Supported operator bootstrap surface: construction has no backend I/O.
+    # Use app.state.rag.distributed_maintenance() before any app lifespan starts.
+    app.state.rag = rag
+
     app.include_router(create_document_routes(rag, doc_manager, api_key))
     app.include_router(create_query_routes(rag, api_key, args.top_k))
     app.include_router(create_graph_routes(rag, api_key))

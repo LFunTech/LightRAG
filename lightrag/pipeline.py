@@ -29,6 +29,8 @@ from functools import lru_cache, partial
 from pathlib import Path
 from typing import Any
 
+from lightrag.distributed.runtime import get_runtime, operation_guard
+
 from lightrag.base import (
     CURSOR_END,
     CURSOR_START,
@@ -150,6 +152,18 @@ from lightrag.utils_pipeline import (
     source_candidate_set_lock,
     strip_lightrag_doc_prefix,
 )
+
+
+async def _pipeline_get_full_doc(self, doc_id: str):
+    if get_runtime(self) is not None:
+        return await self.full_docs.get_by_id_strict(doc_id)
+    return await self.full_docs.get_by_id(doc_id)
+
+
+async def _pipeline_get_status_doc(self, doc_id: str):
+    if get_runtime(self) is not None:
+        return await self.doc_status.get_by_id_strict(doc_id)
+    return await self.doc_status.get_by_id(doc_id)
 
 
 # Document statuses the pipeline resumes AUTOMATICALLY — the initial snapshot
@@ -662,6 +676,7 @@ class _PipelineMixin:
     # Public document ingestion API (entry points)
     # ============================================================
 
+    @operation_guard()
     async def apipeline_enqueue_documents(
         self,
         input: str | list[str],
@@ -1167,6 +1182,11 @@ class _PipelineMixin:
         # serialize lock, so the reservation outlives the doc_status upsert
         # exactly as §9.2 requires ("token 持续到 doc_status 可见").
         async with AsyncExitStack() as admission_stack, enqueue_serialize_lock:
+            runtime = get_runtime(self)
+            if runtime is not None:
+                await admission_stack.enter_async_context(
+                    runtime.lock("enqueue_serialize", namespace="PipelineIngress")
+                )
             # 3. Filter out already processed documents
             # Get docs ids
             all_new_doc_ids = set(new_docs.keys())
@@ -1272,7 +1292,7 @@ class _PipelineMixin:
                     attempt.get("doc_id") == doc_id for attempt in duplicate_attempts
                 ):
                     continue
-                existing_doc = await self.doc_status.get_by_id(doc_id)
+                existing_doc = await _pipeline_get_status_doc(self, doc_id)
                 duplicate_attempts.append(
                     {
                         "doc_id": doc_id,
@@ -1568,6 +1588,7 @@ class _PipelineMixin:
 
         return track_id
 
+    @operation_guard()
     async def apipeline_enqueue_error_documents(
         self,
         error_files: list[dict[str, Any]],
@@ -1633,14 +1654,66 @@ class _PipelineMixin:
                 },
             }
 
-        # Store error documents in doc_status
+        # Error IDs may collide with a caller-supplied normal document ID.
+        # Use the same complete ingress window; never replace an existing row
+        # that a processing owner may already have claimed.
         if error_docs:
-            await self.doc_status.upsert(error_docs)
+            runtime = get_runtime(self)
+            if runtime is None:
+                await self.doc_status.upsert(error_docs)
+            else:
+                async with (
+                    get_namespace_lock(
+                        ENQUEUE_SERIALIZE_LOCK_NAMESPACE, workspace=self.workspace
+                    ),
+                    runtime.lock("enqueue_serialize", namespace="PipelineIngress"),
+                ):
+                    missing = await self.doc_status.filter_keys(set(error_docs))
+                    error_docs = {
+                        key: value
+                        for key, value in error_docs.items()
+                        if key in missing
+                    }
+                    if error_docs:
+                        await self.doc_status.upsert(error_docs)
             # Log each error for debugging
             for doc_id, error_doc in error_docs.items():
                 logger.error(
                     f"File processing error: - ID: {doc_id} {error_doc['file_path']}"
                 )
+
+    async def apipeline_start_polling(self, *, interval: float = 1.0) -> None:
+        """Start distributed strict-scan discovery; local mode is unchanged."""
+        from lightrag.distributed.pipeline import start_polling
+
+        await start_polling(self, interval=interval)
+
+    async def apipeline_stop_polling(self) -> None:
+        """Stop discovery and drain admitted workers without cancelling writes."""
+        from lightrag.distributed.pipeline import stop_polling
+
+        await stop_polling(self)
+
+    async def apipeline_request_retry(self, request_id: str | None = None) -> str:
+        """Persist one retry intent; processing/polling performs its exclusive reset."""
+        runtime = get_runtime(self)
+        request_id = request_id or uuid.uuid4().hex
+        if runtime is not None:
+            await runtime.coordinator.pipeline_control.request_retry(request_id)
+            await runtime.coordinator.pipeline_control.resume()
+        else:
+            ingress = await get_pipeline_ingress(self.workspace)
+            from lightrag.kg.pipeline_ingress import ManualRetryPublishResult
+
+            result = ingress.request_manual_retry(
+                request_id,
+                PipelineIngressMessage(
+                    kind="rescan", retry_failed=True, request_id=request_id
+                ),
+            )
+            if result is ManualRetryPublishResult.CAPACITY_EXCEEDED:
+                raise ValueError("Manual retry request capacity exceeded")
+        return request_id
 
     async def apipeline_process_enqueue_documents(
         self, _holding_busy: bool = False, token: str | None = None
@@ -1666,6 +1739,11 @@ class _PipelineMixin:
         the no-work path, on a get-docs failure, and via the loop's finally —
         so a handoff can never wedge the pipeline as permanently busy.
         """
+        if get_runtime(self) is not None:
+            from lightrag.distributed.pipeline import process
+
+            return await process(self)
+
         # Workspace snapshot: status, lock and ingress all resolve through the
         # value captured at entry, so one run can never straddle two
         # coordination namespaces if ``self.workspace`` were reassigned
@@ -2337,7 +2415,7 @@ class _PipelineMixin:
         if doc_status_custom_chunk_patch(status_doc) is not None:
             return True  # journaled → scan/custom-chunk recovery owns it
         try:
-            full_doc = await self.full_docs.get_by_id(doc_id)
+            full_doc = await _pipeline_get_full_doc(self, doc_id)
         except Exception as read_error:
             logger.debug(
                 f"[feeder] full_docs read failed for {doc_id}, deferring "
@@ -2699,7 +2777,7 @@ class _PipelineMixin:
                 # also raises; that escape is caught by the finally below (workers
                 # are cleanly cancelled) and the batch aborts as a whole.
                 try:
-                    content_data = await self.full_docs.get_by_id(doc_id) or {}
+                    content_data = await _pipeline_get_full_doc(self, doc_id) or {}
                 except Exception as e:
                     await self._finalize_doc_failure(
                         ctx=ctx,
@@ -2739,7 +2817,8 @@ class _PipelineMixin:
             # routes documents that arrive DURING this batch straight into the
             # parse queues (the latency win), so the joins below wait on both
             # the initial batch and everything the feeder adds.
-            feeder_task = asyncio.create_task(self._pipeline_feeder(ctx, ingress))
+            if ingress is not None:
+                feeder_task = asyncio.create_task(self._pipeline_feeder(ctx, ingress))
 
             await asyncio.gather(*(q.join() for q in ctx.parse_queues.values()))
             await ctx.q_analyze.join()
@@ -2752,9 +2831,10 @@ class _PipelineMixin:
             # cascade is stable. A document message still sitting in the mailbox
             # stays there and is resolved by the quiescence decision
             # (CONTINUE_DOCUMENT) or the next batch's feeder.
-            feeder_task.cancel()
-            await asyncio.gather(feeder_task, return_exceptions=True)
-            feeder_task = None
+            if feeder_task is not None:
+                feeder_task.cancel()
+                await asyncio.gather(feeder_task, return_exceptions=True)
+                feeder_task = None
             await asyncio.gather(*(q.join() for q in ctx.parse_queues.values()))
             await ctx.q_analyze.join()
             await ctx.q_process.join()
@@ -2899,7 +2979,7 @@ class _PipelineMixin:
             if strict_reads:
                 content_data = await self.full_docs.get_by_id_strict(doc_id)
             else:
-                content_data = await self.full_docs.get_by_id(doc_id)
+                content_data = await _pipeline_get_full_doc(self, doc_id)
             content_by_doc[doc_id] = content_data
             if not content_data:
                 # Check if this is a failed document that should be preserved
@@ -3268,7 +3348,7 @@ class _PipelineMixin:
             if strict_reads:
                 content_data = await self.full_docs.get_by_id_strict(doc_id)
             else:
-                content_data = await self.full_docs.get_by_id(doc_id)
+                content_data = await _pipeline_get_full_doc(self, doc_id)
                 if not content_data:
                     unconfirmed += 1
             if not content_data:
@@ -3459,6 +3539,14 @@ class _PipelineMixin:
         standard drain path (any later drive) serves the request instead. A
         storage error propagates for the same reason.
         """
+        runtime = get_runtime(self)
+        if runtime is not None:
+            from lightrag.distributed.pipeline import reset_requests
+
+            await runtime.coordinator.pipeline_control.request_retry(request_id)
+            await reset_requests(self)
+            return True
+
         run_workspace = self.workspace
         pipeline_status = await get_namespace_data(
             "pipeline_status", workspace=run_workspace
@@ -4214,7 +4302,7 @@ class _PipelineMixin:
                         pipeline_status_lock=ctx.pipeline_status_lock,
                     )
                     continue
-                content_data_w = await self.full_docs.get_by_id(doc_id_w)
+                content_data_w = await _pipeline_get_full_doc(self, doc_id_w)
                 if not content_data_w:
                     raise Exception(
                         f"Document content not found in full_docs for doc_id: {doc_id_w}"
@@ -4434,7 +4522,7 @@ class _PipelineMixin:
 
                 # parse_* may have patched content_hash for
                 # pending_parse → raw transitions.
-                refreshed = await self.doc_status.get_by_id(doc_id_w)
+                refreshed = await _pipeline_get_status_doc(self, doc_id_w)
                 if refreshed:
                     refreshed_hash = (
                         refreshed.get("content_hash")
@@ -4814,7 +4902,7 @@ class _PipelineMixin:
                 # Resolve file_path from full_docs before honoring a queued
                 # cancellation so corrupted doc_status placeholders do not
                 # get written back again during retry/cancel flows.
-                content_data = await self.full_docs.get_by_id(doc_id)
+                content_data = await _pipeline_get_full_doc(self, doc_id)
                 if content_data:
                     file_path = resolve_doc_file_path(
                         status_doc=status_doc,
@@ -5824,6 +5912,13 @@ class _PipelineMixin:
         failed. ``ctx`` is required so a new call site has to state which run the
         write belongs to.
         """
+        runtime = get_runtime(self)
+        if runtime is not None:
+            operation = runtime.permit().operation
+            await runtime.coordinator.assert_claim(operation, doc_id)
+            await runtime.coordinator.set_phase(
+                operation, str(getattr(status, "value", status)), doc_id=doc_id
+            )
         if not await self._still_run_owner(ctx):
             logger.warning(
                 f"[stale-writer] Discarded {getattr(status, 'value', status)} "
@@ -5855,9 +5950,8 @@ class _PipelineMixin:
         pipeline_status_lock,
     ) -> None:
         """Raise ``PipelineCancelledException`` if the user has requested cancel."""
-        async with pipeline_status_lock:
-            if pipeline_status.get("cancellation_requested", False):
-                raise PipelineCancelledException("User cancelled")
+        if await self._cancellation_requested(pipeline_status, pipeline_status_lock):
+            raise PipelineCancelledException("User cancelled")
 
     @staticmethod
     def _cancellation_label(pipeline_status: dict) -> str:
@@ -5895,6 +5989,16 @@ class _PipelineMixin:
         item) instead of raising. Callers that prefer the exception style
         should use :meth:`_raise_if_cancelled` instead.
         """
+        runtime = get_runtime(self)
+        if runtime is not None:
+            control = await runtime.coordinator.pipeline_control.status()
+            if control["paused"] or control["cancel_epoch"] != getattr(
+                runtime, "pipeline_cancel_epoch", control["cancel_epoch"]
+            ):
+                async with pipeline_status_lock:
+                    pipeline_status.update(
+                        cancellation_requested=True, cancellation_reason="user"
+                    )
         async with pipeline_status_lock:
             return bool(pipeline_status.get("cancellation_requested", False))
 
@@ -6247,7 +6351,7 @@ class _PipelineMixin:
             )
             return None
 
-        existing = await self.full_docs.get_by_id(doc_id)
+        existing = await _pipeline_get_full_doc(self, doc_id)
         if isinstance(existing, dict):
             payload = {**existing, **record}
         else:
@@ -6434,7 +6538,11 @@ class _PipelineMixin:
         p = Path(file_path)
         name = p.name
         source_name = Path(str(source_file or "").strip()).name
-        input_path = input_dir_path()
+        input_path = (
+            Path(self.distributed_input_dir)
+            if get_runtime(self) is not None and self.distributed_input_dir
+            else input_dir_path()
+        )
         # API ``DocumentManager`` scopes its input dir to
         # ``<base_input_dir>/<workspace>/`` (see DocumentManager.__init__);
         # check that location first so files uploaded into a workspace
@@ -6566,7 +6674,7 @@ class _PipelineMixin:
         # Resolve which modalities the user opted into for this document.
         if process_options is None:
             try:
-                content_data = await self.full_docs.get_by_id(doc_id) or {}
+                content_data = await _pipeline_get_full_doc(self, doc_id) or {}
             except Exception:
                 content_data = {}
             options_str = (

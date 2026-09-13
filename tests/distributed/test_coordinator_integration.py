@@ -374,7 +374,7 @@ async def test_verify_only_fresh_database_never_creates_schema():
             await connection.fetchval(
                 "SELECT count(*) FROM lightrag_coordination.schema_version"
             )
-            == 1
+            == 2
         )
         await connection.execute(
             "ALTER TABLE lightrag_coordination.resource_locks DROP CONSTRAINT resource_locks_pkey"

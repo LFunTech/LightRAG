@@ -1,5 +1,7 @@
 # Pipeline Concurrency Contract
 
+For opt-in cross-process/pod scheduling, see [DistributedPipelineContract.md](DistributedPipelineContract.md). The local Manager contract below remains unchanged.
+
 Read this before changing `lightrag/pipeline.py`, `lightrag/kg/pipeline_ingress.py`, `pipeline_status` fields, or any `/documents/*` endpoint that enqueues, scans, clears or deletes. Summary in [AGENTS.md](../../AGENTS.md#pipeline-concurrency-contract).
 
 The document ingestion pipeline coordinates concurrent writers through `pipeline_status` (a per-workspace shared dict in `lightrag.kg.shared_storage`). These fields are mutated under `get_namespace_lock("pipeline_status", workspace=...)`:

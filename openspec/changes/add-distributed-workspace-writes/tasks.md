@@ -32,10 +32,10 @@ Ownership: `lightrag/distributed/runtime.py`（可拆文件）、`lightrag/light
 
 ### Task 3: Distributed pipeline and API control plane
 
-- [ ] 3.1 文档在一致性修复/feeder/parse 之前原子领取并严格读回，完整生命周期保持所有权；分页跳过其他领取、限额调度及周期 strict scan 支持多个独立进程处理同 workspace。
-- [ ] 3.2 FAILED 维持显式一次性 retry；scan/retry/冲突修复/清空/删除等维护、文件变更和 HTTP 后台任务在 durable workspace 门内；不能仅加 preflight。
-- [ ] 3.3 API lifespan 初始化/迁移与 polling worker 启停受控，状态接口展示分布式运行/阻断且不泄露密钥；忙/恢复阻断错误可辨识，不伪成功。
-- [ ] 3.4 TDD 覆盖同文档领取竞争、丢通知、同实体来源合并、空候选页、跨 Pod 维护竞争、后台 ticket 失效及关闭后的重启；保留旧单机行为。
+- [x] 3.1 文档在一致性修复/feeder/parse 之前原子领取并严格读回，完整生命周期保持所有权；分页跳过其他领取、限额调度及周期 strict scan 支持多个独立进程处理同 workspace。
+- [x] 3.2 FAILED 维持显式一次性 retry；scan/retry/冲突修复/清空/删除等维护、文件变更和 HTTP 后台任务在 durable workspace 门内；不能仅加 preflight。
+- [x] 3.3 API lifespan 初始化/迁移与 polling worker 启停受控，状态接口展示分布式运行/阻断且不泄露密钥；忙/恢复阻断错误可辨识，不伪成功。
+- [x] 3.4 TDD 覆盖同文档领取竞争、丢通知、同实体来源合并、空候选页、跨 Pod 维护竞争、后台 ticket 失效及关闭后的重启；保留旧单机行为。
 
 Ownership: `lightrag/pipeline.py`、`lightrag/distributed/pipeline.py`（可选）、`lightrag/api/config.py/lightrag_server.py/routers/`、必要 runtime 接口与 mirror tests。SDK 和 HTTP 皆需可用。不得通过 workspace 单 pipeline leader 或整库领取将真并发降级。用于 LLM 的模拟必须留在测试；生产使用实际现有 pipeline。文档内容与锚点是事实，claim 表不复制替代文档内容。
 

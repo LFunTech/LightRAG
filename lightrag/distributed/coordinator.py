@@ -95,6 +95,9 @@ class PostgresCoordinator:
         command_timeout: float = 10.0,
         pool_size: int = 4,
     ):
+        from .control import PipelineControl
+
+        self.pipeline_control = PipelineControl(self)
         self._dsn = dsn
         self.deployment_id = _label(deployment_id, "deployment_id")
         self.workspace = _label(workspace, "workspace")

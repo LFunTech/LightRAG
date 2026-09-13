@@ -44,7 +44,7 @@ PGVectorStorage 当前 upsert 仅缓冲、后续 flush 才提交；分布式模�
 
 本地 busy 和 mailbox 仅负责本 Pod 内的 worker 组织与唤醒；跨 Pod 用持久化领取和周期 strict scan，通知可以合并但任务不能依赖通知可靠性。分页必须在一页全部被别的 Pod 占用时仍正确前进，不能忙循环同一页。任务数量受 max_parallel_insert/parse 参数限制，不一次抢占整库。
 
-FAILED 不自动重入。人工 retry/scan 在工作区独占门下发布持久化意图并完成一次性状态重置；重启保留意图，已完成重置不再扩大重试次数。业务失败和未确认持久化失败需要区分，后者优先 fence，而非清除屏障继续。
+FAILED 不自动重入。人工 retry/scan 在 drain 前通过协调短事务发布持久化意图，在工作区独占门下持久化目标版本并完成一次性状态重置；重启保留意图，已完成重置不再扩大重试次数。业务失败和未确认持久化失败需要区分，后者优先 fence，而非清除屏障继续。
 
 ### 5. 全入口和运维
 
@@ -77,3 +77,5 @@ SDK 显式维护入口为 `distributed_maintenance()`，可在业务 storage ini
 3. 将文档相关存储切换/迁移至受支持的外部 PG 配置，保留内容、来源与恢复锚点；不自动清库。
 4. 挂载共享持久卷，运行协调维护初始化/数据迁移并登记相同配置指纹，然后启动多个启用分布式模式的 Pod。
 5. 回退需先停所有 distributed writer、确认无 pending/未结束操作后再降为单 writer；保留协调历史表，不自动删除迁移。
+
+Task 3 的领取、持久化取消/重试、API 和 shutdown 合同见 `docs/design/DistributedPipelineContract.md`。

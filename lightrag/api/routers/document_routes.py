@@ -59,6 +59,14 @@ from pydantic import (
     model_validator,
 )
 
+from lightrag.distributed import CoordinationError
+from lightrag.distributed.runtime import get_runtime, operation_guard
+from lightrag.api.distributed import (
+    background_operation,
+    http_operation,
+    finish_scan_classification,
+    drive_pipeline,
+)
 from lightrag import LightRAG
 from lightrag.api.utils_api import internal_server_error, new_error_id
 from lightrag.base import (
@@ -1370,6 +1378,11 @@ class PipelineStatusResponse(BaseModel):
             bounded blocker sample where the cause provides one
     """
 
+    distributed: dict | None = Field(
+        default=None,
+        description="Bounded global aggregates; other progress fields are local",
+    )
+    local_busy: bool | None = None
     busy: bool = False
     job_name: str = "Default Job"
     job_start: Optional[str] = None
@@ -1604,6 +1617,8 @@ async def _strict_active_count(rag: LightRAG) -> int:
     """
     try:
         return await count_active_documents(rag.doc_status)
+    except CoordinationError:
+        raise
     except Exception as count_error:
         logger.error(f"Admission active-document count failed: {count_error}")
         raise HTTPException(
@@ -2175,6 +2190,8 @@ def delete_file_variants_by_file_path(
             candidates = list(candidate_dir.iterdir())
         except FileNotFoundError:
             continue
+        except CoordinationError:
+            raise
         except Exception as e:
             errors.append(f"Failed to scan {candidate_dir}: {e}")
             continue
@@ -2203,6 +2220,8 @@ def delete_file_variants_by_file_path(
                     deleted_files.append(
                         str(safe_candidate.relative_to(input_dir_resolved))
                     )
+                except CoordinationError:
+                    raise
                 except Exception as e:
                     errors.append(f"Failed to delete {candidate.name}: {e}")
                 continue
@@ -2227,6 +2246,8 @@ def delete_file_variants_by_file_path(
                     deleted_files.append(
                         str(safe_candidate.relative_to(input_dir_resolved))
                     )
+                except CoordinationError:
+                    raise
                 except Exception as e:
                     errors.append(
                         f"Failed to delete artifact dir {candidate.name}: {e}"
@@ -2253,6 +2274,8 @@ async def record_scan_warning(rag: LightRAG, message: str) -> None:
         async with pipeline_status_lock:
             pipeline_status["latest_message"] = message
             append_pipeline_history(pipeline_status, message)
+    except CoordinationError:
+        raise
     except Exception:
         pass
 
@@ -2280,6 +2303,7 @@ class _ScanCandidate(NamedTuple):
     size: int
 
 
+@operation_guard()
 async def pipeline_enqueue_file(
     rag: LightRAG,
     file_path: Path,
@@ -2341,7 +2365,11 @@ async def pipeline_enqueue_file(
             try:
                 stat = await asyncio.to_thread(file_path.stat)
                 file_size = stat.st_size
+            except CoordinationError:
+                raise
             except Exception:
+                if get_runtime(rag) is not None:
+                    raise
                 file_size = 0
 
         try:
@@ -2428,7 +2456,11 @@ async def pipeline_enqueue_file(
             if enqueue_result is None:
                 try:
                     await move_file_to_parsed_dir(file_path)
+                except CoordinationError:
+                    raise
                 except Exception as move_error:
+                    if get_runtime(rag) is not None:
+                        raise
                     logger.error(
                         f"Failed to move duplicate file {file_path.name} to {PARSED_DIR_NAME} directory: {move_error}"
                     )
@@ -2437,7 +2469,11 @@ async def pipeline_enqueue_file(
                 f"[File Extraction]Deferred {file_path.name} to {extraction_engine} parser"
             )
             return True, track_id
+        except CoordinationError:
+            raise
         except Exception as e:
+            if get_runtime(rag) is not None:
+                raise
             error_files = [
                 {
                     "file_path": str(file_path.name),
@@ -2453,11 +2489,19 @@ async def pipeline_enqueue_file(
             )
             return False, track_id
 
+    except CoordinationError:
+        raise
     except Exception as e:
+        if get_runtime(rag) is not None:
+            raise
         # Catch-all for any unexpected errors
         try:
             file_size = file_path.stat().st_size if file_path.exists() else 0
+        except CoordinationError:
+            raise
         except Exception:
+            if get_runtime(rag) is not None:
+                raise
             file_size = 0
 
         error_files = [
@@ -2476,10 +2520,15 @@ async def pipeline_enqueue_file(
         if file_path.name.startswith(temp_prefix):
             try:
                 file_path.unlink()
+            except CoordinationError:
+                raise
             except Exception as e:
+                if get_runtime(rag) is not None:
+                    raise
                 logger.error(f"Error deleting file {file_path}: {str(e)}")
 
 
+@background_operation()
 async def pipeline_index_file(
     rag: LightRAG,
     file_path: Path,
@@ -2501,13 +2550,18 @@ async def pipeline_index_file(
             rag, file_path, track_id, admission_token=admission_token
         )
         if success:
-            await rag.apipeline_process_enqueue_documents()
+            await drive_pipeline(rag)
 
+    except CoordinationError:
+        raise
     except Exception as e:
+        if get_runtime(rag) is not None:
+            raise
         logger.error(f"Error indexing file {file_path.name}: {str(e)}")
         logger.error(traceback.format_exc())
 
 
+@operation_guard()
 async def pipeline_enqueue_scan_batch(
     rag: LightRAG,
     candidates: Sequence[_ScanCandidate],
@@ -2557,6 +2611,8 @@ async def pipeline_enqueue_scan_batch(
             if success:
                 enqueued += 1
         return enqueued
+    except CoordinationError:
+        raise
     except Exception as e:
         logger.error(f"Error enqueuing scan batch: {str(e)}")
         logger.error(traceback.format_exc())
@@ -2709,6 +2765,7 @@ def _validate_effective_semantic_amount(chunk_options: dict, strategy_key: str) 
         )
 
 
+@background_operation()
 async def pipeline_index_texts(
     rag: LightRAG,
     texts: List[str],
@@ -2762,7 +2819,7 @@ async def pipeline_index_texts(
         # See pipeline_enqueue_file: only forwarded when a reservation exists.
         enqueue_kwargs["admission_token"] = admission_token
     await rag.apipeline_enqueue_documents(**enqueue_kwargs)
-    await rag.apipeline_process_enqueue_documents()
+    await drive_pipeline(rag)
 
 
 # How long a scan may go without touching its job record before it is renewed
@@ -2873,6 +2930,8 @@ class _ScanJobReporter:
                     expected_version=self._version,
                     message=message,
                 )
+            except CoordinationError:
+                raise
             except Exception as store_error:
                 logger.warning(
                     f"Scan job {self._track_id} terminal transition failed: {store_error}"
@@ -2907,6 +2966,8 @@ class _ScanJobReporter:
                     sample=sample,
                     expected_version=self._version,
                 )
+            except CoordinationError:
+                raise
             except Exception as store_error:
                 logger.warning(
                     f"Scan job {self._track_id} progress update failed "
@@ -2967,6 +3028,8 @@ async def _renew_scan_job_lease(reporter: _ScanJobReporter, scan_task: Any) -> N
             reporter.renew()
     except asyncio.CancelledError:
         raise
+    except CoordinationError:
+        raise
     except Exception as heartbeat_error:  # never fail the scan over reporting
         logger.warning(f"Scan job lease heartbeat stopped: {heartbeat_error}")
 
@@ -3016,6 +3079,8 @@ async def _confirm_full_docs_absent(rag: LightRAG, doc_id: str) -> bool | None:
         return None
     try:
         return await store.get_by_id_strict(doc_id) is None
+    except CoordinationError:
+        raise
     except Exception as read_error:
         logger.warning(
             f"Strict full_docs point read failed for {doc_id}; keeping the "
@@ -3356,6 +3421,8 @@ class _ScanCandidateSpool:
             if mtime_ns is None:
                 mtime_ns = int(stat.st_mtime * 1_000_000_000)
             file_size = stat.st_size
+        except CoordinationError:
+            raise
         except Exception:
             mtime_missing = 1
             mtime_ns = 0
@@ -3547,6 +3614,8 @@ def _resolve_scan_job_store(rag: LightRAG) -> Any:
         from lightrag.kg.shared_storage import get_scan_job_store
 
         return get_scan_job_store(getattr(rag, "workspace", ""))
+    except CoordinationError:
+        raise
     except Exception as store_error:
         logger.debug(f"Scan job store unavailable: {store_error}")
         return None
@@ -3571,10 +3640,13 @@ def _cancel_scan_job(
             owner_token,
             message="scan startup aborted before the background task took over",
         )
+    except CoordinationError:
+        raise
     except Exception as cancel_error:
         logger.warning(f"Scan job {track_id} startup cancel failed: {cancel_error}")
 
 
+@background_operation(exclusive=True, scan=True)
 async def run_scanning_process(
     rag: LightRAG,
     doc_manager: DocumentManager,
@@ -3691,7 +3763,11 @@ async def run_scanning_process(
                     pipeline_status=pipeline_status,
                     pipeline_status_lock=pipeline_status_lock,
                 )
+            except CoordinationError:
+                raise
             except Exception as rollback_error:
+                if get_runtime(rag) is not None:
+                    raise
                 logger.error(
                     f"Scan-time custom-chunk rollback failed: {rollback_error}"
                 )
@@ -3703,7 +3779,11 @@ async def run_scanning_process(
         # retried immediately, by the very request that admitted it). The reset
         # reuses the /reprocess_failed helper under this scan's owner token and
         # ACKs the request itself, so the drive below no longer consumes it.
-        if manual_request_id is not None and pipeline_status is not None:
+        if get_runtime(rag) is not None:
+            from lightrag.distributed.pipeline import reset_requests
+
+            await reset_requests(rag)
+        elif manual_request_id is not None and pipeline_status is not None:
             if not await rag.apipeline_reset_failed_for_scan(
                 manual_request_id, scan_owner_token=scanning_token
             ):
@@ -3750,7 +3830,11 @@ async def run_scanning_process(
             reporter.sample("warning", warning)
             try:
                 await move_file_to_parsed_dir(file_path)
+            except CoordinationError:
+                raise
             except Exception as move_error:
+                if get_runtime(rag) is not None:
+                    raise
                 archive_error = (
                     f"Failed to move scan file {file_path.name} "
                     f"to {PARSED_DIR_NAME}: {move_error}"
@@ -3859,7 +3943,11 @@ async def run_scanning_process(
                     # never be resumed — drop it and retry the fixed file as new.
                     try:
                         await rag.doc_status.delete([decision.doc_id])
+                    except CoordinationError:
+                        raise
                     except Exception as delete_error:
+                        if get_runtime(rag) is not None:
+                            raise
                         stub_error = (
                             "Failed to delete stale failed-extraction doc_status "
                             f"stub {decision.doc_id} ({filename}): {delete_error}"
@@ -3942,8 +4030,39 @@ async def run_scanning_process(
         # the pre-discovery reset turned into PENDING. Unconditional: a scan that
         # enqueued nothing may still have resume targets or reset rows with no
         # other trigger, and an empty queue makes this a cheap no-op.
+        scan_counts = dict(
+            discovered=discovered,
+            enqueued=enqueued_count,
+            resumed=resumed_count,
+            processed=processed_count,
+        )
+        runtime = get_runtime(rag)
+        if runtime is not None and track_id:
+            await runtime.coordinator.set_phase(
+                runtime.permit().operation,
+                "classification_complete",
+                metadata={"scan_counts": scan_counts},
+            )
+        await finish_scan_classification(rag)
         queue_drive_attempted = True
-        await rag.apipeline_process_enqueue_documents()
+        if runtime is not None and track_id:
+            async with runtime.operation(
+                "scan_processing",
+                detached=True,
+                metadata={
+                    "scan_track_id": track_id,
+                    "scan_status": "running",
+                    "scan_counts": scan_counts,
+                },
+            ) as scan_operation:
+                await drive_pipeline(rag)
+                await runtime.coordinator.set_phase(
+                    scan_operation,
+                    "scan_complete",
+                    metadata={"scan_status": "completed"},
+                )
+        else:
+            await drive_pipeline(rag)
 
         summary = (
             f"Scanning process completed: {discovered} discovered, "
@@ -3961,7 +4080,13 @@ async def run_scanning_process(
         job_status = ScanJobStatus.CANCELLED
         job_message = "Scan cancelled (shutdown or explicit cancellation)."
         raise
+    except CoordinationError:
+        was_cancelled = True
+        raise
     except Exception as e:
+        if get_runtime(rag) is not None:
+            was_cancelled = True
+            raise
         logger.error(f"Error during scanning process: {str(e)}")
         logger.error(traceback.format_exc())
         job_status = ScanJobStatus.FAILED
@@ -4026,8 +4151,13 @@ async def run_scanning_process(
                 drive_needed = True
             if drive_needed:
                 try:
-                    await rag.apipeline_process_enqueue_documents()
+                    await finish_scan_classification(rag)
+                    await drive_pipeline(rag)
+                except CoordinationError:
+                    raise
                 except Exception as drive_error:
+                    if get_runtime(rag) is not None:
+                        raise
                     logger.error(
                         f"Deferred post-scan queue drive failed: {drive_error}"
                     )
@@ -4051,6 +4181,7 @@ async def run_scanning_process(
         reporter.finish(job_status, job_message)
 
 
+@background_operation(exclusive=True)
 async def background_delete_documents(
     rag: LightRAG,
     doc_manager: DocumentManager,
@@ -4201,12 +4332,16 @@ async def background_delete_documents(
                                 )
                             # SourceAbsent: no primary references the basename
                             # any more; the deleted row was its sole owner.
+                        except CoordinationError:
+                            raise
                         except Exception as ownership_error:
                             # Fail closed: a storage read failure must never
                             # turn a successful record deletion into accidental
                             # removal of a possibly shared physical file. Keep
                             # the raw error in the log only; pipeline_status is
                             # serialized into API responses.
+                            if get_runtime(rag) is not None:
+                                raise
                             logger.error(
                                 "Ownership check failed for %s (%s): %s",
                                 doc_id,
@@ -4273,7 +4408,11 @@ async def background_delete_documents(
                                         pipeline_status, file_error_msg
                                     )
 
+                        except CoordinationError:
+                            raise
                         except Exception as file_error:
+                            if get_runtime(rag) is not None:
+                                raise
                             file_error_msg = f"Failed to delete file {result.file_path}: {str(file_error)}"
                             logger.error(file_error_msg)
                             async with pipeline_status_lock:
@@ -4304,7 +4443,11 @@ async def background_delete_documents(
                         pipeline_status["latest_message"] = error_msg
                         append_pipeline_history(pipeline_status, error_msg)
 
+            except CoordinationError:
+                raise
             except Exception as e:
+                if get_runtime(rag) is not None:
+                    raise
                 failed_deletions.append(doc_id)
                 error_msg = f"Error deleting document {i}/{total_docs}: {doc_id}[{file_path}] - {str(e)}"
                 logger.error(error_msg)
@@ -4313,7 +4456,11 @@ async def background_delete_documents(
                     pipeline_status["latest_message"] = error_msg
                     append_pipeline_history(pipeline_status, error_msg)
 
+    except CoordinationError:
+        raise
     except Exception as e:
+        if get_runtime(rag) is not None:
+            raise
         error_msg = f"Critical error during batch deletion: {str(e)}"
         logger.error(error_msg)
         logger.error(traceback.format_exc())
@@ -4337,7 +4484,11 @@ async def background_delete_documents(
         # cannot be delivered here and skip the release.
         try:
             delete_exit_ingress = await get_pipeline_ingress(rag.workspace)
+        except CoordinationError:
+            raise
         except Exception as ingress_error:
+            if get_runtime(rag) is not None:
+                raise
             delete_exit_ingress = None
             logger.warning(
                 "batch-delete exit: pipeline ingress unavailable; failing "
@@ -4366,7 +4517,11 @@ async def background_delete_documents(
                 return True  # fail toward driving
             try:
                 return bool(delete_exit_ingress.has_work())
+            except CoordinationError:
+                raise
             except Exception as probe_error:
+                if get_runtime(rag) is not None:
+                    raise
                 logger.warning(
                     "batch-delete exit: ingress has_work probe failed; "
                     f"failing toward the post-delete queue drive: {probe_error}"
@@ -4393,8 +4548,12 @@ async def background_delete_documents(
                 logger.info(
                     "Processing pending document indexing requests after deletion"
                 )
-                await rag.apipeline_process_enqueue_documents()
+                await drive_pipeline(rag)
+            except CoordinationError:
+                raise
             except Exception as e:
+                if get_runtime(rag) is not None:
+                    raise
                 logger.error(f"Error processing pending documents after deletion: {e}")
 
 
@@ -4484,6 +4643,27 @@ def create_document_routes(
             start_committed_background_task,
             start_reserved_background_task,
         )
+
+        if get_runtime(rag) is not None:
+            track_id = generate_track_id("scan")
+            await rag.apipeline_request_retry(track_id)
+
+            async def distributed_scan(started):
+                await run_scanning_process(
+                    rag, doc_manager, track_id, _distributed_started=started
+                )
+
+            async def no_release():
+                pass
+
+            await start_reserved_background_task(
+                managed_tasks, work=distributed_scan, backstop_release=no_release
+            )
+            return ScanResponse(
+                status="scanning_started",
+                message="Durable retry accepted; scan runs under exclusive admission.",
+                track_id=track_id,
+            )
 
         # Generate track_id with "scan" prefix for scanning operation
         track_id = generate_track_id("scan")
@@ -4642,6 +4822,8 @@ def create_document_routes(
                 if job_store is None:
                     raise RuntimeError("scan job store is not initialised")
                 create_result = job_store.create(track_id, job_owner_token)
+            except CoordinationError:
+                raise
             except Exception as job_error:
                 logger.error(f"Scan job record could not be created: {job_error}")
                 raise HTTPException(
@@ -4803,6 +4985,15 @@ def create_document_routes(
             HTTPException: 404 when no job record exists for ``track_id``; 503
                 when the job store is unavailable.
         """
+        runtime = get_runtime(rag)
+        if runtime is not None:
+            record = await runtime.coordinator.pipeline_control.scan_status(track_id)
+            if record is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="No distributed scan job found for this track id",
+                )
+            return ScanJobStatusResponse(**record)
         store = _resolve_scan_job_store(rag)
         if store is None:
             raise HTTPException(
@@ -4810,6 +5001,8 @@ def create_document_routes(
             )
         try:
             record = store.get(track_id)
+        except CoordinationError:
+            raise
         except Exception as store_error:
             logger.error(f"Scan job status lookup failed: {store_error}")
             raise HTTPException(
@@ -4879,6 +5072,8 @@ def create_document_routes(
                     "Document status storage is unavailable; retry once it is ready."
                 ),
             )
+        except CoordinationError:
+            raise
         except Exception as e:
             logger.error(f"Error listing source conflicts: {e}")
             logger.error(traceback.format_exc())
@@ -4901,6 +5096,7 @@ def create_document_routes(
         response_model=SourceConflictRepairResponse,
         dependencies=[Depends(combined_auth)],
     )
+    @http_operation(rag, exclusive=True)
     async def repair_source_conflict(
         payload: SourceConflictRepairRequest,
         http_request: Request,
@@ -5097,6 +5293,8 @@ def create_document_routes(
                     "Document status storage is unavailable; retry once it is ready."
                 ),
             )
+        except CoordinationError:
+            raise
         except Exception as e:
             logger.error(
                 f"[source-conflict repair] {action} ERRORED by {actor}: "
@@ -5127,6 +5325,9 @@ def create_document_routes(
 
     @router.post(
         "/upload", response_model=InsertResponse, dependencies=[Depends(combined_auth)]
+    )
+    @http_operation(
+        rag, resource=lambda kwargs: normalize_file_path(kwargs["file"].filename or "")
     )
     async def upload_to_input_dir(
         managed_tasks: set = Depends(get_managed_background_tasks),
@@ -5388,7 +5589,11 @@ def create_document_routes(
             if needs_cleanup:
                 try:
                     file_path.unlink()
+                except CoordinationError:
+                    raise
                 except Exception as cleanup_error:
+                    if get_runtime(rag) is not None:
+                        raise
                     logger.error(
                         f"Error cleaning up oversized file {safe_filename}: {cleanup_error}"
                     )
@@ -5444,7 +5649,11 @@ def create_document_routes(
         except HTTPException:
             # Re-raise HTTP exceptions (400, 413, etc.)
             raise
+        except CoordinationError:
+            raise
         except Exception as e:
+            if get_runtime(rag) is not None:
+                raise
             logger.error(f"Error /documents/upload: {file.filename}: {str(e)}")
             logger.error(traceback.format_exc())
             raise internal_server_error(e)
@@ -5459,6 +5668,7 @@ def create_document_routes(
     @router.post(
         "/text", response_model=InsertResponse, dependencies=[Depends(combined_auth)]
     )
+    @http_operation(rag)
     async def insert_text(
         request: InsertTextRequest,
         managed_tasks: set = Depends(get_managed_background_tasks),
@@ -5578,6 +5788,8 @@ def create_document_routes(
             )
         except HTTPException:
             raise
+        except CoordinationError:
+            raise
         except Exception as e:
             logger.error(f"Error /documents/text: {str(e)}")
             logger.error(traceback.format_exc())
@@ -5591,6 +5803,7 @@ def create_document_routes(
         response_model=InsertResponse,
         dependencies=[Depends(combined_auth)],
     )
+    @http_operation(rag)
     async def insert_texts(
         request: InsertTextsRequest,
         managed_tasks: set = Depends(get_managed_background_tasks),
@@ -5742,6 +5955,8 @@ def create_document_routes(
             )
         except HTTPException:
             raise
+        except CoordinationError:
+            raise
         except Exception as e:
             logger.error(f"Error /documents/texts: {str(e)}")
             logger.error(traceback.format_exc())
@@ -5753,6 +5968,7 @@ def create_document_routes(
     @router.delete(
         "", response_model=ClearDocumentsResponse, dependencies=[Depends(combined_auth)]
     )
+    @http_operation(rag, exclusive=True)
     async def clear_documents(
         delete_parsed_files: Annotated[
             bool,
@@ -5877,6 +6093,11 @@ def create_document_routes(
             )
             if not acquired:
                 return ClearDocumentsResponse(status="busy", message=reason)
+            runtime = get_runtime(rag)
+            if runtime is not None:
+                await runtime.coordinator.pipeline_control.cancel_requests(
+                    runtime.permit().operation
+                )
             async with pipeline_status_lock:
                 pipeline_status.update(
                     {
@@ -5911,7 +6132,11 @@ def create_document_routes(
             try:
                 ingress = await get_pipeline_ingress(rag.workspace)
                 ingress.clear()
+            except CoordinationError:
+                raise
             except Exception as ingress_clear_error:
+                if get_runtime(rag) is not None:
+                    raise
                 logger.warning(
                     "/documents/clear: failed to clear the pipeline ingress "
                     "mailbox; safe to continue — residual document messages "
@@ -5932,7 +6157,11 @@ def create_document_routes(
                     for record in job_store.snapshot():
                         if record.get("status") != ScanJobStatus.RUNNING.value:
                             job_store.remove_terminal(record["track_id"])
+            except CoordinationError:
+                raise
             except Exception as job_clear_error:
+                if get_runtime(rag) is not None:
+                    raise
                 logger.warning(
                     "/documents/clear: failed to retire finished scan job "
                     "records; safe to continue — they expire by TTL and are "
@@ -6040,7 +6269,11 @@ def create_document_routes(
             if rag.doc_status is not None:
                 try:
                     await rag.doc_status.initialize()
+                except CoordinationError:
+                    raise
                 except Exception as reinit_error:
+                    if get_runtime(rag) is not None:
+                        raise
                     logger.error(
                         f"/documents/clear: failed to re-initialize doc_status "
                         f"after drop; the next /documents/scan may fail until "
@@ -6101,7 +6334,11 @@ def create_document_routes(
                     append_pipeline_history(
                         pipeline_status, "Successfully cleared the LLM response cache"
                     )
+                except CoordinationError:
+                    raise
                 except Exception as cache_error:
+                    if get_runtime(rag) is not None:
+                        raise
                     error_msg = f"Error clearing the LLM response cache: {cache_error}"
                     logger.error(error_msg)
                     errors.append(error_msg)
@@ -6127,7 +6364,11 @@ def create_document_routes(
                     try:
                         file_path.unlink()
                         deleted_files_count += 1
+                    except CoordinationError:
+                        raise
                     except Exception as e:
+                        if get_runtime(rag) is not None:
+                            raise
                         logger.error(f"Error deleting file {file_path}: {str(e)}")
                         file_errors_count += 1
 
@@ -6182,7 +6423,11 @@ def create_document_routes(
                             append_pipeline_history(
                                 pipeline_status, "Deleted __parsed__ directory"
                             )
+                        except CoordinationError:
+                            raise
                         except Exception as e:
+                            if get_runtime(rag) is not None:
+                                raise
                             logger.error(f"Error deleting {parsed_dir}: {str(e)}")
                             errors.append(f"Failed to delete __parsed__ directory: {e}")
                             # ``e`` here is typically an OSError naming the
@@ -6238,7 +6483,11 @@ def create_document_routes(
 
             # Return response based on results
             return ClearDocumentsResponse(status=status, message=final_message)
+        except CoordinationError:
+            raise
         except Exception as e:
+            if get_runtime(rag) is not None:
+                raise
             error_msg = f"Error clearing documents: {str(e)}"
             logger.error(error_msg)
             logger.error(traceback.format_exc())
@@ -6378,7 +6627,47 @@ def create_document_routes(
                 # Use format_datetime to ensure consistent formatting
                 status_dict["job_start"] = format_datetime(status_dict["job_start"])
 
+            runtime = get_runtime(rag)
+            if runtime is not None:
+                local = getattr(runtime, "pipeline_status", {})
+                for key in (
+                    "busy",
+                    "job_name",
+                    "job_start",
+                    "docs",
+                    "batchs",
+                    "cur_batch",
+                    "latest_message",
+                ):
+                    if key in local:
+                        status_dict[key] = local[key]
+                status_dict["history_messages"] = list(
+                    local.get("history_messages", [])
+                )[-1000:]
+                status_dict["local_busy"] = bool(status_dict.get("busy"))
+                status_dict[
+                    "distributed"
+                ] = await runtime.coordinator.pipeline_control.status()
+                status_dict["distributed"]["polling_error"] = getattr(
+                    runtime, "pipeline_error", None
+                )
+                task = getattr(runtime, "pipeline_task", None)
+                status_dict["distributed"]["polling_active"] = (
+                    task is not None and not task.done()
+                )
+                stop = getattr(runtime, "pipeline_stop", None)
+                status_dict["distributed"]["discovery_stopped"] = (
+                    stop is not None and stop.is_set()
+                )
+                status_dict["busy"] = bool(
+                    status_dict["distributed"]["active_operations"]
+                )
+                status_dict["recovery_required"] = status_dict["distributed"][
+                    "recovery_required"
+                ]
             return PipelineStatusResponse(**status_dict)
+        except CoordinationError:
+            raise
         except Exception as e:
             logger.error(f"Error getting pipeline status: {str(e)}")
             logger.error(traceback.format_exc())
@@ -6505,6 +6794,8 @@ def create_document_routes(
                 doc_id=", ".join(doc_ids),
             )
 
+        except CoordinationError:
+            raise
         except Exception as e:
             error_msg = f"Error initiating document deletion for {delete_request.doc_ids}: {str(e)}"
             logger.error(error_msg)
@@ -6589,6 +6880,8 @@ def create_document_routes(
 
         except HTTPException:
             raise
+        except CoordinationError:
+            raise
         except Exception as e:
             logger.error(f"Error getting track status for {track_id}: {str(e)}")
             logger.error(traceback.format_exc())
@@ -6650,6 +6943,8 @@ def create_document_routes(
                 )
                 try:
                     result = await operation
+                except CoordinationError:
+                    raise
                 except Exception:
                     elapsed = time.perf_counter() - operation_start
                     performance_timing_log(
@@ -6764,6 +7059,8 @@ def create_document_routes(
 
             return response
 
+        except CoordinationError:
+            raise
         except Exception as e:
             total_elapsed = time.perf_counter() - request_start
             performance_timing_log(
@@ -6797,6 +7094,8 @@ def create_document_routes(
             status_counts = await rag.doc_status.get_all_status_counts()
             return StatusCountsResponse(status_counts=status_counts)
 
+        except CoordinationError:
+            raise
         except Exception as e:
             logger.error(f"Error getting document status counts: {str(e)}")
             logger.error(traceback.format_exc())
@@ -6875,6 +7174,14 @@ def create_document_routes(
                 required, or a clear/delete is dropping storages); 500 on
                 unexpected errors while initiating reprocessing.
         """
+        if get_runtime(rag) is not None:
+            await rag.apipeline_request_retry()
+            await rag.apipeline_start_polling()
+            return ReprocessResponse(
+                status="reprocessing_started",
+                message="Durable one-shot retry accepted.",
+            )
+
         from lightrag.exceptions import PipelineNotInitializedError
         from lightrag.kg.shared_storage import (
             ManualIntentRefused,
@@ -6901,7 +7208,7 @@ def create_document_routes(
             # a plain managed drive.
             async def _legacy_work(started):
                 started.set()
-                await rag.apipeline_process_enqueue_documents()
+                await drive_pipeline(rag)
 
             async def _noop_backstop():
                 return None
@@ -6915,6 +7222,8 @@ def create_document_routes(
                     message="Reprocessing of failed documents has been initiated "
                     "in background. Documents retain their original track_id.",
                 )
+            except CoordinationError:
+                raise
             except Exception as e:
                 logger.error(f"Error initiating reprocessing: {str(e)}")
                 logger.error(traceback.format_exc())
@@ -6944,7 +7253,7 @@ def create_document_routes(
             )
 
         async def _work():
-            await rag.apipeline_process_enqueue_documents()
+            await drive_pipeline(rag)
 
         async def _noop_backstop():
             return None
@@ -6978,6 +7287,8 @@ def create_document_routes(
                     else None
                 ),
             )
+        except CoordinationError:
+            raise
         except Exception as e:
             logger.error(f"Error initiating reprocessing of failed documents: {str(e)}")
             logger.error(traceback.format_exc())
@@ -7022,6 +7333,15 @@ def create_document_routes(
         which a retry completes; the opposite order would admit "fence down,
         intents still queued", where ``/scan`` stays refused and nothing says so.
         """
+        if get_runtime(rag) is not None:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "DistributedRecoveryRequired",
+                    "message": "Stop all writers, audit in-flight backend writes and attribution anchors, then use python -m lightrag.distributed recover with all operator confirmations. HTTP force_reset cannot clear durable ownership.",
+                },
+            )
+
         from lightrag.exceptions import PipelineNotInitializedError
         from lightrag.kg.shared_storage import (
             MANUAL_PHASE_IDLE,
@@ -7061,6 +7381,8 @@ def create_document_routes(
         # is not.
         try:
             ingress = await get_pipeline_ingress(rag.workspace)
+        except CoordinationError:
+            raise
         except Exception as ingress_error:
             logger.error(
                 "Force-reset refused: cannot reach the ingress mailbox to cancel "
@@ -7105,6 +7427,8 @@ def create_document_routes(
             # helpers' manual-pending peek.
             try:
                 cancelled = int(ingress.cancel_manual_retries() or 0)
+            except CoordinationError:
+                raise
             except Exception as cancel_error:
                 logger.error(
                     "Force-reset refused: the recovery fence is kept because the "
@@ -7189,6 +7513,13 @@ def create_document_routes(
         Raises:
             HTTPException: If an error occurs while setting cancellation flag (500).
         """
+        if get_runtime(rag) is not None:
+            await get_runtime(rag).coordinator.pipeline_control.pause()
+            return CancelPipelineResponse(
+                status="cancellation_requested",
+                message="Workspace cancellation persisted. Polling stays paused until explicit process, scan or retry.",
+            )
+
         try:
             from lightrag.kg.shared_storage import (
                 get_namespace_data,
@@ -7225,6 +7556,8 @@ def create_document_routes(
                 message="Pipeline cancellation has been requested. Documents will be marked as FAILED.",
             )
 
+        except CoordinationError:
+            raise
         except Exception as e:
             logger.error(f"Error requesting pipeline cancellation: {str(e)}")
             logger.error(traceback.format_exc())

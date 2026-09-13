@@ -66,6 +66,12 @@ def internal_server_error(exc: Exception) -> HTTPException:
             logger.error(traceback.format_exc())
             raise internal_server_error(e)
     """
+    from lightrag.distributed import CoordinationError
+
+    if isinstance(exc, CoordinationError):
+        # Preserve the stable busy/fence distinction through legacy catch-all
+        # handlers; the application exception handler supplies the HTTP status.
+        raise exc
     error_id = new_error_id()
     logger.error(
         f"Returning HTTP 500 to client [error_id={error_id}] ({type(exc).__name__})"

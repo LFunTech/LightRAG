@@ -466,6 +466,9 @@ def finalization_guard(function):
         runtime = get_runtime(self)
         if runtime is None:
             return await function(self, *args, **kwargs)
+        from .pipeline import stop_polling
+
+        await stop_polling(self)
         admitted = False
         try:
             async with runtime.operation("finalize", exclusive=True):

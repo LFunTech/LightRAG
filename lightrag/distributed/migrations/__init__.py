@@ -3,8 +3,13 @@
 from hashlib import sha256
 
 from .v001 import SQL, VERSION
+from . import v002
 
 CHECKSUM = sha256(SQL.encode()).hexdigest()
+MIGRATIONS = [
+    (VERSION, SQL, CHECKSUM),
+    (v002.VERSION, v002.SQL, sha256(v002.SQL.encode()).hexdigest()),
+]
 
 # This is the runtime schema contract, not a hash of the migration source.
 # Keep it aligned with versioned SQL; verify never repairs a deployed catalog.
@@ -50,6 +55,23 @@ _COLUMN_TYPES = {
         "timestamp with time zone": "recovered_at",
     },
 }
+_COLUMN_TYPES.update(
+    {
+        "pipeline_control": {
+            "text": "deployment_id workspace",
+            "boolean": "paused",
+            "bigint": "cancel_epoch",
+        },
+        "pipeline_requests": {
+            "text": "deployment_id workspace request_id state",
+            "timestamp with time zone": "created_at",
+        },
+        "pipeline_retry_targets": {
+            "text": "deployment_id workspace request_id doc_id version",
+            "boolean": "done",
+        },
+    }
+)
 _NULLABLE_COLUMNS = {
     "workspaces.fence_reason",
     "operations.finished_at",
@@ -74,23 +96,34 @@ _COLUMN_DEFAULTS = {
 }
 
 
+_COLUMN_DEFAULTS.update(
+    {
+        "pipeline_control.paused": "false",
+        "pipeline_control.cancel_epoch": "0",
+        "pipeline_requests.state": "'selecting'::text",
+        "pipeline_requests.created_at": "clock_timestamp()",
+        "pipeline_retry_targets.done": "false",
+    }
+)
+
+
 async def migrate(connection):
     """Apply additive SQL in one transaction, serializing concurrent migrators."""
     async with connection.transaction():
         await connection.execute("SELECT pg_advisory_xact_lock(684769932094171)")
-        await connection.execute(SQL)
-        checksum = await connection.fetchval(
-            "SELECT checksum FROM lightrag_coordination.schema_version WHERE version=$1",
-            VERSION,
-        )
-        if checksum is not None and checksum != CHECKSUM:
-            raise ValueError("Coordination migration checksum mismatch")
-        await connection.execute(
-            "INSERT INTO lightrag_coordination.schema_version(version, checksum) "
-            "VALUES ($1, $2) ON CONFLICT DO NOTHING",
-            VERSION,
-            CHECKSUM,
-        )
+        for version, sql, checksum in MIGRATIONS:
+            await connection.execute(sql)
+            existing = await connection.fetchval(
+                "SELECT checksum FROM lightrag_coordination.schema_version WHERE version=$1",
+                version,
+            )
+            if existing is not None and existing != checksum:
+                raise ValueError("Coordination migration checksum mismatch")
+            await connection.execute(
+                "INSERT INTO lightrag_coordination.schema_version(version, checksum) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                version,
+                checksum,
+            )
         await verify(connection)
 
 
@@ -102,7 +135,9 @@ async def verify(connection):
         rows = await connection.fetch(
             "SELECT version, checksum FROM lightrag_coordination.schema_version ORDER BY version"
         )
-        if [(r["version"], r["checksum"]) for r in rows] != [(VERSION, CHECKSUM)]:
+        if [(r["version"], r["checksum"]) for r in rows] != [
+            (version, checksum) for version, _, checksum in MIGRATIONS
+        ]:
             raise CoordinationSchemaError(
                 "Coordination schema version/checksum mismatch"
             )
@@ -122,6 +157,14 @@ async def verify(connection):
             "document_claims": ["deployment_id", "workspace", "doc_id"],
             "mutations": ["id"],
             "recovery_audit": ["id"],
+            "pipeline_control": ["deployment_id", "workspace"],
+            "pipeline_requests": ["deployment_id", "workspace", "request_id"],
+            "pipeline_retry_targets": [
+                "deployment_id",
+                "workspace",
+                "request_id",
+                "doc_id",
+            ],
         }
         found_keys = {row["relname"]: row["columns"] for row in primary_keys}
         if any(
