@@ -16,6 +16,8 @@
 
 协调层放在 `lightrag/distributed/`，独立 asyncpg 连接池，不把同步 Manager dict 换成阻塞远程字典。所有实例访问同一协调库是部署前置条件；不同 DSN 指向同一物理目标的身份识别不在自动发现范围。
 
+部署身份使用必填 `LIGHTRAG_DEPLOYMENT_ID`；`LIGHTRAG_COORDINATION_POOL_MODE` 只接受 `direct`（默认）或 `session`，拒绝 transaction/statement 池化，避免会话 witness 与事务池生命周期不匹配。此声明不替代对实际连接池的运维核实。PG 业务表固定使用 `public` schema，拒绝不同 search_path。SDK 的 `distributed_input_dir` 纳入共享路径指纹，API 必须传递实际 `args.input_dir`，不能仅校验 working_dir。
+
 ### 2. 持久化状态而非可过期 Redis 锁
 
 协调库包含版本记录、workspace、operation、resource lock、document claim、mutation 和 recovery audit。短事务在 workspace 协调行上序列化元数据变更；业务/LLM/HTTP 不持有该行事务。资源锁的已提交所有权持续到正常释放，不能凭租约/心跳超时抢占。
@@ -34,6 +36,8 @@ HugeGraph 在分布式模式下不再依赖其进程内全 scope 锁完成跨 Po
 
 PGVectorStorage 当前 upsert 仅缓冲、后续 flush 才提交；分布式模式必须保证实际向量提交仍在对应实体/关系所有权期间，不能将进程共享缓冲当作已确认写。选择分布式专用即写路径或等价的隔离提交路径，保留单机缓冲行为。PG 底层通用连接重试也不得偷偷重放不确定 mutation；分布式写确认必须覆盖实际 SQL 提交，不能假设异常等于事务已回滚。
 
+实现选择每调用独立 PGVector 批次并即时提交。共享 chunk 的缓存引用同样存在跨 Pod 读改写风险：分布式 PGKV 在 SQL 中原子合并 `llm_cache_list` 的不同 ID，保留额外 dangling reference 到 chunk 删除，不能用旧快照覆盖已确认引用。其余 chunk 列和默认 local 替换行为不变。
+
 ### 4. 文档领取和流水线
 
 保留 doc_status 为事实来源；对候选文档先原子领取，再严格读回状态，再做一致性修复/解析/提取/提交。已经被其他 Pod 领取的文档不得进入修复、parse worker、feeder 或 custom-chunk 路径。领取持续覆盖全部阶段；重复入库不能覆盖处理中的文档。
@@ -51,6 +55,8 @@ FAILED 不自动重入。人工 retry/scan 在工作区独占门下发布持久�
 取消 pipeline 在分布式模式下是持久化工作区控制意图，必须作用于全部处理 Pod，周期扫描不能立即把已取消任务重新启动；由显式新的处理/扫描请求恢复。既有 `/recovery/force_reset` 不得清除或伪报解除 durable fence，分布式模式引导到运维 CLI。
 
 人工恢复 CLI：只读 inspect；显式 recovery 要求所有 writer 已停止、HugeGraph/其他存储在途请求已结束、已提交状态与来源锚点已审计的运营确认。恢复保留审计历史、增加 generation 后解除选定 scope 的遗留锁/领取/屏障；停止旧进程是前置条件，generation 不是 HugeGraph 服务端 fence，不宣称可以拒绝已经发出的旧图请求。不得提供启动自动清屏障或简单 TTL 解锁。
+
+SDK 显式维护入口为 `distributed_maintenance()`，可在业务 storage initialize 之前进入，协调 schema 必须先由 CLI migrate 准备。正常启动只 verify；维护入口允许创建缺失的当前业务表及执行既有 tracking/anchor 迁移，但不偷偷改变不兼容 PG 表或复制另一 embedding 模型的数据。分布式图删除/合并的取消区域在原 owning Task 内执行，避免 shield 子任务等待父任务所持的资源锁；取消保留 durable fence 和精确 tracking 目标，接受 tracking 多于图的保守残留。恢复须按实际对象与锚点审计，不能声称直接重试 rename 就会收敛。具体合同见 `docs/design/DistributedRuntimeContract.md`。
 
 ### 6. 幂等和跨存储恢复
 

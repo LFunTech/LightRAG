@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-实施中。proposal/design/spec/tasks 已完成并通过 OpenSpec strict，但这不代表多 Pod 功能已可用。协调原语已有独立测试，核心、流水线、API 和部署仍需接入并逐项验证；以下未完成项不能作为已交付能力宣传。
+实施中。proposal/design/spec/tasks 已完成并通过 OpenSpec strict，但这不代表多 Pod 功能已可用。协调原语已完成审查；核心写保护已提交并通过独立测试复跑，正在审查；流水线、API 和部署仍需接入并逐项验证，不能作为已交付能力宣传。
 
 ## 环境与安全边界
 
@@ -39,6 +39,24 @@ PYTHON=/tmp/lightrag-distributed-verification-venv/bin/python \
 结果：30 passed，1.73 秒。包含离线验证、独立 PG 客户端、子任务同 key 竞争、真实子进程 SIGKILL、witness 失联、取消期间协调失败、迟到 ACK、恢复确认和审计。
 
 独立审查发现安全关键列默认值 drift 未验证和非有限超时参数问题，修复 commit `43713a330` 增加实际 catalog 校验、显式协议初值和有限超时校验。新增回归先得到 27 failed / 5 passed，再转绿；主 agent 对修复版独立复跑为 62 passed。限定复核 I1/M1 均 ADDRESSED，Task 1 原语阶段通过，不代表后续核心/流水线已完成。
+
+### 核心写保护（Task 2，审查中）
+
+实现 commit `1059447a8`，包括 runtime profile/manifest、SDK operation、跨实例 GraphDB 锁、PG 真实 SQL pending/ACK 与禁写重试、PGVector 隔离即时提交、HugeGraph 分批 journal、verify-only 启动和显式维护、取消恢复目标与共享 chunk 缓存引用原子并集。独立审查尚未出结论，不能提前视为该阶段验收完成。
+
+主 agent 在提交后独立复跑：
+
+```bash
+PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh \
+  tests/distributed tests/kg/postgres_impl tests/kg/hugegraph_impl \
+  tests/pipeline tests/llm tests/extraction tests/workspace tests/utils \
+  tests/test_dataclass_positional_compatibility.py tests/test_docstring_budget.py \
+  tests/test_aclear_cache_contract.py tests/test_storage_migrations_strict_read.py -q
+```
+
+结果：**3058 passed、64 skipped，53.72 秒**。另外使用专用 PG 测试连接执行 `tests/distributed --run-integration -q`，结果 **116 passed，4.85 秒**：Task 1 62 项、runtime 25 项、SDK 21 项、真实 PG/HugeGraph 业务 8 项。实际业务覆盖 SDK CRUD/cache/custom/purge、共享实体 RMW、SQL 已提交后 ACK 丢失、取消后精确 tracking 目标和缓存引用 stale snapshot；LLM/embedding 为测试 fixture。
+
+这 8 项业务集成使用同进程中独立 runtime/pool，不能据此声称业务多 Pod 验证完成。Task 1 已有独立进程 coordinator 故障测试；业务独立进程与调度验证仍由 Task 3/4 完成。此阶段未重跑全量 suite。
 
 ## 最终验收矩阵
 
