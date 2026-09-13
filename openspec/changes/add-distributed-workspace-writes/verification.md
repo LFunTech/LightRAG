@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-实施中。proposal/design/spec/tasks 已完成并通过 OpenSpec strict，但这不代表多 Pod 功能已可用。协调原语与核心写保护已完成审查、修复和独立测试复跑；流水线/API 实现已提交并复跑测试，独立审查中；部署和独立业务进程验收尚未完成，不能作为已交付能力宣传。
+实施中。proposal/design/spec/tasks 已完成并通过 OpenSpec strict，但这不代表多 Pod 功能已可用。协调原语、核心写保护和流水线/API 已完成审查、修复及独立测试复跑；部署和独立业务进程验收尚未完成，不能作为已交付能力宣传。
 
 ## 环境与安全边界
 
@@ -62,9 +62,9 @@ PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh \
 
 修复版由主 agent 独立复跑 `tests/distributed tests/kg/postgres_impl tests/utils tests/pipeline tests/test_docstring_budget.py`，**1926 passed、55 skipped，41.88 秒**；真实 `tests/distributed --run-integration` 为 **127 passed，6.28 秒**。新增真实案例验证 finalize 拒绝/取消后原 writer 仍可提交，以及 entity/relation/allow_merge 在实际图提交后 ACK 丢失或取消时，请求前已持久化精确 tracking 目标。只有 Task 2 的 2.1–2.4 在此阶段勾选，未提前勾选调度/API/部署。
 
-### 流水线与 API（Task 3，审查中）
+### 流水线与 API（Task 3）
 
-实现 commit `9606156da`：v002 持久暂停/重试 target/progress、领取后严格读回的有界调度、周期扫描、真实 worker 复用、完整 enqueue 窗口、API/共享文件/后台操作门、分布式状态、force_reset 拒绝、关闭排空和维护构造入口。v001 SQL/checksum 不变。任务勾选表示实现检查点，不代替尚未结束的独立审查。
+实现 commit `9606156da`：v002 持久暂停/重试 target/progress、领取后严格读回的有界调度、周期扫描、真实 worker 复用、完整 enqueue 窗口、API/共享文件/后台操作门、分布式状态、force_reset 拒绝、关闭排空和维护构造入口。v001 SQL/checksum 不变。
 
 主 agent 在提交后独立复跑：
 
@@ -76,6 +76,10 @@ PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh \
 ```
 
 结果：**2825 passed、99 skipped、2 deselected，63.51 秒**。排除项恰为修改前已确认的两个 401/403 鉴权状态码基线；不是新增失败。专用 PG/HugeGraph 环境下执行 `tests/distributed tests/api/routes/test_distributed_controls.py --run-integration -q`：**156 passed，11.56 秒**。包括实际 HTTP handlers/鉴权、双 runtime 文档处理与共享实体、pause/retry、跨实例 scan 状态和错误尾路径。业务仍为同 OS 进程测试，不能替代 Task 4 的独立进程验收。
+
+独立审查的四个 Important（删除接管/本地 reservation 泄漏、upload/text/texts 接管许可空窗、scan enqueue 吞文件错误、多模态 strict read 伪装为 skip）在 `ab22794a0` 修复。主 agent 独立复跑修复对应的 distributed/pipeline/API 子集为 **2265 passed、106 skipped、2 deselected，57.65 秒**；真实集成 **169 passed，12.57 秒**。四项限定复核均 ADDRESSED。
+
+复核另发现新 typed-error adapter 会覆盖 backstop cleanup 错误，`eeca9bdf3` 仅修复此优先级。使用实际 legacy starter 的六组合矩阵先出现 2 failed / 4 passed，修复后主 agent 对 adapter/lifespan 复跑 **9 passed**，真实 handoff 子集 **13 passed、8 deselected**。第二轮限定复核 ADDRESSED，无新问题，Task 3 gate 通过。未对未修改管线重复运行全量，整体里程碑留给 Task 4。
 
 ## 最终验收矩阵
 
