@@ -6,6 +6,9 @@ from typing import Any, Awaitable, Callable, cast
 
 from .base import DeletionResult
 from .exceptions import CommitBookkeepingError
+from lightrag.distributed.runtime import current_runtime, record_tracking_recovery
+from lightrag.distributed import CoordinationError
+
 from .kg.shared_storage import get_storage_keyed_lock
 from .constants import GRAPH_FIELD_SEP, RELATION_NO_EVIDENCE_SOURCE_IDS
 from .operate import _truncate_vdb_content
@@ -450,6 +453,12 @@ async def _finish_deferring_cancellation(coro, description: str) -> None:
     let the caller escape while the cleanup is still running. Same idiom, and
     same reason, as ``_bounded_submit_impl``'s own deferred commit hook.
     """
+    if current_runtime() is not None:
+        # Durable locks belong to THIS task, not an implicitly shielded child.
+        # Cancellation fences the workspace until the recorded tracking targets
+        # are audited; see docs/design/DistributedRuntimeContract.md.
+        await coro
+        return
     future = asyncio.ensure_future(coro)
     future.add_done_callback(_consume_future_exception)
     pending_cancel = await _wait_deferring_cancellation(future, None)
@@ -728,6 +737,15 @@ async def adelete_by_entity(
             # are one cancellation-deferring region. commit_in_storage_io can
             # raise a deferred CancelledError from the commit await itself; if
             # only phase 2 were protected, execution would never reach it.
+            await record_tracking_recovery(
+                [
+                    (entity_chunks_storage, entity_name),
+                    *(
+                        (relation_chunks_storage, key)
+                        for key in relation_keys_to_delete
+                    ),
+                ]
+            )
             await _finish_deferring_cancellation(
                 _commit_graph_and_drop_entity_tracking(),
                 f"Entity Delete: '{entity_name}' graph and tracking cleanup",
@@ -876,6 +894,7 @@ async def adelete_by_relation(
 
             # Protect the graph mutation and commit as well as the owed cleanup;
             # the commit await itself is where deferred cancellation reappears.
+            await record_tracking_recovery([(relation_chunks_storage, storage_key)])
             await _finish_deferring_cancellation(
                 _commit_graph_and_drop_relation_tracking(),
                 f"Relation Delete: `{source_entity}`~`{target_entity}` graph and tracking cleanup",
@@ -1482,6 +1501,16 @@ async def _edit_entity_impl(
     # deferred cancellation reappears, and it ENDS after the tracking is
     # settled -- retired on a rename, shrunk on a non-rename edit -- because
     # everything it owes the graph state has to survive a cancel.
+    await record_tracking_recovery(
+        [
+            *tracking_keys_to_retire,
+            *(
+                ([(entity_chunks_storage, entity_tracking_key)])
+                if entity_tracking_key
+                else []
+            ),
+        ]
+    )
     await _finish_deferring_cancellation(
         _commit_graph_and_settle_tracking(),
         f"Entity Edit: `{original_entity_name}` graph and tracking cleanup",
@@ -1797,6 +1826,8 @@ async def aedit_entity(
                         )
                         raise
 
+                    except CoordinationError:
+                        raise
                     except Exception as merge_error:
                         # Merge failed, but update may have succeeded
                         logger.error(f"Entity Edit: merge failed: {merge_error}")
@@ -2221,6 +2252,9 @@ async def aedit_relation(
             # deferred cancellation reappears, and it ENDS after the tracking is
             # settled, because the narrowing the durable edge now owes its row
             # has to survive a cancel.
+            await record_tracking_recovery(
+                [(relation_chunks_storage, tracking_storage_key)]
+            )
             await _finish_deferring_cancellation(
                 _commit_graph_and_settle_tracking(),
                 f"Relation Edit: `{source_entity}`~`{target_entity}` graph commit "
@@ -3399,6 +3433,12 @@ async def _merge_entities_impl(
     # commit await is itself where a deferred cancellation reappears, so the
     # region has to start before it -- protecting only the deletes would mean
     # never reaching them.
+    await record_tracking_recovery(
+        [
+            *((entity_chunks_storage, key) for key in entities_to_remove),
+            *((relation_chunks_storage, key) for key in stale_relation_keys),
+        ]
+    )
     await _finish_deferring_cancellation(
         _commit_source_removal_and_retire_tracking(),
         f"Entity Merge: source removal and tracking cleanup for '{target_entity}'",

@@ -10,6 +10,8 @@ import re
 from typing import Any
 from urllib.parse import quote, unquote, urlsplit
 
+from lightrag.distributed.runtime import physical_write
+
 import aiohttp
 from yarl import URL
 
@@ -517,28 +519,31 @@ class HugeGraphClient:
         for kind, expected in missing:
             collection = f"{self.graph_path}/schema/{kind}"
             path = f"{collection}/{expected['name']}"
-            try:
-                created = await self.request("POST", collection, json=expected)
-            except HugeGraphClientError as error:
-                if error.status != 409 and not (
-                    error.status == 400 and error.exception == "ExistedException"
-                ):
-                    raise
-                # A confirmed create conflict is not an uncertain write.
-                # Read the concurrent winner, then apply the same drift check.
-            else:
-                if kind == "indexlabels":
-                    task_id = (
-                        created.get("task_id") if isinstance(created, dict) else None
-                    )
-                    if type(task_id) is not int or task_id < 0:
-                        raise HugeGraphClientError(
-                            "HugeGraph index creation returned an invalid task ID"
+            async with physical_write():
+                try:
+                    created = await self.request("POST", collection, json=expected)
+                except HugeGraphClientError as error:
+                    if error.status != 409 and not (
+                        error.status == 400 and error.exception == "ExistedException"
+                    ):
+                        raise
+                    # A confirmed create conflict is not an uncertain write.
+                    # Read the concurrent winner, then apply the same drift check.
+                else:
+                    if kind == "indexlabels":
+                        task_id = (
+                            created.get("task_id")
+                            if isinstance(created, dict)
+                            else None
                         )
-                    if task_id > 0:
-                        await self._wait_task(task_id)
-            actual = await self.request("GET", path, retry=True)
-            await self._validate_ready_schema(kind, expected, actual)
+                        if type(task_id) is not int or task_id < 0:
+                            raise HugeGraphClientError(
+                                "HugeGraph index creation returned an invalid task ID"
+                            )
+                        if task_id > 0:
+                            await self._wait_task(task_id)
+                actual = await self.request("GET", path, retry=True)
+                await self._validate_ready_schema(kind, expected, actual)
 
     async def _check_index_overlap(
         self, expected_indexes: list[dict[str, Any]]

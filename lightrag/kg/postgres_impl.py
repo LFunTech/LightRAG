@@ -13,6 +13,15 @@ import configparser
 import ssl
 import itertools
 
+from lightrag.distributed.runtime import (
+    current_runtime,
+    get_runtime,
+    physical_write,
+    physical_write_active,
+    storage_write,
+)
+from copy import copy
+
 from lightrag.types import KnowledgeGraph, KnowledgeGraphNode, KnowledgeGraphEdge
 
 from tenacity import (
@@ -785,6 +794,7 @@ class PostgreSQLDB:
         with_age: bool = False,
         graph_name: str | None = None,
         timing_label: str | None = None,
+        read_only: bool = False,
     ) -> T:
         """
         Execute a database operation with automatic retry for transient failures.
@@ -800,6 +810,20 @@ class PostgreSQLDB:
         Raises:
             Exception: Propagates the last error if all retry attempts fail or a non-transient error occurs.
         """
+        if not read_only and (physical_write_active() or get_runtime(self)):
+            runtime = get_runtime(self)
+            if runtime is not None:
+                runtime.permit()
+                if not physical_write_active():
+                    raise RuntimeError(
+                        "Distributed SQL mutation requires a storage boundary"
+                    )
+            # No connection-level replay: an exception cannot prove rollback.
+            async with physical_write():
+                await self._ensure_pool()
+                async with self.pool.acquire() as connection:
+                    return await operation(connection)
+
         wait_strategy = (
             wait_exponential(
                 multiplier=self.connection_retry_backoff,
@@ -891,6 +915,19 @@ class PostgreSQLDB:
         When vector_index_type is HNSW_HALFVEC, validates that pgvector >= 0.7.0
         (required for halfvec support) and raises RuntimeError if older.
         """
+        runtime = get_runtime(self)
+        if runtime is not None:
+            if current_runtime() is runtime and runtime.permit().maintenance:
+                async with physical_write():
+                    await connection.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            row = await connection.fetchrow(
+                "SELECT extversion FROM pg_extension WHERE extname='vector'"
+            )
+            if not row:
+                raise RuntimeError(
+                    "Distributed PG requires pre-provisioned vector extension"
+                )
+            return
         try:
             await connection.execute("CREATE EXTENSION IF NOT EXISTS vector")  # type: ignore
             logger.info("PostgreSQL, VECTOR extension enabled")
@@ -2783,6 +2820,19 @@ class PostgreSQLDB:
                 with_age=with_age,
                 graph_name=graph_name,
                 timing_label=timing_label,
+                **(
+                    {
+                        "read_only": not bool(
+                            re.search(
+                                r"\b(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TRUNCATE)\b",
+                                sql,
+                                re.I,
+                            )
+                        )
+                    }
+                    if (physical_write_active() or get_runtime(self))
+                    else {}
+                ),
             )
         except Exception as e:
             logger.error(f"PostgreSQL database, error:{e}")
@@ -2825,6 +2875,8 @@ class PostgreSQLDB:
                 asyncpg.exceptions.DuplicateObjectError,
                 asyncpg.exceptions.InvalidSchemaNameError,
             ) as e:
+                if physical_write_active():
+                    raise
                 if ignore_if_exists:
                     logger.debug("PostgreSQL, ignoring duplicate during execute: %r", e)
                     result = None
@@ -3131,7 +3183,11 @@ class PGKVStorage(BaseKVStorage):
             self._max_delete_records_per_batch,
         ) = _resolve_pg_batch_limits()
 
+    @storage_write
     async def initialize(self):
+        runtime = get_runtime(self)
+        if runtime is not None:
+            return await runtime.initialize_pg_storage(self)
         async with get_data_init_lock():
             if self.db is None:
                 self.db = await ClientManager.get_client(
@@ -3153,6 +3209,9 @@ class PGKVStorage(BaseKVStorage):
                 self.workspace = "default"
 
     async def finalize(self):
+        if get_runtime(self) is not None:
+            self.db = None
+            return
         if self.db is not None:
             await ClientManager.release_client(self.db)
             self.db = None
@@ -3508,6 +3567,7 @@ class PGKVStorage(BaseKVStorage):
             raise
 
     ################ INSERT METHODS ################
+    @storage_write
     async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
         logger.debug(f"[{self.workspace}] Inserting {len(data)} to {self.namespace}")
         if not data:
@@ -3528,6 +3588,17 @@ class PGKVStorage(BaseKVStorage):
 
         if is_namespace(self.namespace, NameSpace.KV_STORE_TEXT_CHUNKS):
             upsert_sql = SQL_TEMPLATES["upsert_text_chunk"]
+            if get_runtime(self) is not None:
+                # Multiple documents may share a content-addressed chunk. An
+                # old read/modify/write snapshot must not erase newer cache
+                # attribution. Retire references only with the chunk row;
+                # dangling references after cache clear are harmless.
+                upsert_sql = upsert_sql.replace(
+                    "llm_cache_list=EXCLUDED.llm_cache_list",
+                    "llm_cache_list=(SELECT COALESCE(jsonb_agg(DISTINCT value), '[]'::jsonb) "
+                    "FROM jsonb_array_elements(COALESCE(NULLIF(LIGHTRAG_DOC_CHUNKS.llm_cache_list, 'null'::jsonb), '[]'::jsonb) "
+                    "|| EXCLUDED.llm_cache_list) AS refs(value))",
+                )
             # Get current UTC time and convert to naive datetime for database storage
             current_time = datetime.datetime.now(timezone.utc).replace(tzinfo=None)
             for i, (k, v) in enumerate(data.items(), start=1):
@@ -3543,7 +3614,11 @@ class PGKVStorage(BaseKVStorage):
                         v["full_doc_id"],
                         v["content"],
                         v["file_path"],
-                        json.dumps(v.get("llm_cache_list", [])),
+                        json.dumps(
+                            list(dict.fromkeys(v.get("llm_cache_list") or []))
+                            if get_runtime(self) is not None
+                            else v.get("llm_cache_list", [])
+                        ),
                         json.dumps(v.get("heading") or {}),
                         json.dumps(v.get("sidecar") or {}),
                         current_time,
@@ -3769,9 +3844,12 @@ class PGKVStorage(BaseKVStorage):
             result = await self.db.query(sql, [self.workspace])
             return not result.get("has_data", False) if result else True
         except Exception as e:
+            if get_runtime(self) is not None:
+                raise
             logger.error(f"[{self.workspace}] Error checking if storage is empty: {e}")
             return True
 
+    @storage_write
     async def delete(self, ids: list[str]) -> None:
         """Delete specific records from storage by their IDs
 
@@ -3824,10 +3902,13 @@ class PGKVStorage(BaseKVStorage):
                 f"[{self.workspace}] Successfully deleted {len(ids)} records from {self.namespace}"
             )
         except Exception as e:
+            if get_runtime(self) is not None:
+                raise
             logger.error(
                 f"[{self.workspace}] Error while deleting records from {self.namespace}: {e}"
             )
 
+    @storage_write
     async def drop(self) -> dict[str, str]:
         """Drop the storage"""
         try:
@@ -4344,7 +4425,11 @@ class PGVectorStorage(BaseVectorStorage):
                 "PostgreSQL: Manual deletion is required after data migration verification."
             )
 
+    @storage_write
     async def initialize(self):
+        runtime = get_runtime(self)
+        if runtime is not None:
+            return await runtime.initialize_pg_storage(self)
         async with get_data_init_lock():
             if self.db is None:
                 # Declare this class's OWN requirement rather than asking
@@ -4413,6 +4498,9 @@ class PGVectorStorage(BaseVectorStorage):
             buffers remain non-empty so the operator sees the data-loss
             signal again.
         """
+        if get_runtime(self) is not None:
+            self.db = None
+            return
         if self.db is None:
             pending_docs = len(self._pending_vector_docs)
             pending_deletes = len(self._pending_vector_deletes)
@@ -4544,6 +4632,7 @@ class PGVectorStorage(BaseVectorStorage):
         )
         return upsert_sql, values
 
+    @storage_write
     async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
         """Buffer vector docs for embedding and batched flush.
 
@@ -4592,6 +4681,16 @@ class PGVectorStorage(BaseVectorStorage):
             )
             await _cooperative_yield(i)
 
+        if get_runtime(self) is not None:
+            # A per-call batch owns its embedding and SQL commits. Never publish
+            # another task's buffer after releasing that task's entity lock.
+            isolated = copy(self)
+            isolated._pending_vector_docs = dict(pending_docs)
+            isolated._pending_vector_deletes = set()
+            isolated._flush_lock = asyncio.Lock()
+            await isolated._flush_pending_vector_ops()
+            return
+
         async with self._flush_lock:
             for doc_id, pending_doc in pending_docs:
                 # Invariant: a later upsert wins over an earlier delete; the
@@ -4600,6 +4699,7 @@ class PGVectorStorage(BaseVectorStorage):
                 self._pending_vector_deletes.discard(doc_id)
                 self._pending_vector_docs[doc_id] = pending_doc
 
+    @storage_write
     async def _flush_pending_vector_ops(self) -> None:
         """Flush buffered PG vector upserts and deletes in one transaction.
 
@@ -4906,6 +5006,7 @@ class PGVectorStorage(BaseVectorStorage):
             self._pending_vector_docs.clear()
             self._pending_vector_deletes.clear()
 
+    @storage_write
     async def delete(self, ids: list[str]) -> None:
         """Buffer vector deletes for batched flush.
 
@@ -4917,6 +5018,13 @@ class PGVectorStorage(BaseVectorStorage):
             return
         if isinstance(ids, set):
             ids = list(ids)
+        if get_runtime(self) is not None:
+            isolated = copy(self)
+            isolated._pending_vector_docs = {}
+            isolated._pending_vector_deletes = set(ids)
+            isolated._flush_lock = asyncio.Lock()
+            await isolated._flush_pending_vector_ops()
+            return
         async with self._flush_lock:
             for doc_id in ids:
                 self._pending_vector_docs.pop(doc_id, None)
@@ -4925,6 +5033,7 @@ class PGVectorStorage(BaseVectorStorage):
             f"[{self.workspace}] Buffered delete for {len(ids)} vectors in {self.namespace}"
         )
 
+    @storage_write
     async def delete_entity(self, entity_name: str) -> None:
         """Delete an entity vector by entity name.
 
@@ -5001,6 +5110,7 @@ class PGVectorStorage(BaseVectorStorage):
             logger.error(f"[{self.workspace}] Error deleting entity {entity_name}: {e}")
             raise
 
+    @storage_write
     async def delete_entity_relation(self, entity_name: str) -> None:
         """Delete all relation vectors where ``entity_name`` is src or tgt.
 
@@ -5123,6 +5233,8 @@ class PGVectorStorage(BaseVectorStorage):
                 return row
             return None
         except Exception as e:
+            if get_runtime(self) is not None:
+                raise
             logger.error(
                 f"[{self.workspace}] Error retrieving vector data for ID {id}: {e}"
             )
@@ -5183,6 +5295,8 @@ class PGVectorStorage(BaseVectorStorage):
                     if row_id is not None:
                         id_map[str(row_id)] = record_dict
             except Exception as e:
+                if get_runtime(self) is not None:
+                    raise
                 logger.error(
                     f"[{self.workspace}] Error retrieving vector data for IDs {ids}: {e}"
                 )
@@ -5308,14 +5422,19 @@ class PGVectorStorage(BaseVectorStorage):
                     ):
                         result[row["id"]] = vector_data.to_list()
                 except (json.JSONDecodeError, TypeError) as e:
+                    if get_runtime(self) is not None:
+                        raise
                     logger.warning(
                         f"[{self.workspace}] Failed to parse vector data for ID {row['id']}: {e}"
                     )
         except Exception as e:
+            if get_runtime(self) is not None:
+                raise
             logger.error(f"[{self.workspace}] Error getting vectors: {e}")
 
         return result
 
+    @storage_write
     async def drop(self) -> dict[str, str]:
         """Drop all rows scoped to this storage's workspace.
 
@@ -5481,7 +5600,11 @@ class PGDocStatusStorage(DocStatusStorage):
         # If datetime already has timezone info, keep it as is
         return dt.isoformat()
 
+    @storage_write
     async def initialize(self):
+        runtime = get_runtime(self)
+        if runtime is not None:
+            return await runtime.initialize_pg_storage(self)
         async with get_data_init_lock():
             if self.db is None:
                 self.db = await ClientManager.get_client(
@@ -5506,6 +5629,9 @@ class PGDocStatusStorage(DocStatusStorage):
             # No need to create table here as it's already created in the TABLES dict
 
     async def finalize(self):
+        if get_runtime(self) is not None:
+            self.db = None
+            return
         if self.db is not None:
             await ClientManager.release_client(self.db)
             self.db = None
@@ -6150,6 +6276,7 @@ class PGDocStatusStorage(DocStatusStorage):
             )
         return value
 
+    @storage_write
     async def update_doc_status_fields(
         self,
         doc_id: str,
@@ -6369,6 +6496,7 @@ class PGDocStatusStorage(DocStatusStorage):
             conflicts=tuple(conflicts), next_position=next_position
         )
 
+    @storage_write
     async def repair_source_conflict(
         self,
         canonical_source_key: str,
@@ -6835,9 +6963,12 @@ class PGDocStatusStorage(DocStatusStorage):
             result = await self.db.query(sql, [self.workspace])
             return not result.get("has_data", False) if result else True
         except Exception as e:
+            if get_runtime(self) is not None:
+                raise
             logger.error(f"[{self.workspace}] Error checking if storage is empty: {e}")
             return True
 
+    @storage_write
     async def delete(self, ids: list[str]) -> None:
         """Delete specific records from storage by their IDs
 
@@ -6890,10 +7021,13 @@ class PGDocStatusStorage(DocStatusStorage):
                 f"[{self.workspace}] Successfully deleted {len(ids)} records from {self.namespace}"
             )
         except Exception as e:
+            if get_runtime(self) is not None:
+                raise
             logger.error(
                 f"[{self.workspace}] Error while deleting records from {self.namespace}: {e}"
             )
 
+    @storage_write
     async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
         """Update or insert document status
 
@@ -6977,6 +7111,10 @@ class PGDocStatusStorage(DocStatusStorage):
                     )
                 )
             except (KeyError, TypeError, ValueError) as e:
+                if get_runtime(self) is not None:
+                    raise ValueError(
+                        "Invalid distributed doc_status batch record"
+                    ) from e
                 logger.error(
                     f"[{self.workspace}] Skipping document '{k}' in batch upsert — "
                     f"invalid or missing field: {e!r}"
@@ -7054,6 +7192,7 @@ class PGDocStatusStorage(DocStatusStorage):
             len(skipped),
         )
 
+    @storage_write
     async def drop(self) -> dict[str, str]:
         """Drop the storage"""
         try:

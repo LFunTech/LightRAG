@@ -13,6 +13,8 @@ also checks chunk tracking before writing its first new row:
 
 from __future__ import annotations
 
+from lightrag.distributed.runtime import current_runtime, get_runtime
+
 from lightrag.base import DocStatus
 from lightrag.constants import GRAPH_FIELD_SEP
 from lightrag.kg.shared_storage import get_data_init_lock
@@ -28,8 +30,48 @@ class _StorageMigrationMixin:
     ``relation_chunks``).
     """
 
+    async def _verify_distributed_data(self):
+        """Refuse legacy migration needs without changing business data."""
+        labels = await self.chunk_entity_relation_graph.get_all_labels()
+        if labels:
+            if (
+                await self.entity_chunks.is_empty()
+                or await self.relation_chunks.is_empty()
+            ):
+                # A graph without relations legitimately has empty relation tracking.
+                edges = await self.chunk_entity_relation_graph.get_all_edges()
+                if await self.entity_chunks.is_empty() or (
+                    edges and await self.relation_chunks.is_empty()
+                ):
+                    raise RuntimeError(
+                        "Distributed data requires explicit distributed_maintenance() migration"
+                    )
+            docs = await self.doc_status.get_docs_by_statuses(
+                [DocStatus.PROCESSED], strict=True
+            )
+            for doc_id, status in docs.items():
+                if status.chunks_list and not (
+                    await self.full_entities.get_by_id(doc_id)
+                    or await self.full_relations.get_by_id(doc_id)
+                ):
+                    raise RuntimeError(
+                        "Distributed recovery anchors require explicit maintenance migration"
+                    )
+        self._chunk_tracking_migration_checked = True
+
     async def check_and_migrate_data(self):
         """Check if data migration is needed and perform migration if necessary"""
+        runtime = get_runtime(self)
+        if runtime is not None:
+            if current_runtime() is None:
+                # Startup callers have no operation yet; verification is read-only.
+                await self._verify_distributed_data()
+                return
+            permit = runtime.permit()
+            if not permit.maintenance:
+                await self._verify_distributed_data()
+                return
+            runtime.permit(exclusive=True, maintenance=True)
         async with get_data_init_lock():
             try:
                 # Check if migration is needed:
@@ -108,6 +150,10 @@ class _StorageMigrationMixin:
 
     async def _migrate_entity_relation_data(self, processed_docs: dict):
         """Migrate existing entity and relation data to full_entities and full_relations storage"""
+        runtime = get_runtime(self)
+        if runtime is not None:
+            runtime.permit(exclusive=True, maintenance=True)
+
         logger.info(f"Starting data migration for {len(processed_docs)} documents")
 
         # Create mapping from chunk_id to doc_id
@@ -213,6 +259,10 @@ class _StorageMigrationMixin:
         A successful check is cached per instance, including when a namespace
         stays empty. Failed checks remain retryable; each worker checks once.
         """
+        if get_runtime(self) is not None:
+            if not self._chunk_tracking_migration_checked:
+                await self._verify_distributed_data()
+            return
         if self._chunk_tracking_migration_checked:
             return
         async with get_data_init_lock():
@@ -225,6 +275,9 @@ class _StorageMigrationMixin:
 
     async def _migrate_chunk_tracking_storage(self) -> None:
         """Ensure entity/relation chunk tracking KV stores exist and are seeded."""
+        runtime = get_runtime(self)
+        if runtime is not None:
+            runtime.permit(exclusive=True, maintenance=True)
 
         if not self.entity_chunks or not self.relation_chunks:
             return

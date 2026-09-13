@@ -37,6 +37,15 @@ from typing import (
     Dict,
     Union,
 )
+from lightrag.distributed.runtime import (
+    configure_runtime,
+    enabled_from_env,
+    get_runtime,
+    operation_guard,
+    initialization_guard,
+    finalization_guard,
+)
+
 from lightrag.prompt import (
     PROMPTS,
     get_default_entity_extraction_prompt_profile,
@@ -1350,6 +1359,25 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
     shifted 43 of them. See ``tests/test_dataclass_positional_compatibility.py``.
     """
 
+    distributed_writes: bool = field(default_factory=enabled_from_env)
+    """Opt in to the supported durable distributed profile; default is local."""
+
+    distributed_input_dir: str | None = field(default=None)
+    """Shared input root identity; API callers must pass their actual input_dir."""
+
+    @asynccontextmanager
+    async def distributed_maintenance(self, *, kind="maintenance", metadata=None):
+        """Explicit exclusive bootstrap/migration permission, even before initialize.
+
+        Stop legacy writers and prepare coordination schema before entering.
+        Normal initialize/check_and_migrate_data only verify distributed data.
+        """
+        runtime = get_runtime(self)
+        if runtime is None:
+            raise ValueError("distributed_maintenance requires distributed_writes=True")
+        async with runtime.maintenance(kind=kind, metadata=metadata) as operation:
+            yield operation
+
     def _mark_addon_params_dirty(self) -> None:
         self._addon_params_dirty = True
 
@@ -1626,6 +1654,9 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         }
 
     def __post_init__(self, addon_params: dict[str, Any] | None):
+        # Fail the deployment profile before any storage constructor can write.
+        # Not a dataclass field: credentials/transport must never enter asdict.
+        self._distributed_runtime = configure_runtime(self)
         from lightrag.kg.shared_storage import (
             initialize_share_data,
         )
@@ -1901,6 +1932,23 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         self._llm_role_builder = None
         self._retired_llm_queue_cleanup_tasks: set[asyncio.Task] = set()
         self._chunk_tracking_migration_checked = False
+        if self._distributed_runtime is not None:
+            self._distributed_runtime.storages = [
+                self.full_docs,
+                self.text_chunks,
+                self.full_entities,
+                self.full_relations,
+                self.entity_chunks,
+                self.relation_chunks,
+                self.entities_vdb,
+                self.relationships_vdb,
+                self.chunks_vdb,
+                self.chunk_entity_relation_graph,
+                self.llm_response_cache,
+                self.doc_status,
+            ]
+            for storage in self._distributed_runtime.storages:
+                storage._distributed_runtime = self._distributed_runtime
 
         # The event loop this instance's storages bind to (set in
         # initialize_storages). Kept off the dataclass fields so asdict() in
@@ -1973,6 +2021,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
 
         self._storages_status = StoragesStatus.CREATED
 
+    @initialization_guard
     async def initialize_storages(self):
         """Storage initialization must be called one by one to prevent deadlock"""
         if self._storages_status == StoragesStatus.CREATED:
@@ -2022,6 +2071,12 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                 self.doc_status,
                 require=bool(self.pipeline_require_strict_storage_reads),
             )
+
+            if (
+                get_runtime(self) is not None
+                and not get_runtime(self).permit().maintenance
+            ):
+                await self._verify_distributed_data()
 
             self._storages_status = StoragesStatus.INITIALIZED
             logger.debug("All storage types initialized")
@@ -2150,6 +2205,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                 "Deleting the affected documents will not reclaim those cache rows"
             )
 
+    @finalization_guard
     async def finalize_storages(self):
         """Asynchronously finalize the storages with improved error handling.
 
@@ -2227,6 +2283,8 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                 logger.debug("All storages finalized successfully")
 
             self._storages_status = StoragesStatus.FINALIZED
+            if failed_finalizations and get_runtime(self) is not None:
+                raise RuntimeError("Distributed storage finalization failed")
 
     async def get_graph_labels(self):
         text = await self.chunk_entity_relation_graph.get_all_labels()
@@ -2297,6 +2355,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             owning_loop=self._owning_loop,
         )
 
+    @operation_guard(exclusive=False)
     async def ainsert(
         self,
         input: str | list[str],
@@ -2381,6 +2440,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         )
 
     # TODO: deprecated, use ainsert instead
+    @operation_guard(exclusive=True)
     async def ainsert_custom_chunks(
         self, full_text: str, text_chunks: list[str], doc_id: str | None = None
     ) -> None:
@@ -3256,6 +3316,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
 
         await self._flush_storages([self.full_entities, self.full_relations])
 
+    @operation_guard(exclusive=True)
     async def arollback_failed_custom_chunk_patches(
         self,
         *,
@@ -4305,6 +4366,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             owning_loop=self._owning_loop,
         )
 
+    @operation_guard(exclusive=True)
     async def ainsert_custom_kg(
         self,
         custom_kg: dict[str, Any],
@@ -4324,7 +4386,9 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
            ``full_entities`` / ``full_relations`` recovery anchors, so a
            crash or partial failure mid-call can leave graph/vector/tracking
            contributions that per-document purge, retry, and scan rollback
-           cannot discover. Use the journaled ingestion paths (``ainsert`` /
+           cannot discover. Distributed mode records physical mutations and
+           target identifiers for operator audit, not document recovery anchors.
+           Use the journaled ingestion paths (``ainsert`` /
            ``ainsert_custom_chunks``) when crash recovery matters; the
            offline ``lightrag.tools.kg_integrity_repair`` audit can
            reconstruct anchors for data written here after the fact.
@@ -4482,6 +4546,31 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
                         relationship_data["weight"],
                         source_id,
                         context=f"Custom KG relationships[{index}]",
+                    )
+
+                runtime = get_runtime(self)
+                if runtime is not None:
+                    # Custom KG has no document scheduler journal. Persist its
+                    # complete target inventory before any chunk or graph write
+                    # so an interrupted manual operation remains auditable.
+                    await runtime.coordinator.set_phase(
+                        runtime.permit().operation,
+                        "custom_kg_write",
+                        metadata={
+                            "custom_kg_targets": {
+                                "entity_names": sorted(
+                                    {row["entity_name"] for row in normalized_entities}
+                                ),
+                                "relation_pairs": sorted(
+                                    {
+                                        tuple(sorted((row["src_id"], row["tgt_id"])))
+                                        for row in normalized_relationships
+                                    }
+                                ),
+                                "chunk_ids": sorted(all_chunks_data),
+                                "full_doc_id": full_doc_id,
+                            }
+                        },
                     )
 
                 if all_chunks_data:
@@ -4808,6 +4897,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             owning_loop=self._owning_loop,
         )
 
+    @operation_guard(exclusive=False)
     async def aquery(
         self,
         query: str,
@@ -4866,6 +4956,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             owning_loop=self._owning_loop,
         )
 
+    @operation_guard(exclusive=False)
     async def aquery_data(
         self,
         query: str,
@@ -5079,6 +5170,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         await self._query_done()
         return final_data
 
+    @operation_guard(exclusive=False)
     async def aquery_llm(
         self,
         query: str,
@@ -5432,6 +5524,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             if record is not None
         ]
 
+    @operation_guard(exclusive=True)
     async def aclear_cache(self) -> None:
         """Drop every row of the LLM response cache storage.
 
@@ -6685,6 +6778,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
 
         return rebuild_report
 
+    @operation_guard(exclusive=True)
     async def adelete_by_doc_id(
         self, doc_id: str, delete_llm_cache: bool = False
     ) -> DeletionResult:
@@ -7913,6 +8007,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         if not result.acquired:
             raise RuntimeError(result.message)
 
+    @operation_guard(exclusive=True)
     async def adelete_by_entity(self, entity_name: str) -> DeletionResult:
         """Asynchronously delete an entity and all its relationships.
 
@@ -7952,6 +8047,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             owning_loop=self._owning_loop,
         )
 
+    @operation_guard(exclusive=True)
     async def adelete_by_relation(
         self, source_entity: str, target_entity: str
     ) -> DeletionResult:
@@ -8079,6 +8175,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             include_vector_data,
         )
 
+    @operation_guard(exclusive=True)
     async def aedit_entity(
         self,
         entity_name: str,
@@ -8133,6 +8230,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             owning_loop=self._owning_loop,
         )
 
+    @operation_guard(exclusive=True)
     async def aedit_relation(
         self, source_entity: str, target_entity: str, updated_data: dict[str, Any]
     ) -> dict[str, Any]:
@@ -8177,6 +8275,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             owning_loop=self._owning_loop,
         )
 
+    @operation_guard(exclusive=True)
     async def acreate_entity(
         self, entity_name: str, entity_data: dict[str, Any]
     ) -> dict[str, Any]:
@@ -8217,6 +8316,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             owning_loop=self._owning_loop,
         )
 
+    @operation_guard(exclusive=True)
     async def acreate_relation(
         self, source_entity: str, target_entity: str, relation_data: dict[str, Any]
     ) -> dict[str, Any]:
@@ -8261,6 +8361,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             owning_loop=self._owning_loop,
         )
 
+    @operation_guard(exclusive=True)
     async def amerge_entities(
         self,
         source_entities: list[str],

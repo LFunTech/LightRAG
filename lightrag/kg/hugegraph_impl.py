@@ -11,8 +11,10 @@ import heapq
 import json
 import math
 from dataclasses import dataclass
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
+
+from lightrag.distributed.runtime import get_runtime, physical_write, storage_write
 
 from lightrag.base import BaseGraphStorage
 from lightrag.kg.hugegraph_client import (
@@ -190,7 +192,16 @@ class HugeGraphStorage(BaseGraphStorage):
             yield items[start : start + size]
 
     @asynccontextmanager
-    async def _mutation_lock(self):
+    async def _mutation_lock(self, keys=None):
+        runtime = get_runtime(self)
+        if runtime is not None:
+            if keys is None:
+                runtime.permit(exclusive=True)
+                yield
+            else:
+                async with runtime.lock(keys):
+                    yield
+            return
         # A distinct lock avoids reentering core entity locks. Do not extend its
         # guarantee to independent deployments with separate Manager instances.
         async with get_storage_keyed_lock(
@@ -208,8 +219,12 @@ class HugeGraphStorage(BaseGraphStorage):
                 )
             yield
 
-    @contextmanager
-    def _pending_write(self):
+    @asynccontextmanager
+    async def _pending_write(self):
+        if get_runtime(self) is not None:
+            async with physical_write():
+                yield
+            return
         # Set BEFORE sending, not only in except: a killed worker cannot run
         # cleanup. Clearing only after a verified acknowledgement also fences
         # timeout/cancellation and malformed-success responses. No await occurs
@@ -218,7 +233,11 @@ class HugeGraphStorage(BaseGraphStorage):
         yield
         del self._write_fences[self._storage_key]
 
+    @storage_write
     async def initialize(self) -> None:
+        runtime = get_runtime(self)
+        if runtime is not None:
+            self._client.auto_create_schema = runtime.permit().maintenance
         await self._client.initialize()
 
     async def finalize(self) -> None:
@@ -368,6 +387,7 @@ class HugeGraphStorage(BaseGraphStorage):
                 "Incomplete HugeGraph write acknowledgement; outcome may be committed"
             )
 
+    @storage_write
     async def upsert_nodes_batch(self, nodes: list[tuple[str, dict[str, str]]]) -> None:
         merged: dict[str, dict] = {}
         for name, attrs in nodes:
@@ -378,7 +398,7 @@ class HugeGraphStorage(BaseGraphStorage):
             merged.setdefault(name, {}).update(attrs)
         if not merged:
             return
-        async with self._mutation_lock():
+        async with self._mutation_lock(list(merged)):
             for batch in self._batches(list(merged)):
                 old = await self.get_nodes_batch(batch)
                 records = [
@@ -393,7 +413,7 @@ class HugeGraphStorage(BaseGraphStorage):
                     }
                     for n in batch
                 ]
-                with self._pending_write():
+                async with self._pending_write():
                     result = await self._client.request(
                         "POST",
                         self._client.graph_path + "/graph/vertices/batch",
@@ -405,9 +425,11 @@ class HugeGraphStorage(BaseGraphStorage):
                             "Unexpected HugeGraph vertex write identities; outcome may be committed"
                         )
 
+    @storage_write
     async def upsert_node(self, node_id: str, node_data: dict[str, str]) -> None:
         await self.upsert_nodes_batch([(node_id, node_data)])
 
+    @storage_write
     async def upsert_edges_batch(
         self, edges: list[tuple[str, str, dict[str, str]]]
     ) -> None:
@@ -418,7 +440,9 @@ class HugeGraphStorage(BaseGraphStorage):
             merged.setdefault(tuple(sorted((a, b))), {}).update(_attributes(attrs))
         if not merged:
             return
-        async with self._mutation_lock():
+        async with self._mutation_lock(
+            list(dict.fromkeys(n for pair in merged for n in pair))
+        ):
             # Check every endpoint before the first write, not just each chunk.
             names = list(dict.fromkeys(n for pair in merged for n in pair))
             existing = await self.has_nodes_batch(names)
@@ -442,7 +466,7 @@ class HugeGraphStorage(BaseGraphStorage):
                     }
                     for a, b in batch
                 ]
-                with self._pending_write():
+                async with self._pending_write():
                     result = await self._client.request(
                         "POST",
                         self._client.graph_path + "/graph/edges/batch",
@@ -451,6 +475,7 @@ class HugeGraphStorage(BaseGraphStorage):
                     )
                     self._ack(result, len(records))
 
+    @storage_write
     async def upsert_edge(
         self, source_node_id: str, target_node_id: str, edge_data: dict[str, str]
     ) -> None:
@@ -469,14 +494,15 @@ class HugeGraphStorage(BaseGraphStorage):
             )
         return result[0]
 
+    @storage_write
     async def remove_nodes(self, nodes: list[str]) -> None:
         ids = list(dict.fromkeys(self._vertex_id(n) for n in nodes))
         if not ids:
             return
-        async with self._mutation_lock():
+        async with self._mutation_lock(nodes):
             for batch in self._batches(ids):
                 await self._fetch_vertices(batch)
-                with self._pending_write():
+                async with self._pending_write():
                     self._removed(
                         await self._client.gremlin(
                             _REMOVE_NODES,
@@ -485,17 +511,21 @@ class HugeGraphStorage(BaseGraphStorage):
                         )
                     )
 
+    @storage_write
     async def delete_node(self, node_id: str) -> None:
         await self.remove_nodes([node_id])
 
+    @storage_write
     async def remove_edges(self, edges: list[tuple[str, str]]) -> None:
         pairs = [[self._vertex_id(n) for n in sorted(pair)] for pair in edges]
         if not pairs:
             return
-        async with self._mutation_lock():
+        async with self._mutation_lock(
+            list(dict.fromkeys(n for pair in edges for n in pair))
+        ):
             await self.get_edges_batch([{"src": a, "tgt": b} for a, b in edges])
             for batch in self._batches(pairs):
-                with self._pending_write():
+                async with self._pending_write():
                     self._removed(
                         await self._client.gremlin(
                             _REMOVE_EDGES,
@@ -504,12 +534,13 @@ class HugeGraphStorage(BaseGraphStorage):
                         )
                     )
 
+    @storage_write
     async def drop(self) -> dict[str, str]:
         """Delete only this scope, retaining schema and every other scope."""
         async with self._mutation_lock():
             for kind in ("edges", "vertices"):
                 while True:
-                    with self._pending_write():
+                    async with self._pending_write():
                         removed = self._removed(
                             await self._client.gremlin(
                                 _DROP,

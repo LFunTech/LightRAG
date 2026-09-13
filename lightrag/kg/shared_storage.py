@@ -1430,6 +1430,12 @@ def get_storage_keyed_lock(
     keys: str | list[str], namespace: str = "default", enable_logging: bool = False
 ) -> _KeyedLockContext:
     """Return unified storage keyed lock for ensuring atomic operations across different namespaces"""
+    from lightrag.distributed.runtime import current_runtime
+
+    runtime = current_runtime()
+    if runtime is not None and namespace == f"{runtime.workspace}:GraphDB":
+        return runtime.lock(keys)
+
     global _storage_keyed_lock
     if _storage_keyed_lock is None:
         raise RuntimeError("Shared-Data is not initialized")
