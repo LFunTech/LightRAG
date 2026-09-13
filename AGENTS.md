@@ -382,6 +382,8 @@ A third test requires every `docs/**.md` path named in the package to resolve; n
 
 ## Commit and Pull Request Guidance
 
+- `main` mirrors the upstream `HKUDS/LightRAG` source. Never merge fork-specific features or local development commits into `main`; upstream synchronization requires an explicit request.
+- `master` is this fork's integration branch. Merge completed feature branches into `master` and push to `origin/master`, unless the user explicitly requests another non-upstream target.
 - If this repo is a fork of `HKUDS/LightRAG`. Target to `HKUDS/LightRAG` when creating PRs, not the fork's own repo.
 - PR descriptions should include: summary, motivation, linked issues if applyed, what's changed, what's broken and how it works.
 - Write commit messages (subject and body) in English. Commit messages are repository artifacts — like code comments and log messages — not conversational replies, so they follow the English code-style rule above regardless of any per-conversation working language.
