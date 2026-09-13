@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+from math import isfinite
 import secrets
 from typing import Any, AsyncIterator, Iterable, Mapping
 from uuid import UUID, uuid4
@@ -104,7 +105,11 @@ class PostgresCoordinator:
             else None
         )
         if (
-            wait_timeout < 0
+            not all(
+                isfinite(value)
+                for value in (wait_timeout, poll_interval, command_timeout)
+            )
+            or wait_timeout < 0
             or poll_interval <= 0
             or command_timeout <= 0
             or pool_size < 1
@@ -171,7 +176,7 @@ class PostgresCoordinator:
                     async with connection.transaction():
                         await connection.execute(
                             "INSERT INTO lightrag_coordination.workspaces "
-                            "(deployment_id,workspace,manifest_hash) VALUES($1,$2,$3) "
+                            "(deployment_id,workspace,manifest_hash,generation,fenced) VALUES($1,$2,$3,1,false) "
                             "ON CONFLICT DO NOTHING",
                             *self._scope,
                             self._manifest_hash,
@@ -319,8 +324,8 @@ class PostgresCoordinator:
 
     async def _wait(self, attempt, timeout: float | None):
         duration = self.wait_timeout if timeout is None else timeout
-        if duration < 0:
-            raise ValueError("timeout must be non-negative")
+        if not isfinite(duration) or duration < 0:
+            raise ValueError("timeout must be finite and non-negative")
         deadline = asyncio.get_running_loop().time() + duration
         while True:
             result = await attempt()
@@ -364,8 +369,8 @@ class PostgresCoordinator:
                 op = Operation(uuid4(), row["generation"], self._owner_id)
                 await connection.execute(
                     "INSERT INTO lightrag_coordination.operations "
-                    "(id,deployment_id,workspace,generation,owner_id,witness,kind,exclusive,metadata) "
-                    "VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)",
+                    "(id,deployment_id,workspace,generation,owner_id,witness,kind,exclusive,metadata,state,phase) "
+                    "VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,'active','admitted')",
                     op.id,
                     *self._scope,
                     op.generation,
@@ -465,7 +470,7 @@ class PostgresCoordinator:
                 for key in ordered:
                     await connection.execute(
                         "INSERT INTO lightrag_coordination.resource_locks "
-                        "(deployment_id,workspace,resource_key,operation_id,task_id) VALUES($1,$2,$3,$4,$5) "
+                        "(deployment_id,workspace,resource_key,operation_id,task_id,depth) VALUES($1,$2,$3,$4,$5,1) "
                         "ON CONFLICT(deployment_id,workspace,resource_key) DO UPDATE "
                         "SET depth=lightrag_coordination.resource_locks.depth+1",
                         *self._scope,
@@ -507,7 +512,7 @@ class PostgresCoordinator:
             await self._validate(connection, row, operation)
             result = await connection.fetchval(
                 "INSERT INTO lightrag_coordination.document_claims "
-                "(deployment_id,workspace,doc_id,operation_id) VALUES($1,$2,$3,$4) "
+                "(deployment_id,workspace,doc_id,operation_id,phase) VALUES($1,$2,$3,$4,'claimed') "
                 "ON CONFLICT DO NOTHING RETURNING doc_id",
                 *self._scope,
                 doc_id,
@@ -616,8 +621,8 @@ class PostgresCoordinator:
         async with self._transaction() as (connection, row):
             await self._validate(connection, row, operation)
             await connection.execute(
-                "INSERT INTO lightrag_coordination.mutations(id,operation_id,backend,namespace,method) "
-                "VALUES($1,$2,$3,$4,$5)",
+                "INSERT INTO lightrag_coordination.mutations(id,operation_id,backend,namespace,method,state) "
+                "VALUES($1,$2,$3,$4,$5,'pending')",
                 mutation.id,
                 operation.id,
                 backend,

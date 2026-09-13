@@ -149,3 +149,28 @@ def test_cli_has_no_inline_dsn_option_and_keeps_driver_errors_private():
     assert result.returncode != 0
     assert "never-print-this" not in result.stderr + result.stdout
     assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize("field", ["wait_timeout", "poll_interval", "command_timeout"])
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_nonfinite_time_configuration_is_rejected(field, value):
+    with pytest.raises(ValueError):
+        PostgresCoordinator("not-used", "deployment", "workspace", {}, **{field: value})
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("entry", ["operation", "lock"])
+async def test_nonfinite_timeout_override_is_rejected_before_admission(entry, value):
+    from lightrag.distributed import Operation
+    from uuid import uuid4
+
+    coordinator = PostgresCoordinator("not-used", "deployment", "workspace", {})
+    context = (
+        coordinator.operation("write", timeout=value)
+        if entry == "operation"
+        else coordinator.lock(Operation(uuid4(), 1, uuid4()), ["A"], timeout=value)
+    )
+    with pytest.raises(ValueError):
+        async with context:
+            pytest.fail("A non-finite timeout admitted work")
+    assert not coordinator._broken

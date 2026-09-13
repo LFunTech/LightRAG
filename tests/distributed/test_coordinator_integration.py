@@ -517,3 +517,162 @@ async def test_cli_inspect_and_recover_execute_real_audited_protocol(clients):
     assert after["generation"] == 2 and not after["fenced"]
     assert after["recovery_audit"][0]["actor"] == "cli-operator"
     assert after["mutations"][0]["state"] == "recovered"
+
+
+@pytest.fixture
+async def isolated_database():
+    """Create and remove only this test's own database for destructive drift probes."""
+    import asyncpg
+    from urllib.parse import urlsplit, urlunsplit
+    from lightrag.distributed import PostgresCoordinator
+
+    dsn = os.environ.get(DSN_ENV)
+    if not dsn:
+        pytest.skip(f"Set {DSN_ENV}")
+    database = "local_debug_coordination_" + uuid4().hex
+    admin = await asyncpg.connect(dsn)
+    await admin.execute(f'CREATE DATABASE "{database}"')
+    isolated_dsn = urlunsplit(urlsplit(dsn)._replace(path="/" + database))
+    connection = None
+    try:
+        await PostgresCoordinator.migrate(isolated_dsn)
+        connection = await asyncpg.connect(isolated_dsn)
+        yield isolated_dsn, connection
+    finally:
+        if connection:
+            await connection.close()
+        await admin.execute(f'DROP DATABASE "{database}"')
+        await admin.close()
+
+
+@pytest.mark.parametrize(
+    "column,wrong_default,wrong_type",
+    [
+        ("resource_locks.depth", "0", "bigint"),
+        ("mutations.state", "'ack'", "varchar"),
+        ("operations.state", "'completed'", "varchar"),
+        ("workspaces.generation", "0", "integer"),
+        ("workspaces.fenced", "true", "text USING fenced::text"),
+    ],
+)
+@pytest.mark.parametrize("drift", ["default", "nullable", "type"])
+async def test_verify_refuses_safety_column_drift_without_repairing_it(
+    isolated_database,
+    column,
+    wrong_default,
+    wrong_type,
+    drift,
+):
+    from lightrag.distributed import CoordinationSchemaError, PostgresCoordinator
+
+    dsn, connection = isolated_database
+    table, name = column.split(".")
+
+    async def catalog():
+        return await connection.fetchrow(
+            "SELECT format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull,"
+            "pg_get_expr(d.adbin,d.adrelid) AS default_expr "
+            "FROM pg_attribute a LEFT JOIN pg_attrdef d "
+            "ON d.adrelid=a.attrelid AND d.adnum=a.attnum "
+            "WHERE a.attrelid=$1::regclass AND a.attname=$2",
+            f"lightrag_coordination.{table}",
+            name,
+        )
+
+    original = await catalog()
+    if drift == "default":
+        change = f"SET DEFAULT {wrong_default}"
+    elif drift == "nullable":
+        change = "DROP NOT NULL"
+    else:
+        # A boolean default cannot be implicitly cast to text by ALTER TYPE.
+        if column == "workspaces.fenced":
+            await connection.execute(
+                "ALTER TABLE lightrag_coordination.workspaces ALTER COLUMN fenced DROP DEFAULT"
+            )
+        change = f"TYPE {wrong_type}"
+    await connection.execute(
+        f"ALTER TABLE lightrag_coordination.{table} ALTER COLUMN {name} {change}"
+    )
+
+    before = await catalog()
+    coordinator = PostgresCoordinator(dsn, "local_debug_tests", "workspace", MANIFEST)
+    try:
+        with pytest.raises(CoordinationSchemaError):
+            await coordinator.initialize()
+        assert await catalog() == before
+        with pytest.raises(CoordinationSchemaError):
+            await PostgresCoordinator.migrate(dsn)
+        assert await catalog() == before
+    finally:
+        await coordinator.close()
+        # Restore this test's schema before its disposable database is removed.
+        prefix = f"ALTER TABLE lightrag_coordination.{table} ALTER COLUMN {name}"
+        await connection.execute(f"{prefix} DROP DEFAULT")
+        await connection.execute(
+            f"{prefix} TYPE {original['type']} USING {name}::{original['type']}"
+        )
+        await connection.execute(f"{prefix} SET NOT NULL")
+        await connection.execute(f"{prefix} SET DEFAULT {original['default_expr']}")
+        assert await catalog() == original
+
+
+async def test_live_default_drift_cannot_release_outer_reentrant_lock(
+    isolated_database,
+):
+    from lightrag.distributed import CoordinationBusyError, PostgresCoordinator
+
+    dsn, connection = isolated_database
+    clients = [
+        PostgresCoordinator(
+            dsn, "local_debug_tests", "workspace", MANIFEST, wait_timeout=0.05
+        )
+        for _ in range(2)
+    ]
+    for coordinator in clients:
+        await coordinator.initialize()
+    try:
+        await connection.execute(
+            "ALTER TABLE lightrag_coordination.resource_locks ALTER COLUMN depth SET DEFAULT 0"
+        )
+        a, b = clients
+        async with a.operation("write") as one, b.operation("write") as two:
+            async with a.lock(one, ["A"]):
+                async with a.lock(one, ["A"]):
+                    pass
+                with pytest.raises(CoordinationBusyError):
+                    async with b.lock(two, ["A"]):
+                        pytest.fail(
+                            "Default drift released an active outer resource lock"
+                        )
+    finally:
+        await connection.execute(
+            "ALTER TABLE lightrag_coordination.resource_locks ALTER COLUMN depth SET DEFAULT 1"
+        )
+        for coordinator in clients:
+            await coordinator.close()
+
+
+async def test_live_default_drift_never_publishes_premature_mutation_ack(
+    isolated_database,
+):
+    from lightrag.distributed import PostgresCoordinator
+
+    dsn, connection = isolated_database
+    coordinator = PostgresCoordinator(dsn, "local_debug_tests", "workspace", MANIFEST)
+    await coordinator.initialize()
+    try:
+        await connection.execute(
+            "ALTER TABLE lightrag_coordination.mutations ALTER COLUMN state SET DEFAULT 'ack'"
+        )
+        async with coordinator.operation("write") as operation:
+            async with coordinator.mutation(operation, "graph", "entities", "upsert"):
+                assert (await coordinator.inspect())["mutations"][0][
+                    "state"
+                ] == "pending"
+        assert (await coordinator.inspect())["mutations"][0]["state"] == "ack"
+    finally:
+        await connection.execute(
+            "ALTER TABLE lightrag_coordination.mutations ALTER COLUMN state SET DEFAULT 'pending'"
+        )
+        await coordinator.close()

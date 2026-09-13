@@ -6,6 +6,73 @@ from .v001 import SQL, VERSION
 
 CHECKSUM = sha256(SQL.encode()).hexdigest()
 
+# This is the runtime schema contract, not a hash of the migration source.
+# Keep it aligned with versioned SQL; verify never repairs a deployed catalog.
+_COLUMN_TYPES = {
+    "schema_version": {
+        "integer": "version",
+        "text": "checksum",
+        "timestamp with time zone": "applied_at",
+    },
+    "workspaces": {
+        "text": "deployment_id workspace manifest_hash fence_reason",
+        "bigint": "generation",
+        "boolean": "fenced",
+    },
+    "operations": {
+        "uuid": "id owner_id",
+        "text": "deployment_id workspace kind state phase",
+        "bigint": "generation witness",
+        "boolean": "exclusive",
+        "jsonb": "metadata",
+        "timestamp with time zone": "created_at heartbeat_at finished_at",
+    },
+    "resource_locks": {
+        "text": "deployment_id workspace resource_key",
+        "uuid": "operation_id task_id",
+        "integer": "depth",
+    },
+    "document_claims": {
+        "text": "deployment_id workspace doc_id phase",
+        "uuid": "operation_id",
+        "timestamp with time zone": "heartbeat_at",
+    },
+    "mutations": {
+        "uuid": "id operation_id",
+        "text": "backend namespace method state",
+        "timestamp with time zone": "created_at acknowledged_at recovered_at",
+    },
+    "recovery_audit": {
+        "uuid": "id",
+        "text": "deployment_id workspace actor reason",
+        "bigint": "old_generation new_generation",
+        "jsonb": "confirmations snapshot",
+        "timestamp with time zone": "recovered_at",
+    },
+}
+_NULLABLE_COLUMNS = {
+    "workspaces.fence_reason",
+    "operations.finished_at",
+    "mutations.acknowledged_at",
+    "mutations.recovered_at",
+}
+_COLUMN_DEFAULTS = {
+    "schema_version.applied_at": "clock_timestamp()",
+    "workspaces.generation": "1",
+    "workspaces.fenced": "false",
+    "operations.state": "'active'::text",
+    "operations.phase": "'admitted'::text",
+    "operations.metadata": "'{}'::jsonb",
+    "operations.created_at": "clock_timestamp()",
+    "operations.heartbeat_at": "clock_timestamp()",
+    "resource_locks.depth": "1",
+    "document_claims.phase": "'claimed'::text",
+    "document_claims.heartbeat_at": "clock_timestamp()",
+    "mutations.state": "'pending'::text",
+    "mutations.created_at": "clock_timestamp()",
+    "recovery_audit.recovered_at": "clock_timestamp()",
+}
+
 
 async def migrate(connection):
     """Apply additive SQL in one transaction, serializing concurrent migrators."""
@@ -63,18 +130,35 @@ async def verify(connection):
             raise CoordinationSchemaError(
                 "Coordination ownership constraints are missing or drifted"
             )
-        # Resolve every runtime column without reading or changing stored rows.
-        for table, columns in {
-            "workspaces": "deployment_id,workspace,manifest_hash,generation,fenced,fence_reason",
-            "operations": "id,deployment_id,workspace,generation,owner_id,witness,kind,exclusive,state,phase,metadata,created_at,heartbeat_at,finished_at",
-            "resource_locks": "deployment_id,workspace,resource_key,operation_id,task_id,depth",
-            "document_claims": "deployment_id,workspace,doc_id,operation_id,phase,heartbeat_at",
-            "mutations": "id,operation_id,backend,namespace,method,state,created_at,acknowledged_at,recovered_at",
-            "recovery_audit": "id,deployment_id,workspace,old_generation,new_generation,actor,reason,confirmations,snapshot,recovered_at",
-        }.items():
-            await connection.execute(
-                f"SELECT {columns} FROM lightrag_coordination.{table} LIMIT 0"
+        columns = await connection.fetch(
+            "SELECT t.relname,a.attname,format_type(a.atttypid,a.atttypmod) AS type, "
+            "a.attnotnull,pg_get_expr(d.adbin,d.adrelid) AS default_expr "
+            "FROM pg_attribute a JOIN pg_class t ON t.oid=a.attrelid "
+            "JOIN pg_namespace n ON n.oid=t.relnamespace "
+            "LEFT JOIN pg_attrdef d ON d.adrelid=t.oid AND d.adnum=a.attnum "
+            "WHERE n.nspname='lightrag_coordination' AND a.attnum>0 AND NOT a.attisdropped"
+        )
+        actual = {
+            f"{column['relname']}.{column['attname']}": (
+                column["type"],
+                column["attnotnull"],
+                column["default_expr"],
             )
+            for column in columns
+        }
+        for table, groups in _COLUMN_TYPES.items():
+            for data_type, names in groups.items():
+                for name in names.split():
+                    key = f"{table}.{name}"
+                    expected = (
+                        data_type,
+                        key not in _NULLABLE_COLUMNS,
+                        _COLUMN_DEFAULTS.get(key),
+                    )
+                    if actual.get(key) != expected:
+                        raise CoordinationSchemaError(
+                            f"Coordination column contract is missing or drifted: {key}"
+                        )
     except CoordinationSchemaError:
         raise
     except Exception:
