@@ -67,3 +67,4 @@ TODO.md
 .github
 .gitignore
 .pre-commit-config.yaml
+.secrets
