@@ -6676,6 +6676,8 @@ class _PipelineMixin:
             try:
                 content_data = await _pipeline_get_full_doc(self, doc_id) or {}
             except Exception:
+                if get_runtime(self) is not None:
+                    raise
                 content_data = {}
             options_str = (
                 content_data.get("process_options")

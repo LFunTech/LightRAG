@@ -66,6 +66,7 @@ from lightrag.api.distributed import (
     http_operation,
     finish_scan_classification,
     drive_pipeline,
+    start_background_task,
 )
 from lightrag import LightRAG
 from lightrag.api.utils_api import internal_server_error, new_error_id
@@ -2614,6 +2615,8 @@ async def pipeline_enqueue_scan_batch(
     except CoordinationError:
         raise
     except Exception as e:
+        if get_runtime(rag) is not None:
+            raise
         logger.error(f"Error enqueuing scan batch: {str(e)}")
         logger.error(traceback.format_exc())
         return enqueued
@@ -5410,7 +5413,6 @@ def create_document_routes(
                 chunking configuration (an explicit ``C`` selector without a
                 custom ``LightRAG.chunking_func``), 500 other errors.
         """
-        from lightrag.kg.shared_storage import start_reserved_background_task
 
         enqueue_token, admission_adopted = _adopt_or_new_enqueue_token(http_request)
         handed_off = False
@@ -5614,16 +5616,20 @@ def create_document_routes(
             # so concurrent uploads/inserts cooperate via the running
             # loop's quiescence decision.
             async def _indexing_work(started):
-                # started.set() first (no await before it) so the endpoint's
-                # start-barrier confirms takeover before returning; a body-send
-                # cancellation therefore cannot strand the enqueue slot.
-                started.set()
+                # Distributed takeover is signalled by the detached guard
+                # only AFTER admission, while this request still owns its gate.
+                admission = {}
+                if get_runtime(rag) is None:
+                    started.set()
+                else:
+                    admission["_distributed_started"] = started
                 try:
                     await pipeline_index_file(
                         rag,
                         file_path,
                         track_id,
                         admission_token=enqueue_token,
+                        **admission,
                     )
                 finally:
                     await _release_enqueue_slot(rag, enqueue_token)
@@ -5631,7 +5637,8 @@ def create_document_routes(
             async def _enqueue_backstop():
                 await _release_enqueue_slot(rag, enqueue_token)
 
-            await start_reserved_background_task(
+            await start_background_task(
+                rag,
                 managed_tasks,
                 work=_indexing_work,
                 backstop_release=_enqueue_backstop,
@@ -5702,7 +5709,6 @@ def create_document_routes(
             HTTPException: 400 invalid file_source, 409 same-name conflict
                 or scan/destructive job in flight, 500 other errors.
         """
-        from lightrag.kg.shared_storage import start_reserved_background_task
 
         enqueue_token, admission_adopted = _adopt_or_new_enqueue_token(http_request)
         handed_off = False
@@ -5754,10 +5760,13 @@ def create_document_routes(
             track_id = generate_track_id("insert")
 
             async def _indexing_work(started):
-                # started.set() first (no await before it) so the endpoint's
-                # start-barrier confirms takeover before returning; a body-send
-                # cancellation therefore cannot strand the enqueue slot.
-                started.set()
+                # Distributed takeover is signalled by the detached guard
+                # only AFTER admission, while this request still owns its gate.
+                admission = {}
+                if get_runtime(rag) is None:
+                    started.set()
+                else:
+                    admission["_distributed_started"] = started
                 try:
                     await pipeline_index_texts(
                         rag,
@@ -5767,6 +5776,7 @@ def create_document_routes(
                         chunking=request.chunking,
                         resolved_chunking=resolved_chunking,
                         admission_token=enqueue_token,
+                        **admission,
                     )
                 finally:
                     await _release_enqueue_slot(rag, enqueue_token)
@@ -5774,7 +5784,8 @@ def create_document_routes(
             async def _enqueue_backstop():
                 await _release_enqueue_slot(rag, enqueue_token)
 
-            await start_reserved_background_task(
+            await start_background_task(
+                rag,
                 managed_tasks,
                 work=_indexing_work,
                 backstop_release=_enqueue_backstop,
@@ -5838,7 +5849,6 @@ def create_document_routes(
                 conflict or scan/destructive job in flight, 413 more texts
                 than ``MAX_TEXTS_PER_REQUEST`` allows, 500 other errors.
         """
-        from lightrag.kg.shared_storage import start_reserved_background_task
 
         enqueue_token, admission_adopted = _adopt_or_new_enqueue_token(http_request)
         handed_off = False
@@ -5921,10 +5931,13 @@ def create_document_routes(
             track_id = generate_track_id("insert")
 
             async def _indexing_work(started):
-                # started.set() first (no await before it) so the endpoint's
-                # start-barrier confirms takeover before returning; a body-send
-                # cancellation therefore cannot strand the enqueue slot.
-                started.set()
+                # Distributed takeover is signalled by the detached guard
+                # only AFTER admission, while this request still owns its gate.
+                admission = {}
+                if get_runtime(rag) is None:
+                    started.set()
+                else:
+                    admission["_distributed_started"] = started
                 try:
                     await pipeline_index_texts(
                         rag,
@@ -5934,6 +5947,7 @@ def create_document_routes(
                         chunking=request.chunking,
                         resolved_chunking=resolved_chunking,
                         admission_token=enqueue_token,
+                        **admission,
                     )
                 finally:
                     await _release_enqueue_slot(rag, enqueue_token)
@@ -5941,7 +5955,8 @@ def create_document_routes(
             async def _enqueue_backstop():
                 await _release_enqueue_slot(rag, enqueue_token)
 
-            await start_reserved_background_task(
+            await start_background_task(
+                rag,
                 managed_tasks,
                 work=_indexing_work,
                 backstop_release=_enqueue_backstop,
@@ -6727,7 +6742,6 @@ def create_document_routes(
             HTTPException:
               - 500: If an unexpected internal error occurs during initialization.
         """
-        from lightrag.kg.shared_storage import start_reserved_background_task
 
         doc_ids = delete_request.doc_ids
 
@@ -6736,12 +6750,13 @@ def create_document_routes(
         destructive_token = uuid4().hex
 
         async def _delete_work(started):
-            # started.set() first (no await before it) so the endpoint's
-            # start-barrier confirms takeover before returning; a body-send
-            # cancellation therefore cannot strand the reservation.
-            # background_delete_documents releases busy + destructive_busy
-            # (owner-checked by destructive_token) in its own finally.
-            started.set()
+            # Before durable admission, the starter's backstop owns release.
+            # Once admitted, the actual body finally owns the reservation.
+            admission = {}
+            if get_runtime(rag) is None:
+                started.set()
+            else:
+                admission["_distributed_started"] = started
             await background_delete_documents(
                 rag,
                 doc_manager,
@@ -6749,6 +6764,7 @@ def create_document_routes(
                 delete_request.delete_file,
                 delete_request.delete_llm_cache,
                 destructive_token,
+                **admission,
             )
 
         async def _delete_backstop():
@@ -6781,8 +6797,8 @@ def create_document_routes(
             # barrier guarantees takeover (started.set) before we return, so a
             # cancellation while sending the response body cannot strand
             # busy/destructive_busy.
-            await start_reserved_background_task(
-                managed_tasks, work=_delete_work, backstop_release=_delete_backstop
+            await start_background_task(
+                rag, managed_tasks, work=_delete_work, backstop_release=_delete_backstop
             )
             # Ownership of the slot transferred to the bg task — it releases in
             # its finally. The endpoint's finally must NOT release it again.

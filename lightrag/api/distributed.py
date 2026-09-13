@@ -130,3 +130,33 @@ async def drain_background_tasks(tasks):
     for outcome in outcomes:
         if isinstance(outcome, BaseException):
             raise outcome
+
+
+async def start_background_task(rag, background_tasks, *, work, backstop_release):
+    """Preserve admission failures after the existing starter has joined cleanup."""
+    from lightrag.kg.shared_storage import start_reserved_background_task
+
+    if get_runtime(rag) is None:
+        return await start_reserved_background_task(
+            background_tasks, work=work, backstop_release=backstop_release
+        )
+    startup_error = None
+
+    async def capture_failure(started):
+        nonlocal startup_error
+        try:
+            return await work(started)
+        except BaseException as error:
+            startup_error = error
+            raise
+
+    try:
+        return await start_reserved_background_task(
+            background_tasks, work=capture_failure, backstop_release=backstop_release
+        )
+    except RuntimeError:
+        # The legacy starter already joined the child and released its local
+        # reservation. Do not turn a typed admission refusal into HTTP 500.
+        if startup_error is not None:
+            raise startup_error
+        raise

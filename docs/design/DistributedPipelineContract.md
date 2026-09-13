@@ -17,7 +17,10 @@ A strict scheduling keyset page supplies candidate IDs only. Atomic try-claim
 precedes strict hydration, consistency repair, parser dispatch, and processing.
 A fully claimed/filtered page advances its cursor; it is not an idle proof.
 Claimed rows still outside automatic statuses on the strict re-read are skipped.
-FAILED is never in the automatic status set.
+FAILED is never in the automatic status set. Distributed multimodal option
+lookup also propagates strict full-doc read errors into the existing analyze
+worker failure transition; a failed backend read is not an empty opt-out config
+and cannot be recorded as skipped or PROCESSED.
 
 Claimed batches run the existing `_run_pipeline_batch` parse/analyze/process
 workers, including actual extraction, graph merge and vector commits. Only the
@@ -95,15 +98,26 @@ migration. Operator CLI credentials remain the recovery authority.
   canonical precheck, `xb`/safe-opener file creation and managed handoff. Distinct
   files and normal processing remain concurrent. Request validation/confirmed
   client refusals do not fence; failed cleanup or unknown filesystem failures do.
-- File/text indexing callbacks obtain their own detached operations. A completed
-  request's inherited permit is not reused. The actual file enqueue helper is
-  guarded too, including temporary-file cleanup.
+- File/text indexing callbacks obtain their own detached operations. The parent
+  request keeps its shared ticket until the child has actually acquired its own
+  shared ticket and signalled takeover; remote maintenance cannot enter a gap
+  between an accepted request and its background writer. A completed request's
+  inherited permit is never reused. The actual file enqueue helper is guarded
+  too, including temporary-file cleanup.
+- Delete signals takeover only after its detached exclusive admission. Before
+  admission, failure/cancellation is joined by the starter and its owner-checked
+  backstop releases the local destructive/enqueue reservation. The distributed
+  starter preserves the original typed admission failure after cleanup instead
+  of wrapping it as a generic startup error. An already admitted parent request
+  still retains its conservative fence on an exceptional exit; local token
+  cleanup is not a durable completion or recovery acknowledgment.
 - Clear, source-conflict repair and background deletion hold exclusive admission
   across actual storage and shared-file mutation, not only their HTTP preflight.
 - Scan obtains its detached exclusive ticket before signaling background startup.
   It holds that ticket through rollback, retry reset, classification, archive and
   enqueue, then **releases it before** normal shared claimed processing. Unknown
-  scan/filesystem errors propagate; they are not completed operation tickets.
+  scan/filesystem errors propagate through the intermediate batch enqueue too;
+  they are not completed operation tickets.
 - The API constructor passes `distributed_input_dir=args.input_dir`. Distributed
   parser source resolution uses that same root, including the workspace suffix,
   rather than silently switching back to an unrelated `INPUT_DIR` environment

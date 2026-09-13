@@ -270,3 +270,56 @@ async def test_error_enqueue_cannot_overwrite_claimed_custom_id(runtime_rags):
         row = await peer.doc_status.get_by_id_strict(doc_id)
         assert row["status"] == DocStatus.PENDING
         await rag._distributed_runtime.coordinator.release_claim(operation, doc_id)
+
+
+async def test_analyze_worker_strict_content_failure_is_failed_not_skipped(
+    runtime_rags, tmp_path, monkeypatch
+):
+    from dataclasses import replace
+    import lightrag.pipeline as pipeline
+
+    rag, _ = runtime_rags
+    await configure(runtime_rags)
+    blocks = tmp_path / "multimodal.blocks.jsonl"
+    blocks.write_text('{"type":"text","text":"Atlas cooperates with Borealis."}\n')
+    await rag.apipeline_enqueue_documents(
+        "Atlas cooperates with Borealis.",
+        ids=["multimodal"],
+        file_paths=["multimodal.txt"],
+        process_options="ite",
+    )
+    original_parser = pipeline.get_parser
+
+    class WithSidecar:
+        def __init__(self, parser):
+            self.parser = parser
+
+        def __getattr__(self, name):
+            return getattr(self.parser, name)
+
+        async def parse(self, context):
+            # Keep the real parser and only attach an existing sidecar fixture.
+            return replace(await self.parser.parse(context), blocks_path=str(blocks))
+
+    monkeypatch.setattr(
+        pipeline, "get_parser", lambda *a, **kw: WithSidecar(original_parser(*a, **kw))
+    )
+    original_read = rag.full_docs.get_by_id_strict
+    failed = False
+
+    async def strict_read(doc_id):
+        nonlocal failed
+        row = await rag.doc_status.get_by_id_strict(doc_id)
+        if not failed and row and row["status"] == DocStatus.ANALYZING:
+            failed = True
+            raise OSError("strict multimodal content read failed")
+        return await original_read(doc_id)
+
+    monkeypatch.setattr(rag.full_docs, "get_by_id_strict", strict_read)
+    await asyncio.wait_for(rag.apipeline_process_enqueue_documents(), 20)
+    assert failed, "Fault must reach the real claimed analyze worker"
+    row = await rag.doc_status.get_by_id_strict("multimodal")
+    assert row["status"] == DocStatus.FAILED
+    assert not row["metadata"].get("analyzing_stage_skipped")
+    assert "strict multimodal content read failed" in row["error_msg"]
+    assert await rag.chunk_entity_relation_graph.get_node("Atlas") is None

@@ -182,3 +182,247 @@ async def test_scan_coordination_failure_never_drives_from_finally(
         await routes.run_scanning_process(rag, manager)
     assert drives == []
     assert (await rag._distributed_runtime.coordinator.inspect())["fenced"]
+
+
+@pytest.mark.parametrize("failure", ["busy", "cancel"])
+async def test_delete_handoff_waits_for_exclusive_admission_and_releases_reservation(
+    distributed_api, monkeypatch, failure
+):
+    from contextlib import asynccontextmanager
+    from contextvars import Context
+    from lightrag.kg.shared_storage import get_namespace_data
+
+    client, rag, peer, _, app = distributed_api
+    entered, release = asyncio.Event(), asyncio.Event()
+    coordinator = rag._distributed_runtime.coordinator
+    original = coordinator.operation
+    coordinator.wait_timeout = 0.03
+
+    @asynccontextmanager
+    async def delayed(kind, *args, **kwargs):
+        if kind == "background_delete_documents":
+            entered.set()
+            await release.wait()
+        async with original(kind, *args, **kwargs) as operation:
+            yield operation
+
+    monkeypatch.setattr(coordinator, "operation", delayed)
+    async with peer._distributed_runtime.operation("live_writer"):
+        request = Context().run(
+            asyncio.create_task,
+            client.request(
+                "DELETE",
+                "/documents/delete_document",
+                headers={"X-API-Key": "test-key"},
+                json={"doc_ids": ["missing"]},
+            ),
+        )
+        try:
+            await asyncio.wait_for(entered.wait(), 2)
+            await asyncio.sleep(0.02)
+            assert not request.done(), (
+                "Delete returned success before durable admission"
+            )
+            if failure == "cancel":
+                request.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await request
+            else:
+                release.set()
+                response = await request
+                assert response.status_code == 409
+                assert response.json()["detail"]["error"] == "CoordinationBusyError"
+            state = await get_namespace_data("pipeline_status", workspace=rag.workspace)
+            assert not state.get("destructive_busy")
+            assert not state.get("busy")
+            assert not (await coordinator.inspect())["fenced"]
+        finally:
+            release.set()
+            await asyncio.gather(
+                request, *list(app.state.background_tasks), return_exceptions=True
+            )
+
+
+@pytest.mark.parametrize("endpoint", ["upload", "text", "texts"])
+async def test_ingress_handoff_has_no_remote_maintenance_gap(
+    distributed_api, monkeypatch, endpoint
+):
+    from contextlib import asynccontextmanager
+    from contextvars import Context
+    from lightrag.distributed import CoordinationBusyError
+
+    client, rag, peer, _, app = distributed_api
+    await rag._distributed_runtime.coordinator.pipeline_control.pause()
+    entered, release = asyncio.Event(), asyncio.Event()
+    coordinator = rag._distributed_runtime.coordinator
+    original = coordinator.operation
+    background_kind = (
+        "pipeline_index_file" if endpoint == "upload" else "pipeline_index_texts"
+    )
+
+    @asynccontextmanager
+    async def delayed(kind, *args, **kwargs):
+        if kind == background_kind:
+            entered.set()
+            await release.wait()
+        async with original(kind, *args, **kwargs) as operation:
+            yield operation
+
+    monkeypatch.setattr(coordinator, "operation", delayed)
+    payload = (
+        {"files": {"file": ("handoff.txt", b"Atlas cooperates with Borealis.")}}
+        if endpoint == "upload"
+        else {
+            "json": {
+                "text": "Atlas cooperates with Borealis.",
+                "file_source": "handoff.txt",
+            }
+        }
+        if endpoint == "text"
+        else {
+            "json": {
+                "texts": ["Atlas cooperates with Borealis."],
+                "file_sources": ["handoff.txt"],
+            }
+        }
+    )
+    request = Context().run(
+        asyncio.create_task,
+        client.post(
+            "/documents/" + endpoint, headers={"X-API-Key": "test-key"}, **payload
+        ),
+    )
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        await asyncio.sleep(0.02)
+        assert not request.done(), "Accepted ingress lost its durable handoff coverage"
+        peer._distributed_runtime.coordinator.wait_timeout = 0.03
+        with pytest.raises(CoordinationBusyError):
+            async with peer._distributed_runtime.operation(
+                "remote_clear", exclusive=True
+            ):
+                pytest.fail("Remote maintenance entered the handoff gap")
+        release.set()
+        response = await request
+        assert response.status_code == 200
+        await asyncio.gather(*list(app.state.background_tasks))
+        operations = (await coordinator.inspect())["operations"]
+        assert any(row["kind"] == background_kind for row in operations)
+        assert all(
+            not row["exclusive"]
+            for row in operations
+            if row["kind"]
+            in {background_kind, "upload_to_input_dir", "insert_text", "insert_texts"}
+        )
+        assert not (await coordinator.inspect())["fenced"]
+    finally:
+        release.set()
+        await asyncio.gather(
+            request, *list(app.state.background_tasks), return_exceptions=True
+        )
+
+
+async def test_scan_file_cleanup_failure_propagates_through_actual_enqueue_batch(
+    distributed_api, monkeypatch
+):
+    from pathlib import Path
+
+    _, rag, _, manager, _ = distributed_api
+    routes = importlib.import_module("lightrag.api.routers.document_routes")
+    target = manager.input_dir / "__tmp__cleanup_failure.txt"
+    target.write_text("Atlas cooperates with Borealis.")
+    original_unlink = Path.unlink
+    failed = False
+
+    def unlink(path, *args, **kwargs):
+        nonlocal failed
+        if path == target:
+            failed = True
+            raise OSError("unconfirmed scan file cleanup")
+        return original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", unlink)
+    try:
+        with pytest.raises(OSError, match="unconfirmed scan file cleanup"):
+            await routes.run_scanning_process(
+                rag, manager, track_id="failed-file-cleanup"
+            )
+    finally:
+        assert failed, "Fault must run inside the real file enqueue cleanup"
+    state = await rag._distributed_runtime.coordinator.inspect()
+    assert state["fenced"]
+    scan = await rag._distributed_runtime.coordinator.pipeline_control.scan_status(
+        "failed-file-cleanup"
+    )
+    assert scan["status"] == "abandoned"
+
+
+@pytest.mark.parametrize("endpoint", ["upload", "text", "texts"])
+@pytest.mark.parametrize("failure", ["busy", "cancel"])
+async def test_ingress_failed_admission_releases_local_reservation(
+    distributed_api, monkeypatch, endpoint, failure
+):
+    from contextlib import asynccontextmanager
+    from contextvars import Context
+    from lightrag.distributed import CoordinationBusyError
+    from lightrag.kg.shared_storage import get_namespace_data
+
+    client, rag, _, _, app = distributed_api
+    coordinator = rag._distributed_runtime.coordinator
+    original = coordinator.operation
+    entered, release = asyncio.Event(), asyncio.Event()
+    background_kind = (
+        "pipeline_index_file" if endpoint == "upload" else "pipeline_index_texts"
+    )
+
+    @asynccontextmanager
+    async def refused(kind, *args, **kwargs):
+        if kind == background_kind:
+            entered.set()
+            await release.wait()
+            raise CoordinationBusyError("Injected background admission refusal")
+        async with original(kind, *args, **kwargs) as operation:
+            yield operation
+
+    monkeypatch.setattr(coordinator, "operation", refused)
+    payload = (
+        {
+            "files": {
+                "file": ("refused.txt", b"Content remains owned by the failed request.")
+            }
+        }
+        if endpoint == "upload"
+        else {"json": {"text": "Text", "file_source": "refused.txt"}}
+        if endpoint == "text"
+        else {"json": {"texts": ["Text"], "file_sources": ["refused.txt"]}}
+    )
+    request = Context().run(
+        asyncio.create_task,
+        client.post(
+            "/documents/" + endpoint, headers={"X-API-Key": "test-key"}, **payload
+        ),
+    )
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        if failure == "cancel":
+            request.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await request
+        else:
+            release.set()
+            response = await request
+            assert response.status_code == 409
+            assert response.json()["detail"]["error"] == "CoordinationBusyError"
+        local = await get_namespace_data("pipeline_status", workspace=rag.workspace)
+        assert local.get("pending_enqueues") == 0
+        assert not local.get("pending_enqueue_tokens")
+        operations = (await coordinator.inspect())["operations"]
+        assert not any(row["kind"] == background_kind for row in operations)
+        # The request itself was admitted (upload may have written a file).
+        # Its conservative fence is retained; cleanup must not fake an ACK.
+        assert (await coordinator.inspect())["fenced"]
+    finally:
+        release.set()
+        await asyncio.gather(
+            request, *list(app.state.background_tasks), return_exceptions=True
+        )
