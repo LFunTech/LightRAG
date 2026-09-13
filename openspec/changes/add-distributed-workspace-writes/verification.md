@@ -113,15 +113,36 @@ PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh \
 
 未执行 Kubernetes 部署、RWX provider 验证、实际 Secret/网络策略/节点故障或 Gunicorn preload 验收；chart 支持路径固定 WORKERS=1、跨 Pod 扩容。未运行额外镜像大构建、未修改 9621 服务、未删共享业务图/schema/协调历史。全量里程碑和独立最终 review 由父 agent 执行，4.3/4.4 仍未勾选；已有两项 401/403 path-prefix 基线不在本次 mirror 路径，没有宣称修复或隐藏它们。
 
+### 主 agent 独立里程碑与 Task 4 审查
+
+在实现 commit `8cfbf22e0` 上独立复跑：
+
+```bash
+PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh tests --test-workers 4
+```
+
+结果 **8813 passed、360 skipped、2 failed，158.43 秒**。全量未全绿，失败仅为修改核心代码前已复现的两项基线：
+
+- `tests/api/test_path_prefixes.py::TestWhitelistUnderApiPrefix::test_destructive_route_requires_auth_under_a_colliding_prefix[verbatim]`
+- 同测试的 `[strip]` 参数。
+
+均为已有 API-key-only 拒绝访问实际返回 403、断言期望 401；不是本分支新增失败，不在本次范围内改写该鉴权约定或测试。缺少 spaCy `en_core_web_sm` / `zh_core_web_sm` 的相关测试按原机制跳过，integration 默认跳过。原五项 Cairo 环境失败通过独立 Python loader wrapper 解决，未修改应用配置。
+
+再次执行前述真实后端命令，使用 `--basetemp=/tmp/lightrag-distributed-root-task4-verify`：**190 passed，35.88 秒**。独立 worker PID `15416 / 15525`，独立 Manager PID `15420 / 15528`，不同 coordinator owner。两次实际 HugeGraph HTTP 区间为 `[1789311135628697000, 1789311135631516000]` 与 `[1789311135628714000, 1789311135631590000]`，重叠 **2,802,000 ns（2.802 ms）**。该数据仅证明本次本机独立进程实际写重叠，不是吞吐量基准或 Kubernetes 验收。
+
+静态检查：`.venv/bin/ruff check .` 全仓通过；本分支变更的 40 个 Python 文件 `ruff format --check` 通过；`git diff --check 3d51af555..HEAD` 与 `openspec validate add-distributed-workspace-writes --strict` 通过。没有前端变更，因此不运行 Bun。日志留于本机 `/tmp/lightrag-distributed-{full-milestone,task4-real-verify,ruff-all}.log`，它们不属于可移植的仓库依赖。
+
+Task 4 独立 scoped review：spec compliant、quality Approved，无 Critical/Important；Minor T4-M1（`AUTH_ACCOUNTS` 清单还应列出 `TOKEN_SECRET`）交由整分支最终审查统一处理。4.3 已完成准确记录；4.4 整分支最终审查仍待执行，不据此提前声称交付完成。
+
 ## 最终验收矩阵
 
 | 合同 | 已有证据 | 状态 |
 |---|---|---|
-| 默认单机兼容与配置拒绝 | Task 1–3 mirror + Task 4 CLI/Helm 默认与拒绝矩阵 | 定向验证通过，待全量门 |
+| 默认单机兼容与配置拒绝 | Task 1–3 mirror + Task 4 CLI/Helm 默认与拒绝矩阵 | 定向通过；全量仅有两项已知基线失败 |
 | 同 workspace 真并行、共享实体不丢来源 | 独立进程/Manager + 真实 PG/HugeGraph + 生产 pipeline + HTTP 时间交叠 | Task 4 已验证 |
 | 领取先于修复、分页/丢通知/FAILED 人工重试 | 既有调度矩阵 + 独立进程重复解析计数/周期发现/重启 retry | 已验证 |
 | 持久 pending 与异常拒绝 | 既有 SQL ACK/permit 矩阵 + 独立业务进程实际 HG ACK 丢失/SIGKILL | 已验证 |
 | 全 SDK/API/后台/维护入口 | Task 2–3 已审查矩阵 + 独立维护竞争 + 实际 bootstrap CLI | 定向通过，待最终 review |
 | 跨存储可恢复进度和 attribution anchors | 实际图已提交、向量未提交、锚点保留 → 审计 recover → 原生产 purge | Task 4 已验证 |
 | 运维迁移、诊断恢复及部署 | 实际 CLI、Helm lint/template/YAML、runbook/离线操作路径 | 实现侧通过；未实际部署集群 |
-| 整体质量门 | Ruff/format、OpenSpec strict、定向 mirror | 全量里程碑与独立最终 review 待父 agent |
+| 整体质量门 | Ruff/format、OpenSpec strict、定向 mirror | 全量已执行并披露两项基线失败；独立最终 review 待完成 |
