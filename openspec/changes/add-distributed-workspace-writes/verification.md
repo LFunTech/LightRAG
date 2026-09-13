@@ -81,15 +81,47 @@ PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh \
 
 复核另发现新 typed-error adapter 会覆盖 backstop cleanup 错误，`eeca9bdf3` 仅修复此优先级。使用实际 legacy starter 的六组合矩阵先出现 2 failed / 4 passed，修复后主 agent 对 adapter/lifespan 复跑 **9 passed**，真实 handoff 子集 **13 passed、8 deselected**。第二轮限定复核 ADDRESSED，无新问题，Task 3 gate 通过。未对未修改管线重复运行全量，整体里程碑留给 Task 4。
 
+### 部署与独立进程验收（Task 4，实现侧定向验证）
+
+新增 `python -m lightrag.distributed bootstrap`，复用 API 的完整配置构造器和 pre-init maintenance。Helm 新增显式 distributed Deployment/RWX/Secret/非 root profile、existingClaim 和独立维护 Job；Job 要求 replicas=0 与 stopped/quiescent 运维确认，无迁移 hook/自动 retry。默认本地 Deployment 单副本/RWO/30 秒 Kubernetes 终止宽限不变。完整升级、离线审计修复、回退与三确认恢复见 `docs/DistributedDeployment.md`。
+
+实现侧执行真实 PG + HugeGraph：
+
+```bash
+set -a
+source .superpowers/sdd/tasks/test-env
+export LIGHTRAG_TEST_COORDINATION_DSN="$LIGHTRAG_COORDINATION_DSN"
+set +a
+PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh \
+  tests/distributed tests/api/routes/test_distributed_controls.py \
+  tests/setup/test_distributed_chart.py --run-integration -q
+```
+
+**190 passed，34.72 秒**（最终真实定向运行，使用独立 `--basetemp=/tmp/lightrag-task4-final` 保存证据）。其中 chart **12 项**；实际独立进程复跑和详细证据单列于 Task 4 报告。每个业务进程使用独立 OS PID、独立 Manager PID、独立 coordinator owner/pool。真实 pipeline 对不同文档的 HugeGraph HTTP 请求起止时间重叠；共享实体/关系保留两个不同真实来源与权重下界，重复投递不重复解析或增加证据；本机 mailbox 不互通仍通过周期扫描发现任务；全局 pause 不被 polling 撤销；FAILED 一次性 retry 在接受者退出后仍有效且同 request ID 不增加尝试。
+
+故障在真实 Atlas 图写已返回后、durable ACK 前注入：实际 SIGKILL 或丢响应，保留 graph 已存在/vector 未落地/status 未完成及 full_entities/full_relations anchors。测试等待全部已发送 HugeGraph 请求完成、阻止 fault 后新请求，停止全部 owned writer，再从 PG `pg_stat_activity` 确认标记过的业务 sessions 消失；重建 coordinator inspect 与新进程启动仍拒绝，无 TTL 接管。执行真实 recover CLI 后，新进程通过原生产 purge 删除剩余贡献并收敛，历史/恢复审计仍在。维护竞争在 admission 前不创建标记文件或执行业务写。旧 permit、SQL ACK 丢失和 HTTP 后台 lifetime 矩阵继续复用 Task 1–3 的真实/单元回归，不声称每种已有矩阵均改成子进程。
+
+默认 mock/mirror：
+
+```bash
+PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh \
+  tests/distributed tests/setup tests/api/config \
+  tests/api/test_distributed_lifespan.py tests/test_docstring_budget.py -q
+```
+
+**602 passed，78 skipped，31.26 秒**（最终 mirror）。测试实际覆盖生产 bootstrap CLI 的环境构造、重复初始化、dotenv 不覆盖 Secret 环境值；未发出模型请求。Ruff/format、Helm lint（默认/分布式）、三组真实 template/YAML 解析和 strict OpenSpec 通过，精确命令与 TDD 红绿记录见 Task 4 报告。
+
+未执行 Kubernetes 部署、RWX provider 验证、实际 Secret/网络策略/节点故障或 Gunicorn preload 验收；chart 支持路径固定 WORKERS=1、跨 Pod 扩容。未运行额外镜像大构建、未修改 9621 服务、未删共享业务图/schema/协调历史。全量里程碑和独立最终 review 由父 agent 执行，4.3/4.4 仍未勾选；已有两项 401/403 path-prefix 基线不在本次 mirror 路径，没有宣称修复或隐藏它们。
+
 ## 最终验收矩阵
 
-| 合同 | 必须获得的最终证据 | 状态 |
+| 合同 | 已有证据 | 状态 |
 |---|---|---|
-| 默认单机兼容与配置拒绝 | runtime/config 测试、旧测试回归 | 待实施验证 |
-| 同 workspace 真并行、共享实体不丢来源 | 独立进程 + 真实 PG/HugeGraph + 核心 pipeline | 待实施验证 |
-| 领取先于修复、分页/丢通知/FAILED 人工重试 | pipeline 竞争与重启测试 | 待实施验证 |
-| 持久 pending 与异常拒绝 | 原语故障测试 + 实际后端 ACK 丢失/kill | 原语首轮已跑，端到端待验证 |
-| 全 SDK/API/后台/维护入口 | 入口矩阵与鉴权/互斥/取消测试 | 待实施验证 |
-| 跨存储可恢复进度和 attribution anchors | 图/向量/KV/status 断点失败与受控重放 | 待实施验证 |
-| 运维迁移、诊断恢复及部署 | CLI、schema drift、Helm 渲染与 runbook | 原语首轮已跑，完整部署待验证 |
-| 整体质量门 | 独立最终 review、Ruff/format、OpenSpec strict、全量里程碑 | 未完成 |
+| 默认单机兼容与配置拒绝 | Task 1–3 mirror + Task 4 CLI/Helm 默认与拒绝矩阵 | 定向验证通过，待全量门 |
+| 同 workspace 真并行、共享实体不丢来源 | 独立进程/Manager + 真实 PG/HugeGraph + 生产 pipeline + HTTP 时间交叠 | Task 4 已验证 |
+| 领取先于修复、分页/丢通知/FAILED 人工重试 | 既有调度矩阵 + 独立进程重复解析计数/周期发现/重启 retry | 已验证 |
+| 持久 pending 与异常拒绝 | 既有 SQL ACK/permit 矩阵 + 独立业务进程实际 HG ACK 丢失/SIGKILL | 已验证 |
+| 全 SDK/API/后台/维护入口 | Task 2–3 已审查矩阵 + 独立维护竞争 + 实际 bootstrap CLI | 定向通过，待最终 review |
+| 跨存储可恢复进度和 attribution anchors | 实际图已提交、向量未提交、锚点保留 → 审计 recover → 原生产 purge | Task 4 已验证 |
+| 运维迁移、诊断恢复及部署 | 实际 CLI、Helm lint/template/YAML、runbook/离线操作路径 | 实现侧通过；未实际部署集群 |
+| 整体质量门 | Ruff/format、OpenSpec strict、定向 mirror | 全量里程碑与独立最终 review 待父 agent |

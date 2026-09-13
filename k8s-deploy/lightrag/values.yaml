@@ -1,5 +1,6 @@
-# A workspace supports exactly ONE ingesting LightRAG instance, and instances
-# must never initialize concurrently. Storage initialization/migration and the
+# In the default local mode a workspace supports exactly ONE ingesting instance.
+# For the opt-in distributed profile, see values-distributed.yaml and the runbook.
+# Local instances must never initialize concurrently. Storage initialization/migration and the
 # document pipeline are coordinated through per-host shared memory
 # (lightrag/kg/shared_storage.py), which does not span pods, so a second
 # replica started at the same time can race on first-boot storage creation,
@@ -72,12 +73,20 @@ resources:
     cpu: 500m
     memory: 1Gi
 
+# accessModes/existingClaim/storageClassName apply to Deployment shared claims.
+# Local StatefulSet keeps its existing per-Pod RWO volumeClaimTemplates.
 persistence:
   enabled: true
   ragStorage:
     size: 10Gi
+    accessModes: [ReadWriteOnce]
+    existingClaim: ""
+    # storageClassName: your-storage-class
   inputs:
     size: 5Gi
+    accessModes: [ReadWriteOnce]
+    existingClaim: ""
+    # storageClassName: your-storage-class
 
 # Allow specifying additional environment variables from ConfigMaps or Secrets created outside of this chart
 envFrom:
@@ -119,3 +128,15 @@ env:
   # Replace with your Qdrant credentials
   QDRANT_URL: http://qdrant-cluster-qdrant-qdrant:6333
   # REDIS_URI: redis://default:${REDIS_PASSWORD}@redis-cluster-redis-redis:6379
+
+# Explicit feature profile; default local behavior is unchanged.
+distributed:
+  enabled: false
+maintenance:
+  enabled: false
+  actor: operator
+  writersStopped: false
+  inflightFinished: false
+podSecurityContext: {}
+securityContext: {}
+terminationGracePeriodSeconds: 30

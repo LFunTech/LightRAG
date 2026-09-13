@@ -1,0 +1,71 @@
+# Build this fork and replace the repository/tag with your immutable feature image.
+# This example tag is a deployment input, NOT an image published by upstream.
+replicaCount: 2
+image:
+  repository: registry.example.org/your-team/lightrag
+  tag: distributed-workspace-writes-reviewed
+workload:
+  kind: Deployment
+updateStrategy:
+  type: Recreate
+distributed:
+  enabled: true
+maintenance:
+  enabled: false
+  actor: platform-operator
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+terminationGracePeriodSeconds: 600
+persistence:
+  enabled: true
+  inputs:
+    size: 5Gi
+    accessModes: [ReadWriteMany]
+    existingClaim: lightrag-shared-inputs
+    storageClassName: ''
+  ragStorage:
+    size: 10Gi
+    accessModes: [ReadWriteMany]
+    existingClaim: lightrag-shared-working
+    storageClassName: ''
+envFrom:
+  secrets:
+    - name: lightrag-distributed-credentials
+env:
+  LIGHTRAG_DISTRIBUTED_WRITES: 'true'
+  LIGHTRAG_SHARED_STORAGE: 'true'
+  LIGHTRAG_DEPLOYMENT_ID: lightrag-production
+  LIGHTRAG_COORDINATION_POOL_MODE: direct
+  LIGHTRAG_DISTRIBUTED_POLL_INTERVAL: '1'
+  WORKSPACE: knowledge
+  POSTGRES_WORKSPACE: knowledge
+  INPUT_DIR: /app/data/inputs
+  WORKING_DIR: /app/data/rag_storage
+  WORKERS: '1'
+  LIGHTRAG_KV_STORAGE: PGKVStorage
+  LIGHTRAG_DOC_STATUS_STORAGE: PGDocStatusStorage
+  LIGHTRAG_VECTOR_STORAGE: PGVectorStorage
+  LIGHTRAG_GRAPH_STORAGE: HugeGraphStorage
+  POSTGRES_HOST: postgres.database.svc.cluster.local
+  POSTGRES_PORT: '5432'
+  POSTGRES_DATABASE: lightrag
+  POSTGRES_USER: lightrag
+  HUGEGRAPH_URI: http://hugegraph.database.svc.cluster.local:8080
+  HUGEGRAPH_GRAPH: hugegraph
+  HUGEGRAPH_GRAPHSPACE: DEFAULT
+  HUGEGRAPH_AUTO_CREATE_SCHEMA: 'false'
+  LLM_BINDING: openai
+  LLM_MODEL: gpt-4o-mini
+  LLM_BINDING_HOST: https://api.openai.com/v1
+  EMBEDDING_BINDING: openai
+  EMBEDDING_MODEL: text-embedding-3-small
+  EMBEDDING_DIM: '1536'
+  EMBEDDING_BINDING_HOST: https://api.openai.com/v1

@@ -1,0 +1,19 @@
+{{- if .Values.maintenance.enabled }}
+{{- $template := include "lightrag.podTemplate" . | fromYaml }}
+{{- $container := first $template.spec.containers }}
+{{- $_ := unset $container "readinessProbe" }}
+{{- $_ := unset $container "ports" }}
+{{- $_ := set $container "command" (list "/bin/sh" "-ec" "python -m lightrag.distributed migrate && python -m lightrag.distributed bootstrap --actor \"$BOOTSTRAP_ACTOR\" --confirm-writers-stopped --confirm-inflight-finished") }}
+{{- $_ := set $container "env" (list (dict "name" "BOOTSTRAP_ACTOR" "value" .Values.maintenance.actor)) }}
+{{- $_ := set $template.spec "restartPolicy" "Never" }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "lightrag.fullname" . }}-bootstrap
+  labels:
+    {{- include "lightrag.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 0
+  template:
+    {{- toYaml $template | nindent 4 }}
+{{- end }}

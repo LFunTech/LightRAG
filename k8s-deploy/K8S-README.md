@@ -127,6 +127,8 @@ kubectl --namespace rag port-forward svc/lightrag 9621:9621
 
 ### Replica Count
 
+> The restrictions below describe **default local mode**. This fork also supports an explicit distributed-write profile: [deployment/bootstrap/recovery runbook](../docs/DistributedDeployment.md), with [operator values](lightrag/values-distributed.yaml). It requires the feature image, PG/HugeGraph, shared RWX volumes and durable coordination; simply raising replicaCount does not enable it.
+
 **Keep `replicaCount` at `1`.** A workspace supports a single ingesting LightRAG instance, and instances must never initialize concurrently. Additional query-only instances are possible under strict conditions - see [Running additional query-only instances](#running-additional-query-only-instances-advanced) below.
 
 LightRAG coordinates storage initialization/migration and the document-processing pipeline through per-host shared memory (`lightrag/kg/shared_storage.py`). That coordination covers the worker processes of a single instance; it does not extend across pods. With two or more replicas started at the same time against a shared workspace:

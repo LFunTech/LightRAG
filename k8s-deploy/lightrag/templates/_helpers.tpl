@@ -128,10 +128,19 @@ metadata:
   labels:
     {{- include "lightrag.selectorLabels" . | nindent 4 }}
 spec:
+  {{- with .Values.podSecurityContext }}
+  securityContext:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 30 }}
   containers:
     - name: {{ .Chart.Name }}
       image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
       imagePullPolicy: IfNotPresent
+      {{- with .Values.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       ports:
         - name: http
           containerPort: {{ .Values.env.PORT }}
@@ -183,9 +192,9 @@ spec:
     {{- else if eq (include "lightrag.workloadKind" .) "Deployment" }}
     - name: rag-storage
       persistentVolumeClaim:
-        claimName: {{ include "lightrag.fullname" . }}-rag-storage
+        claimName: {{ default (printf "%s-rag-storage" (include "lightrag.fullname" .)) .Values.persistence.ragStorage.existingClaim }}
     - name: inputs
       persistentVolumeClaim:
-        claimName: {{ include "lightrag.fullname" . }}-inputs
+        claimName: {{ default (printf "%s-inputs" (include "lightrag.fullname" .)) .Values.persistence.inputs.existingClaim }}
     {{- end }}
 {{- end -}}

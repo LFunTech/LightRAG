@@ -127,6 +127,8 @@ kubectl --namespace rag port-forward svc/lightrag 9621:9621
 
 ### 副本数量
 
+> 以下限制适用于 **默认本地模式**。本 fork 另提供显式分布式写入 profile，参见[部署、维护与恢复 runbook](../docs/DistributedDeployment.md)及[配置示例](lightrag/values-distributed.yaml)。需要特性镜像、PG/HugeGraph、共享 RWX 卷与持久协调；仅增加 replicaCount 不会启用该能力。
+
 **请将 `replicaCount` 保持为 `1`。** 同一个 workspace 只支持一个执行写入的 LightRAG 实例，且多个实例绝不能并发初始化。在严格的前提条件下可以运行额外的只读查询实例，参见下方[运行额外的只读查询实例](#运行额外的只读查询实例进阶)。
 
 LightRAG 的存储初始化/迁移与文档处理流水线是通过单机共享内存（`lightrag/kg/shared_storage.py`）协调的。该协调只覆盖同一个实例内部的多个 worker 进程，不跨 Pod。当两个及以上副本同时启动、共用同一个 workspace 时：

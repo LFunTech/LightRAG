@@ -1,0 +1,28 @@
+{{- $enabled := .Values.distributed.enabled -}}
+{{- if ne (eq (lower (toString (default "false" .Values.env.LIGHTRAG_DISTRIBUTED_WRITES))) "true") $enabled -}}
+{{- fail "distributed.enabled must agree with env.LIGHTRAG_DISTRIBUTED_WRITES" -}}
+{{- end -}}
+{{- if $enabled -}}
+{{- if ne (include "lightrag.workloadKind" .) "Deployment" -}}{{- fail "distributed profile requires Deployment" -}}{{- end -}}
+{{- if not .Values.persistence.enabled -}}{{- fail "distributed profile requires shared persistent storage" -}}{{- end -}}
+{{- range $key := list "inputs" "ragStorage" -}}
+{{- $volume := index $.Values.persistence $key -}}
+{{- if not (has "ReadWriteMany" (default (list) $volume.accessModes)) -}}{{- fail "distributed volumes require declared ReadWriteMany accessModes (verify existing claims yourself)" -}}{{- end -}}
+{{- end -}}
+{{- range $key, $value := dict "LIGHTRAG_KV_STORAGE" "PGKVStorage" "LIGHTRAG_DOC_STATUS_STORAGE" "PGDocStatusStorage" "LIGHTRAG_VECTOR_STORAGE" "PGVectorStorage" "LIGHTRAG_GRAPH_STORAGE" "HugeGraphStorage" "LIGHTRAG_SHARED_STORAGE" "true" "INPUT_DIR" "/app/data/inputs" "WORKING_DIR" "/app/data/rag_storage" "WORKERS" "1" -}}
+{{- if ne (toString (index $.Values.env $key)) $value -}}{{- fail (printf "distributed profile requires env.%s=%s" $key $value) -}}{{- end -}}
+{{- end -}}
+{{- if or (not .Values.env.WORKSPACE) (ne .Values.env.WORKSPACE .Values.env.POSTGRES_WORKSPACE) (not .Values.env.LIGHTRAG_DEPLOYMENT_ID) -}}{{- fail "distributed profile needs deployment ID and matching nonempty WORKSPACE/POSTGRES_WORKSPACE" -}}{{- end -}}
+{{- if not (has .Values.env.LIGHTRAG_COORDINATION_POOL_MODE (list "direct" "session")) -}}{{- fail "distributed coordinator requires direct/session pooling" -}}{{- end -}}
+{{- if or (not .Values.image.tag) (has .Values.image.tag (list "latest" "dev" "main")) (eq .Values.image.repository "ghcr.io/hkuds/lightrag") -}}{{- fail "distributed profile requires a pinned feature image, not upstream latest" -}}{{- end -}}
+{{- if not .Values.envFrom.secrets -}}{{- fail "distributed profile requires externally managed credential Secret" -}}{{- end -}}
+{{- if not .Values.podSecurityContext.runAsNonRoot -}}{{- fail "distributed profile requires non-root pods and pre-provisioned writable shared volumes" -}}{{- end -}}
+{{- if .Values.env.LIGHTRAG_COORDINATION_DSN -}}{{- fail "distributed coordinator DSN belongs in external Secret, not chart values" -}}{{- end -}}
+{{- end -}}
+{{- if and .Values.maintenance.enabled (not $enabled) -}}{{- fail "maintenance Job requires distributed profile" -}}{{- end -}}
+
+{{- if .Values.maintenance.enabled -}}
+{{- if or (ne (int .Values.replicaCount) 0) (not .Values.maintenance.writersStopped) (not .Values.maintenance.inflightFinished) -}}
+{{- fail "distributed maintenance requires replicaCount=0 and explicit writersStopped/inflightFinished operational confirmations" -}}
+{{- end -}}
+{{- end -}}
