@@ -21,10 +21,10 @@ Required integration surface: `PostgresCoordinator` 用独立 asyncpg pool，作
 
 ### Task 2: Runtime guards and storage integration
 
-- [ ] 2.1 新增分布式配置解析与 startup profile/manifest 校验；只在 opt-in 时创建协调器，失败不回退本地模式。
-- [ ] 2.2 接入核心 public SDK 写入口、查询 cache 写及实体/关系 keyed lock；图、KV、向量、doc_status mutation 必须 durable pending/ack，完整读改写跨 Pod 互斥。
-- [ ] 2.3 配置 HugeGraph 分布式写路径：不同实体真实并行，同实体/端点冲突受控，单机原行为不变；不能用一把长期 workspace/global mutation 锁掩盖缺口。
-- [ ] 2.4 生命周期、数据迁移、自定义 KG/chunks、purge、cache clear 接入协调，后台继承失效 ticket 必须拒绝/重新取得许可；补全错误传播与对应 TDD 回归。
+- [x] 2.1 新增分布式配置解析与 startup profile/manifest 校验；只在 opt-in 时创建协调器，失败不回退本地模式。
+- [x] 2.2 接入核心 public SDK 写入口、查询 cache 写及实体/关系 keyed lock；图、KV、向量、doc_status mutation 必须 durable pending/ack，完整读改写跨 Pod 互斥。
+- [x] 2.3 配置 HugeGraph 分布式写路径：不同实体真实并行，同实体/端点冲突受控，单机原行为不变；不能用一把长期 workspace/global mutation 锁掩盖缺口。
+- [x] 2.4 生命周期、数据迁移、自定义 KG/chunks、purge、cache clear 接入协调，后台继承失效 ticket 必须拒绝/重新取得许可；补全错误传播与对应 TDD 回归。
 
 Ownership: `lightrag/distributed/runtime.py`（可拆文件）、`lightrag/lightrag.py`、`lightrag/kg/shared_storage.py`、`lightrag/kg/hugegraph_impl.py`、必要 `operate.py/utils_graph.py/storage_migrations.py/postgres_impl.py`，以及相应 mirror tests。不得修改 Task 1 coordinator 协议而不向主 agent 报告。读 Pipeline/Purge/File-backed 合同后修改调用。禁止自动迁移运行中的既有数据。运行时必须提供后续 pipeline/API 可复用的 shared/exclusive operation 装饰器/上下文和当前 coordinator；直接 storage 写入不能绕过确认屏障。对 pipeline 入口的具体领取和 API 路由 wiring 由 Task 3 完成。
 

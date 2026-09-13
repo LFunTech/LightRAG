@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-实施中。proposal/design/spec/tasks 已完成并通过 OpenSpec strict，但这不代表多 Pod 功能已可用。协调原语已完成审查；核心写保护已提交并通过独立测试复跑，正在审查；流水线、API 和部署仍需接入并逐项验证，不能作为已交付能力宣传。
+实施中。proposal/design/spec/tasks 已完成并通过 OpenSpec strict，但这不代表多 Pod 功能已可用。协调原语与核心写保护已完成审查、修复和独立测试复跑；流水线、API 和部署仍需接入并逐项验证，不能作为已交付能力宣传。
 
 ## 环境与安全边界
 
@@ -40,9 +40,9 @@ PYTHON=/tmp/lightrag-distributed-verification-venv/bin/python \
 
 独立审查发现安全关键列默认值 drift 未验证和非有限超时参数问题，修复 commit `43713a330` 增加实际 catalog 校验、显式协议初值和有限超时校验。新增回归先得到 27 failed / 5 passed，再转绿；主 agent 对修复版独立复跑为 62 passed。限定复核 I1/M1 均 ADDRESSED，Task 1 原语阶段通过，不代表后续核心/流水线已完成。
 
-### 核心写保护（Task 2，审查中）
+### 核心写保护（Task 2）
 
-实现 commit `1059447a8`，包括 runtime profile/manifest、SDK operation、跨实例 GraphDB 锁、PG 真实 SQL pending/ACK 与禁写重试、PGVector 隔离即时提交、HugeGraph 分批 journal、verify-only 启动和显式维护、取消恢复目标与共享 chunk 缓存引用原子并集。独立审查尚未出结论，不能提前视为该阶段验收完成。
+实现 commit `1059447a8`，包括 runtime profile/manifest、SDK operation、跨实例 GraphDB 锁、PG 真实 SQL pending/ACK 与禁写重试、PGVector 隔离即时提交、HugeGraph 分批 journal、verify-only 启动和显式维护、取消恢复目标与共享 chunk 缓存引用原子并集。
 
 主 agent 在提交后独立复跑：
 
@@ -57,6 +57,10 @@ PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh \
 结果：**3058 passed、64 skipped，53.72 秒**。另外使用专用 PG 测试连接执行 `tests/distributed --run-integration -q`，结果 **116 passed，4.85 秒**：Task 1 62 项、runtime 25 项、SDK 21 项、真实 PG/HugeGraph 业务 8 项。实际业务覆盖 SDK CRUD/cache/custom/purge、共享实体 RMW、SQL 已提交后 ACK 丢失、取消后精确 tracking 目标和缓存引用 stale snapshot；LLM/embedding 为测试 fixture。
 
 这 8 项业务集成使用同进程中独立 runtime/pool，不能据此声称业务多 Pod 验证完成。Task 1 已有独立进程 coordinator 故障测试；业务独立进程与调度验证仍由 Task 3/4 完成。此阶段未重跑全量 suite。
+
+独立审查发现三个 Important：finalize 未取得 admission 仍关闭连接、maintenance 在校验前复用 vector ALTER/DROP helper、shrinking edit 的恢复 journal 晚于即时图写。修复 commit `b840c5542` 后，限定复核 T2-I1/I2/I3 均 ADDRESSED，spec/quality 通过。
+
+修复版由主 agent 独立复跑 `tests/distributed tests/kg/postgres_impl tests/utils tests/pipeline tests/test_docstring_budget.py`，**1926 passed、55 skipped，41.88 秒**；真实 `tests/distributed --run-integration` 为 **127 passed，6.28 秒**。新增真实案例验证 finalize 拒绝/取消后原 writer 仍可提交，以及 entity/relation/allow_merge 在实际图提交后 ACK 丢失或取消时，请求前已持久化精确 tracking 目标。只有 Task 2 的 2.1–2.4 在此阶段勾选，未提前勾选调度/API/部署。
 
 ## 最终验收矩阵
 
