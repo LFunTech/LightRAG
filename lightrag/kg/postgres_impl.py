@@ -2669,9 +2669,14 @@ class PostgreSQLDB:
                     f"Failed to create index {index['name']} ({type(e).__name__}): {e}"
                 )
 
-    async def _create_vector_index(self, table_name: str, embedding_dim: int):
+    async def _create_vector_index(
+        self, table_name: str, embedding_dim: int, *, migrate: bool = True
+    ):
         """
         Create vector index for a specific table.
+
+        With migrate=False, the caller must first verify the table schema.
+        Only additive, idempotent index DDL is allowed; errors propagate.
 
         Args:
             table_name: Name of the table to create index on
@@ -2725,21 +2730,26 @@ class PostgreSQLDB:
         try:
             vector_index_exists = await self.query(check_vector_index_sql)
             if not vector_index_exists:
-                for suffix in _VECTOR_INDEX_SUFFIXES:
-                    if suffix == index_suffix:
-                        continue
-                    old_name = _safe_index_name(k, suffix)
-                    await self.execute(f"DROP INDEX IF EXISTS {old_name}")
-                alter_sql = f"ALTER TABLE {k} ALTER COLUMN content_vector TYPE {column_type}({embedding_dim})"
-                await self.execute(alter_sql)
-                logger.debug(f"Ensured vector dimension for {k}")
+                if migrate:
+                    for suffix in _VECTOR_INDEX_SUFFIXES:
+                        if suffix == index_suffix:
+                            continue
+                        old_name = _safe_index_name(k, suffix)
+                        await self.execute(f"DROP INDEX IF EXISTS {old_name}")
+                    alter_sql = f"ALTER TABLE {k} ALTER COLUMN content_vector TYPE {column_type}({embedding_dim})"
+                    await self.execute(alter_sql)
+                    logger.debug(f"Ensured vector dimension for {k}")
                 logger.info(
                     f"Creating {self.vector_index_type} index {vector_index_name} on table {k}"
                 )
                 await self.execute(
-                    create_sql[self.vector_index_type].format(
-                        vector_index_name=vector_index_name, table_name=k
+                    create_sql[self.vector_index_type]
+                    .replace(
+                        "CREATE INDEX ",
+                        "CREATE INDEX " if migrate else "CREATE INDEX IF NOT EXISTS ",
+                        1,
                     )
+                    .format(vector_index_name=vector_index_name, table_name=k)
                 )
                 logger.info(
                     f"Successfully created vector index {vector_index_name} on table {k}"
@@ -2749,6 +2759,8 @@ class PostgreSQLDB:
                     f"{self.vector_index_type} vector index {vector_index_name} already exists on table {k}"
                 )
         except Exception as e:
+            if not migrate:
+                raise
             logger.error(f"Failed to create vector index on table {k}, Got: {e}")
 
     async def query(

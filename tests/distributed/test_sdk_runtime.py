@@ -122,3 +122,40 @@ async def test_stale_maintenance_ticket_cannot_silently_claim_migration_success(
         child = asyncio.create_task(late_migration())
     released.set()
     await child
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+async def test_finalize_without_admission_keeps_active_runtime_open(rag, cancel):
+    import asyncio
+
+    c = Coordinator()
+    c.close = AsyncMock()
+    entered = asyncio.Event()
+    rt = DistributedRuntime(c, workspace=rag.workspace)
+    rag._distributed_runtime = rt
+    original = c.operation
+
+    @asynccontextmanager
+    async def admission(kind, **kwargs):
+        if kind == "finalize":
+            entered.set()
+            if cancel:
+                await asyncio.Event().wait()
+            raise CoordinationBusyError("active shared operation")
+        async with original(kind, **kwargs) as operation:
+            yield operation
+
+    c.operation = admission
+    # Start outside the active context: finalization is a separate caller.
+    task = asyncio.create_task(rag.finalize_storages())
+    async with rt.operation("query") as operation:
+        await entered.wait()
+        if cancel:
+            task.cancel()
+        with pytest.raises(asyncio.CancelledError if cancel else CoordinationBusyError):
+            await task
+        assert not rt.closed
+        c.close.assert_not_awaited()
+        assert rt.permit().operation is operation
+        await c.heartbeat(operation)
+    assert ("exit", "query") in c.events

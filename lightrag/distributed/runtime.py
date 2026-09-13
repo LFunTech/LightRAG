@@ -151,14 +151,33 @@ class DistributedRuntime:
                 raise ValueError("PostgreSQL workspace override disagrees with runtime")
             if permit.maintenance:
                 if isinstance(storage, PGVectorStorage):
-                    await PGVectorStorage._pg_create_table(
-                        self.db,
-                        storage.table_name,
-                        storage.legacy_table_name,
-                        storage.embedding_func.embedding_dim,
+                    existing = await self.db.query(
+                        "SELECT to_regclass($1) AS table_name",
+                        [storage.table_name.lower()],
                     )
+                    if not existing or existing["table_name"] is None:
+                        kind = (
+                            "HALFVEC"
+                            if self.db.vector_index_type == "HNSW_HALFVEC"
+                            else "VECTOR"
+                        )
+                        ddl = (
+                            TABLES[storage.legacy_table_name]["ddl"]
+                            .replace(storage.legacy_table_name, storage.table_name)
+                            .replace(
+                                "VECTOR(dimension)",
+                                f"{kind}({storage.embedding_func.embedding_dim})",
+                            )
+                            .replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ", 1)
+                        )
+                        await self.db.execute(ddl)
+                    # Tables are shared by workspaces: this permit never grants
+                    # permission to convert types or remove existing indexes.
+                    await self.verify_pg_table(storage)
                     await self.db._create_vector_index(
-                        storage.table_name, storage.embedding_func.embedding_dim
+                        storage.table_name,
+                        storage.embedding_func.embedding_dim,
+                        migrate=False,
                     )
                 else:
                     from lightrag.kg.postgres_impl import namespace_to_table_name
@@ -447,13 +466,17 @@ def finalization_guard(function):
         runtime = get_runtime(self)
         if runtime is None:
             return await function(self, *args, **kwargs)
+        admitted = False
         try:
             async with runtime.operation("finalize", exclusive=True):
+                admitted = True
                 result = await function(self, *args, **kwargs)
                 await runtime.coordinator.heartbeat(runtime.permit().operation)
                 return result
         finally:
-            await runtime.request_close()
+            # Admission refusal/cancellation must not shut down active callers.
+            if admitted:
+                await runtime.request_close()
 
     return guarded
 

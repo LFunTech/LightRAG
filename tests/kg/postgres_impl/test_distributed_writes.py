@@ -303,3 +303,67 @@ async def test_distributed_read_queries_keep_connection_retries():
     assert await db.query("SELECT id FROM docs") == {"id": "result"}
     assert connection.fetch.await_count == 2
     assert not any(event[0] == "pending" for event in c.events)
+
+
+@pytest.mark.parametrize("existing_type", ["vector(3)", "halfvec(5)"])
+async def test_maintenance_rejects_existing_vector_schema_before_any_ddl(existing_type):
+    rt, c = runtime()
+    s = _make_storage(namespace="entities")
+    s._distributed_runtime = rt
+    db = db_with_connection(SimpleNamespace())
+    db.workspace = None
+    db.vector_index_type = "HNSW_HALFVEC"
+    rt.db = db
+    db.execute = AsyncMock()
+
+    async def query(sql, *args, **kwargs):
+        if "to_regclass" in sql and "pg_" not in sql:
+            return {"table_name": s.table_name.lower()}
+        if "pg_index " in sql:
+            return {"columns": ["workspace", "id"]}
+        if "format_type" in sql:
+            return {"type": existing_type}
+        return None
+
+    db.query = AsyncMock(side_effect=query)
+    async with rt.operation("bootstrap", exclusive=True, maintenance=True):
+        with pytest.raises(RuntimeError, match="schema/vector"):
+            await s.initialize()
+    db.execute.assert_not_awaited()
+
+
+@pytest.mark.parametrize("exists", [False, True])
+async def test_maintenance_vector_provisioning_never_alters_or_drops(exists):
+    rt, c = runtime()
+    s = _make_storage(namespace="entities")
+    s._distributed_runtime = rt
+    db = db_with_connection(SimpleNamespace())
+    db.workspace = None
+    db.vector_index_type = "HNSW_HALFVEC"
+    rt.db = db
+    statements = []
+    verified = False
+
+    async def query(sql, *args, **kwargs):
+        nonlocal verified
+        if "to_regclass" in sql and "pg_" not in sql:
+            return {"table_name": s.table_name.lower() if exists else None}
+        if "pg_index " in sql:
+            return {"columns": ["workspace", "id"]}
+        if "format_type" in sql:
+            verified = True
+            return {"type": "halfvec(3)"}
+        return None
+
+    async def execute(sql, *args, **kwargs):
+        assert not any(word in sql.upper() for word in ("ALTER ", "DROP "))
+        if exists or "CREATE INDEX" in sql.upper():
+            assert verified, "Existing schema must be verified before provisioning"
+        statements.append(sql)
+
+    db.query = AsyncMock(side_effect=query)
+    db.execute = AsyncMock(side_effect=execute)
+    async with rt.operation("bootstrap", exclusive=True, maintenance=True):
+        await s.initialize()
+    assert any("USING hnsw" in sql for sql in statements)
+    assert any("CREATE TABLE" in sql for sql in statements) is not exists

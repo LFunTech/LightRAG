@@ -26,6 +26,11 @@ inside the SDK's explicit `distributed_maintenance()` context, then call
 `initialize_storages()` and `check_and_migrate_data()`. Existing incompatible PG
 business schemas must be migrated offline before opt-in; maintenance does not
 silently alter them or copy data from a different embedding model's tables.
+Maintenance checks existing vector schemas before any table/index DDL; compatible
+schemas allow only additive index creation, never type conversion or old-index
+removal. A workspace permit is not authority to migrate a shared table.
+Finalization rejected or cancelled before exclusive admission leaves the runtime,
+business connections and coordinator witness open for existing operations.
 Normal startup refuses legacy tracking/anchor migration needs. Coordination
 schema itself is provisioned separately by the versioned migration CLI.
 
@@ -38,7 +43,8 @@ This never licenses deletion of attribution before confirmed graph removal.
 Accepted residue: graph removal/shrink may have committed while tracking rows
 still describe the removed objects or wider evidence. New/target attribution is
 staged first, so this residue contains surplus provenance rather than losing it.
-Before the removal/shrink region, `operation.metadata.tracking_recovery` records
+Before the first immediate graph removal/shrinking upsert (not merely before an
+`index_done_callback`), `operation.metadata.tracking_recovery` records
 the exact namespace and key of every row to retire/reconcile. Durable resource
 locks retain the affected entity names too. This evidence survives process death;
 logs and retrying rename are not a recovery mechanism (the target may exist).

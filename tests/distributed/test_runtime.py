@@ -349,3 +349,23 @@ async def test_storage_cannot_change_workspace_after_runtime_binding():
     async with runtime.operation("write"):
         with pytest.raises(OperationOwnershipError):
             await Storage().upsert()
+
+
+async def test_finalization_body_failure_after_admission_still_closes():
+    from lightrag.distributed.runtime import finalization_guard
+    from unittest.mock import AsyncMock
+
+    runtime, c = make_runtime()
+    c.close = AsyncMock()
+
+    class SDK:
+        _distributed_runtime = runtime
+
+        @finalization_guard
+        async def finalize(self):
+            raise RuntimeError("finalization failed after admission")
+
+    with pytest.raises(RuntimeError, match="after admission"):
+        await SDK().finalize()
+    c.close.assert_awaited_once()
+    assert runtime.closed

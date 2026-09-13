@@ -1182,6 +1182,11 @@ async def _edit_entity_impl(
                     f"Entity Edit: find {len(final_chunk_ids)} chunks related to `{entity_name}`"
                 )
 
+        if pending_entity_shrink is not None:
+            # Immediate graph stores can commit before their await returns.
+            await record_tracking_recovery(
+                [(entity_chunks_storage, entity_tracking_key)]
+            )
         try:
             await chunk_entity_relation_graph.upsert_node(entity_name, new_node_data)
         except BaseException as e:
@@ -1501,16 +1506,8 @@ async def _edit_entity_impl(
     # deferred cancellation reappears, and it ENDS after the tracking is
     # settled -- retired on a rename, shrunk on a non-rename edit -- because
     # everything it owes the graph state has to survive a cancel.
-    await record_tracking_recovery(
-        [
-            *tracking_keys_to_retire,
-            *(
-                ([(entity_chunks_storage, entity_tracking_key)])
-                if entity_tracking_key
-                else []
-            ),
-        ]
-    )
+    if is_renaming:
+        await record_tracking_recovery(tracking_keys_to_retire)
     await _finish_deferring_cancellation(
         _commit_graph_and_settle_tracking(),
         f"Entity Edit: `{original_entity_name}` graph and tracking cleanup",
@@ -2117,7 +2114,11 @@ async def aedit_relation(
                         f"Relation Edit: update chunk tracking for `{source_entity}`~`{target_entity}`"
                     )
 
-            # 4. Update relation information in the graph
+            # 4. Record shrink recovery before the immediate graph write.
+            if pending_tracking_shrink is not None:
+                await record_tracking_recovery(
+                    [(relation_chunks_storage, tracking_storage_key)]
+                )
             try:
                 await chunk_entity_relation_graph.upsert_edge(
                     source_entity, target_entity, new_edge_data
@@ -2252,9 +2253,6 @@ async def aedit_relation(
             # deferred cancellation reappears, and it ENDS after the tracking is
             # settled, because the narrowing the durable edge now owes its row
             # has to survive a cancel.
-            await record_tracking_recovery(
-                [(relation_chunks_storage, tracking_storage_key)]
-            )
             await _finish_deferring_cancellation(
                 _commit_graph_and_settle_tracking(),
                 f"Relation Edit: `{source_entity}`~`{target_entity}` graph commit "

@@ -323,3 +323,121 @@ async def test_real_chunk_cache_attribution_union_survives_stale_concurrent_snap
     assert set(
         (await peer.text_chunks.get_by_id("shared-chunk"))["llm_cache_list"]
     ) == {"cache-a", "cache-b"}
+
+
+@pytest.mark.parametrize("edit_kind", ["entity", "relation", "allow_merge"])
+@pytest.mark.parametrize("failure", ["ack_loss", "cancel"])
+async def test_real_shrink_journal_precedes_immediate_graph_commit(
+    runtime_rags, monkeypatch, edit_kind, failure
+):
+    from lightrag.distributed import CoordinationError
+    from lightrag.utils import make_relation_chunk_key
+
+    rag, peer = runtime_rags
+    old_sources = GRAPH_FIELD_SEP.join(["chunk-a", "chunk-b"])
+    await rag.acreate_entity("A", {"description": "A", "source_id": old_sources})
+    await rag.acreate_entity("B", {"description": "B", "source_id": ""})
+    if edit_kind == "relation":
+        await rag.acreate_relation(
+            "A",
+            "B",
+            {
+                "description": "R",
+                "keywords": "R",
+                "source_id": old_sources,
+                "weight": 2,
+            },
+        )
+    graph = rag.chunk_entity_relation_graph
+    original = graph._client.request
+    runtime = rag._distributed_runtime
+    before_commit = []
+
+    async def uncertain_request(method, path, *args, **kwargs):
+        target = (
+            "/graph/edges/batch" if edit_kind == "relation" else "/graph/vertices/batch"
+        )
+        if method == "POST" and path.endswith(target):
+            state = await runtime.coordinator.inspect()
+            op = next(
+                row
+                for row in state["operations"]
+                if row["id"] == str(runtime.permit().operation.id)
+            )
+            before_commit.append(op["metadata"].get("tracking_recovery"))
+            await original(method, path, *args, **kwargs)
+            if failure == "cancel":
+                raise asyncio.CancelledError()
+            raise ConnectionResetError("graph committed but response lost")
+        return await original(method, path, *args, **kwargs)
+
+    monkeypatch.setattr(graph._client, "request", uncertain_request)
+    if edit_kind == "relation":
+        edit = rag.aedit_relation("A", "B", {"source_id": "chunk-a"})
+        key = make_relation_chunk_key("A", "B")
+        namespace = "relation_chunks"
+        tracking = peer.relation_chunks
+    else:
+        data = {"source_id": "chunk-a"}
+        if edit_kind == "allow_merge":
+            data["entity_name"] = "B"
+        edit = rag.aedit_entity("A", data, allow_merge=edit_kind == "allow_merge")
+        key, namespace, tracking = "A", "entity_chunks", peer.entity_chunks
+    with pytest.raises(
+        asyncio.CancelledError if failure == "cancel" else CoordinationError
+    ):
+        await edit
+    assert before_commit == [[{"namespace": namespace, "key": key}]]
+    state = await runtime.coordinator.inspect()
+    assert state["fenced"]
+    assert set((await tracking.get_by_id(key))["chunk_ids"]) == {"chunk-a", "chunk-b"}
+    actual = (
+        await peer.chunk_entity_relation_graph.get_edge("A", "B")
+        if edit_kind == "relation"
+        else await peer.chunk_entity_relation_graph.get_node("A")
+    )
+    assert actual["source_id"] == "chunk-a"
+    with pytest.raises(WorkspaceFencedError):
+        await peer.acreate_entity("Denied", {"description": "fenced"})
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+async def test_real_finalize_admission_failure_preserves_active_writer(
+    runtime_rags, cancel
+):
+    from lightrag.distributed import CoordinationBusyError
+
+    rag, peer = runtime_rags
+    runtime = rag._distributed_runtime
+    runtime.coordinator.wait_timeout = 5 if cancel else 0.05
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def write():
+        async with runtime.operation("active_ingest"):
+            entered.set()
+            await release.wait()
+            await rag.full_docs.upsert({"continued": {"content": "still active"}})
+
+    writer = asyncio.create_task(write())
+    await entered.wait()
+    finalizer = asyncio.create_task(rag.finalize_storages())
+    try:
+        if cancel:
+            await asyncio.sleep(0.03)
+            assert not finalizer.done()
+            finalizer.cancel()
+        with pytest.raises(asyncio.CancelledError if cancel else CoordinationBusyError):
+            await asyncio.wait_for(finalizer, 2)
+        assert not runtime.closed
+        assert rag.full_docs.db is runtime.db
+        release.set()
+        await asyncio.wait_for(writer, 2)
+        assert (await peer.full_docs.get_by_id("continued"))[
+            "content"
+        ] == "still active"
+        assert not (await runtime.coordinator.inspect())["fenced"]
+    finally:
+        release.set()
+        if not writer.done():
+            await writer
