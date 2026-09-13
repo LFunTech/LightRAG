@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-实施中。proposal/design/spec/tasks 已完成并通过 OpenSpec strict，但这不代表多 Pod 功能已可用。协调原语与核心写保护已完成审查、修复和独立测试复跑；流水线、API 和部署仍需接入并逐项验证，不能作为已交付能力宣传。
+实施中。proposal/design/spec/tasks 已完成并通过 OpenSpec strict，但这不代表多 Pod 功能已可用。协调原语与核心写保护已完成审查、修复和独立测试复跑；流水线/API 实现已提交并复跑测试，独立审查中；部署和独立业务进程验收尚未完成，不能作为已交付能力宣传。
 
 ## 环境与安全边界
 
@@ -61,6 +61,21 @@ PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh \
 独立审查发现三个 Important：finalize 未取得 admission 仍关闭连接、maintenance 在校验前复用 vector ALTER/DROP helper、shrinking edit 的恢复 journal 晚于即时图写。修复 commit `b840c5542` 后，限定复核 T2-I1/I2/I3 均 ADDRESSED，spec/quality 通过。
 
 修复版由主 agent 独立复跑 `tests/distributed tests/kg/postgres_impl tests/utils tests/pipeline tests/test_docstring_budget.py`，**1926 passed、55 skipped，41.88 秒**；真实 `tests/distributed --run-integration` 为 **127 passed，6.28 秒**。新增真实案例验证 finalize 拒绝/取消后原 writer 仍可提交，以及 entity/relation/allow_merge 在实际图提交后 ACK 丢失或取消时，请求前已持久化精确 tracking 目标。只有 Task 2 的 2.1–2.4 在此阶段勾选，未提前勾选调度/API/部署。
+
+### 流水线与 API（Task 3，审查中）
+
+实现 commit `9606156da`：v002 持久暂停/重试 target/progress、领取后严格读回的有界调度、周期扫描、真实 worker 复用、完整 enqueue 窗口、API/共享文件/后台操作门、分布式状态、force_reset 拒绝、关闭排空和维护构造入口。v001 SQL/checksum 不变。任务勾选表示实现检查点，不代替尚未结束的独立审查。
+
+主 agent 在提交后独立复跑：
+
+```bash
+PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh \
+  tests/distributed tests/pipeline tests/api tests/kg/postgres_impl \
+  tests/test_docstring_budget.py -q \
+  -k 'not test_destructive_route_requires_auth_under_a_colliding_prefix'
+```
+
+结果：**2825 passed、99 skipped、2 deselected，63.51 秒**。排除项恰为修改前已确认的两个 401/403 鉴权状态码基线；不是新增失败。专用 PG/HugeGraph 环境下执行 `tests/distributed tests/api/routes/test_distributed_controls.py --run-integration -q`：**156 passed，11.56 秒**。包括实际 HTTP handlers/鉴权、双 runtime 文档处理与共享实体、pause/retry、跨实例 scan 状态和错误尾路径。业务仍为同 OS 进程测试，不能替代 Task 4 的独立进程验收。
 
 ## 最终验收矩阵
 
