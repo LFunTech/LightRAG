@@ -362,7 +362,7 @@ LightRAG 需要使用到 4 种后台存储类型，分别是：
 
 **4 种默认存储全部都是内存数据库**（`JsonKVStorage`、`NanoVectorDBStorage`、`NetworkXStorage`、`JsonDocStatusStorage`）：全部数据常驻服务进程的内存中，`WORKING_DIR` 下的本地文件仅用于持久化，因此容量受可用内存限制。默认存储**仅适合小数据量的测试、效果评估与开发调试，不能用于生产环境部署**。
 
-生产环境**推荐使用 PostgreSQL** —— 它可以独自承担全部 4 种类型的后台存储；MongoDB 与 OpenSearch 是另外两个单一后端方案。也可以单独为向量存储或图存储选择专业化的数据库，例如使用 Milvus 或 Qdrant 作为向量存储，使用 Neo4j 或 Memgraph 作为图存储。
+生产环境**推荐使用 PostgreSQL** —— 它可以独自承担全部 4 种类型的后台存储；MongoDB 与 OpenSearch 是另外两个单一后端方案。也可以单独为向量存储或图存储选择专业化的数据库，例如使用 Milvus 或 Qdrant 作为向量存储，使用 Neo4j、Memgraph 或 [HugeGraph](./docs/HugeGraphStorage.md) 作为图存储。
 
 各存储类型的完整可选实现列表，请参考 [支持的存储类型](./docs/LightRAG-API-Server-zh.md#支持的存储类型)。
 

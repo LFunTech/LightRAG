@@ -1312,6 +1312,9 @@ collect_database_config() {
     memgraph)
       collect_memgraph_config "$default_docker"
       ;;
+    hugegraph)
+      collect_hugegraph_config
+      ;;
     opensearch)
       collect_opensearch_config "$default_docker"
       ;;
@@ -1663,6 +1666,41 @@ collect_memgraph_config() {
   else
     set_compose_override "MEMGRAPH_URI" ""
   fi
+}
+
+collect_hugegraph_config() {
+  local auth_default="none" auth_mode schema_default
+  local username="" password="" token=""
+
+  log_info "HugeGraph uses an existing external service; no Docker service will be created."
+  ENV_VALUES[HUGEGRAPH_URI]="$(prompt_until_valid "HugeGraph URI" "${ENV_VALUES[HUGEGRAPH_URI]:-http://localhost:8080}" validate_uri hugegraph)"
+  ENV_VALUES[HUGEGRAPH_GRAPH]="$(prompt_until_valid "HugeGraph graph" "${ENV_VALUES[HUGEGRAPH_GRAPH]:-hugegraph}" validate_hugegraph_name)"
+  ENV_VALUES[HUGEGRAPH_GRAPHSPACE]="$(prompt_until_valid "HugeGraph graphspace" "${ENV_VALUES[HUGEGRAPH_GRAPHSPACE]:-DEFAULT}" validate_hugegraph_name)"
+
+  if [[ -n "${ENV_VALUES[HUGEGRAPH_TOKEN]:-}" ]]; then
+    auth_default="token"
+  elif [[ -n "${ENV_VALUES[HUGEGRAPH_USERNAME]:-}${ENV_VALUES[HUGEGRAPH_PASSWORD]:-}" ]]; then
+    auth_default="basic"
+  fi
+  auth_mode="$(prompt_choice "HugeGraph authentication" "$auth_default" "none" "basic" "token")"
+  case "$auth_mode" in
+    basic)
+      username="$(prompt_until_valid "HugeGraph username" "${ENV_VALUES[HUGEGRAPH_USERNAME]:-}" validate_non_empty)"
+      password="$(prompt_secret_until_valid_with_default "HugeGraph password: " "${ENV_VALUES[HUGEGRAPH_PASSWORD]:-}" validate_non_empty)"
+      ;;
+    token)
+      token="$(prompt_secret_until_valid_with_default "HugeGraph token: " "${ENV_VALUES[HUGEGRAPH_TOKEN]:-}" validate_non_empty)"
+      ;;
+  esac
+  ENV_VALUES[HUGEGRAPH_USERNAME]="$username"
+  ENV_VALUES[HUGEGRAPH_PASSWORD]="$password"
+  ENV_VALUES[HUGEGRAPH_TOKEN]="$token"
+  ENV_VALUES[HUGEGRAPH_TIMEOUT]="$(prompt_until_valid "HugeGraph request timeout (seconds)" "${ENV_VALUES[HUGEGRAPH_TIMEOUT]:-30}" validate_positive_number)"
+  ENV_VALUES[HUGEGRAPH_BATCH_SIZE]="$(prompt_until_valid "HugeGraph batch size" "${ENV_VALUES[HUGEGRAPH_BATCH_SIZE]:-100}" validate_positive_integer)"
+  ENV_VALUES[HUGEGRAPH_MAX_CONNECTIONS]="$(prompt_until_valid "HugeGraph maximum connections" "${ENV_VALUES[HUGEGRAPH_MAX_CONNECTIONS]:-10}" validate_positive_integer)"
+  ENV_VALUES[HUGEGRAPH_RETRIES]="$(prompt_until_valid "HugeGraph read retries (0-10; writes are never retried)" "${ENV_VALUES[HUGEGRAPH_RETRIES]:-2}" validate_hugegraph_retries)"
+  schema_default="${ENV_VALUES[HUGEGRAPH_AUTO_CREATE_SCHEMA]:-true}"
+  ENV_VALUES[HUGEGRAPH_AUTO_CREATE_SCHEMA]="$(prompt_choice "HugeGraph auto-create dedicated schema" "${schema_default,,}" "true" "false")"
 }
 
 collect_opensearch_config() {
@@ -2645,7 +2683,7 @@ finalize_base_setup() {
 env_storage_flow() {
   local env_file="${REPO_ROOT}/.env"
   local db_type
-  local db_order=("postgresql" "neo4j" "mongodb" "redis" "milvus" "qdrant" "memgraph" "opensearch")
+  local db_order=("postgresql" "neo4j" "mongodb" "redis" "milvus" "qdrant" "memgraph" "hugegraph" "opensearch")
 
   if [[ ! -f "$env_file" ]]; then
     format_error "No .env file found." "Run 'make env-base' first to configure LLM and embedding."

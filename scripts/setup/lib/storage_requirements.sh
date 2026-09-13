@@ -15,6 +15,7 @@ declare -ag GRAPH_STORAGE_OPTIONS=(
   "MongoGraphStorage"
   "OpenSearchGraphStorage"
   "MemgraphStorage"
+  "HugeGraphStorage"
   "Neo4JStorage"
   "PGGraphStorage"
 )
@@ -47,6 +48,7 @@ declare -Ag STORAGE_ENV_REQUIREMENTS=(
   ["Neo4JStorage"]="NEO4J_URI NEO4J_USERNAME NEO4J_PASSWORD"
   ["MongoGraphStorage"]="MONGO_URI MONGO_DATABASE"
   ["MemgraphStorage"]="MEMGRAPH_URI"
+  ["HugeGraphStorage"]="HUGEGRAPH_URI"
   ["PGGraphStorage"]="POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DATABASE"
   ["PGTableGraphStorage"]="POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DATABASE"
   ["OpenSearchGraphStorage"]="OPENSEARCH_HOSTS OPENSEARCH_USER OPENSEARCH_PASSWORD"
@@ -78,6 +80,7 @@ declare -Ag STORAGE_DB_TYPES=(
   ["PGDocStatusStorage"]="postgresql"
   ["Neo4JStorage"]="neo4j"
   ["MemgraphStorage"]="memgraph"
+  ["HugeGraphStorage"]="hugegraph"
   ["MilvusVectorDBStorage"]="milvus"
   ["QdrantVectorDBStorage"]="qdrant"
   ["OpenSearchKVStorage"]="opensearch"

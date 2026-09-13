@@ -24,6 +24,9 @@ validate_uri() {
     milvus|qdrant)
       [[ "$uri" =~ ^https?://.+ ]]
       return $?; ;;
+    hugegraph)
+      validate_hugegraph_uri "$uri"
+      return $?; ;;
     memgraph)
       [[ "$uri" =~ ^bolt://.+ ]]
       return $?; ;;
@@ -82,6 +85,89 @@ validate_non_negative_integer() {
   fi
 
   (( 10#$value >= 0 ))
+}
+
+validate_positive_number() {
+  local value="$1"
+  [[ "$value" =~ ^[+]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$ ]] || return 1
+  LC_ALL=C awk -v value="$value" 'BEGIN {
+    number = value + 0
+    exit !(number > 0 && tolower(sprintf("%g", number)) !~ /inf|nan/)
+  }'
+}
+
+validate_hugegraph_uri() {
+  local uri="$1" authority port=""
+  [[ "$uri" =~ ^https?://[^/]+ ]] || return 1
+  [[ "$uri" != *'?'* && "$uri" != *'#'* && ! "$uri" =~ [[:space:][:cntrl:]] ]] || return 1
+  authority="${uri#*://}"
+  authority="${authority%%/*}"
+  [[ "$authority" != *'@'* ]] || return 1
+  if [[ "$authority" == '['* ]]; then
+    [[ "$authority" =~ ^\[[0-9a-fA-F:.%]+\](:([0-9]+))?$ ]] || return 1
+    port="${BASH_REMATCH[2]:-}"
+  elif [[ "$authority" == *':'* ]]; then
+    [[ "$authority" =~ ^[^:]+:([0-9]+)$ ]] || return 1
+    port="${BASH_REMATCH[1]}"
+  fi
+  [[ -z "$port" ]] || validate_port "$port"
+}
+
+validate_hugegraph_name() {
+  local value="$1"
+  [[ "$value" =~ [^[:space:]] && ! "$value" =~ [[:cntrl:]] && "$value" != '.' && "$value" != '..' ]]
+}
+
+validate_hugegraph_retries() {
+  local value="$1"
+  validate_non_negative_integer "$value" && (( 10#$value <= 10 ))
+}
+
+validate_hugegraph_config() {
+  local key value
+  local username="${ENV_VALUES[HUGEGRAPH_USERNAME]:-}"
+  local password="${ENV_VALUES[HUGEGRAPH_PASSWORD]:-}"
+  local token="${ENV_VALUES[HUGEGRAPH_TOKEN]:-}"
+  if ! validate_hugegraph_uri "${ENV_VALUES[HUGEGRAPH_URI]:-}"; then
+    format_error "Invalid HUGEGRAPH_URI" "Use an HTTP(S) service root without embedded credentials, query parameters, or fragment."
+    return 1
+  fi
+  if [[ -n "$username" && -z "$password" || -z "$username" && -n "$password" || -n "$token" && -n "$username$password" ]]; then
+    format_error "Invalid HugeGraph authentication" "Supply both HUGEGRAPH_USERNAME and HUGEGRAPH_PASSWORD, or only HUGEGRAPH_TOKEN, or neither."
+    return 1
+  fi
+  for key in HUGEGRAPH_USERNAME HUGEGRAPH_PASSWORD HUGEGRAPH_TOKEN; do
+    if [[ "${ENV_VALUES[$key]:-}" =~ [[:cntrl:]] ]]; then
+      format_error "Invalid $key" "Credentials must not contain control characters."
+      return 1
+    fi
+  done
+  if ! validate_hugegraph_name "${ENV_VALUES[HUGEGRAPH_GRAPH]-hugegraph}" || \
+    ! validate_hugegraph_name "${ENV_VALUES[HUGEGRAPH_GRAPHSPACE]-DEFAULT}"; then
+    format_error "Invalid HugeGraph graph or graphspace" "Use non-blank names without control characters; '.' and '..' are not allowed."
+    return 1
+  fi
+  if ! validate_positive_number "${ENV_VALUES[HUGEGRAPH_TIMEOUT]-30}"; then
+    format_error "Invalid HUGEGRAPH_TIMEOUT" "Use a finite positive number of seconds."
+    return 1
+  fi
+  for key in HUGEGRAPH_BATCH_SIZE HUGEGRAPH_MAX_CONNECTIONS; do
+    value="100"
+    [[ "$key" != "HUGEGRAPH_MAX_CONNECTIONS" ]] || value="10"
+    if ! validate_positive_integer "${ENV_VALUES[$key]-$value}"; then
+      format_error "Invalid $key" "Use a positive integer."
+      return 1
+    fi
+  done
+  if ! validate_hugegraph_retries "${ENV_VALUES[HUGEGRAPH_RETRIES]-2}"; then
+    format_error "Invalid HUGEGRAPH_RETRIES" "Use an integer from 0 to 10; only reads are retried."
+    return 1
+  fi
+  value="${ENV_VALUES[HUGEGRAPH_AUTO_CREATE_SCHEMA]-true}"
+  if [[ "${value,,}" != true && "${value,,}" != false ]]; then
+    format_error "Invalid HUGEGRAPH_AUTO_CREATE_SCHEMA" "Use true or false."
+    return 1
+  fi
 }
 
 validate_non_empty() {
@@ -223,6 +309,12 @@ validate_required_variables() {
     format_error "Missing required variables: ${missing[*]}" "Fill them in .env or re-run setup."
     return 1
   fi
+
+  for storage in "${storages[@]}"; do
+    if [[ "$storage" == "HugeGraphStorage" ]]; then
+      validate_hugegraph_config || return 1
+    fi
+  done
 
   return 0
 }

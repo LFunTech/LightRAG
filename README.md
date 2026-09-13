@@ -362,7 +362,7 @@ LightRAG requires four types of backend storage:
 
 **All four default storages are in-memory databases** (`JsonKVStorage`, `NanoVectorDBStorage`, `NetworkXStorage`, `JsonDocStatusStorage`): the whole dataset resides in the server process's memory and local files under `WORKING_DIR` serve only as persistence, so capacity is bounded by available RAM. The defaults are therefore intended **only for small-scale testing, evaluation, and debugging, and are not suitable for production**.
 
-For production, **PostgreSQL is the recommended backend** — it can serve all four storage types on its own; MongoDB and OpenSearch are the other single-backend options. Alternatively, you can select specialized databases for vector or graph storage, such as using Milvus or Qdrant for vector storage, and Neo4j or Memgraph for graph storage.
+For production, **PostgreSQL is the recommended backend** — it can serve all four storage types on its own; MongoDB and OpenSearch are the other single-backend options. Alternatively, you can select specialized databases for vector or graph storage, such as using Milvus or Qdrant for vector storage, and Neo4j, Memgraph, or [HugeGraph](./docs/HugeGraphStorage.md) for graph storage.
 
 For the complete list of available implementations per storage type, see [Storage Types Supported](./docs/LightRAG-API-Server.md#storage-types-supported).
 

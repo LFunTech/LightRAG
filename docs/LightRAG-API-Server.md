@@ -553,9 +553,10 @@ The command-line `workspace` argument and the `WORKSPACE` environment variable i
 - **For Qdrant vector database, data isolation is achieved through payload-based partitioning (Qdrant's recommended multitenancy approach):** `QdrantVectorDBStorage` uses shared collections with payload filtering for unlimited workspace scalability.
 - **For relational databases, data isolation is achieved by adding a `workspace` field to the tables for logical data separation:** `PGKVStorage`, `PGVectorStorage`, `PGDocStatusStorage`.
 - **For graph databases, logical data isolation is achieved through labels:** `Neo4JStorage`, `MemgraphStorage`
+- **For HugeGraph, logical isolation uses dedicated labels plus a workspace/namespace scope property:** `HugeGraphStorage`. Scope is not an ACL; use deployment-side graph permissions for security isolation. See [HugeGraphStorage.md](./HugeGraphStorage.md).
 - **For OpenSearch, data isolation is achieved through index name prefixes:** `OpenSearchKVStorage`, `OpenSearchDocStatusStorage`, `OpenSearchGraphStorage`, `OpenSearchVectorDBStorage`
 
-To maintain compatibility with legacy data, the default workspace for PostgreSQL is `default` and for Neo4j is `base` when no workspace is configured. For all external storages, the system provides dedicated workspace environment variables to override the common `WORKSPACE` environment variable configuration. These storage-specific workspace environment variables are: `REDIS_WORKSPACE`, `MILVUS_WORKSPACE`, `QDRANT_WORKSPACE`, `MONGODB_WORKSPACE`, `POSTGRES_WORKSPACE`, `NEO4J_WORKSPACE`, `MEMGRAPH_WORKSPACE`, `OPENSEARCH_WORKSPACE`.
+To maintain compatibility with legacy data, the default workspace for PostgreSQL is `default` and for Neo4j is `base` when no workspace is configured. Some external storages retain dedicated workspace environment variables to override the common `WORKSPACE` configuration: `REDIS_WORKSPACE`, `MILVUS_WORKSPACE`, `QDRANT_WORKSPACE`, `MONGODB_WORKSPACE`, `POSTGRES_WORKSPACE`, `NEO4J_WORKSPACE`, `MEMGRAPH_WORKSPACE`, `OPENSEARCH_WORKSPACE`. HugeGraph uses the common workspace only; it has no backend-specific workspace override.
 
 ### Multiple workers for Gunicorn + Uvicorn
 
@@ -909,10 +910,12 @@ Each storage type offers multiple implementations. By default, LightRAG Server u
 |---|---|
 | KV_STORAGE | `JsonKVStorage`, `RedisKVStorage`, `PGKVStorage`, `MongoKVStorage`, `OpenSearchKVStorage` |
 | VECTOR_STORAGE | `NanoVectorDBStorage`, `MilvusVectorDBStorage`, `PGVectorStorage`, `FaissVectorDBStorage`, `QdrantVectorDBStorage`, `MongoVectorDBStorage`, `OpenSearchVectorDBStorage` |
-| GRAPH_STORAGE | `NetworkXStorage`, `Neo4JStorage`, `PGTableGraphStorage`, `PGGraphStorage`, `MongoGraphStorage`, `MemgraphStorage`, `OpenSearchGraphStorage` |
+| GRAPH_STORAGE | `NetworkXStorage`, `Neo4JStorage`, `PGTableGraphStorage`, `PGGraphStorage`, `MongoGraphStorage`, `MemgraphStorage`, `HugeGraphStorage`, `OpenSearchGraphStorage` |
 | DOC_STATUS_STORAGE | `JsonDocStatusStorage`, `RedisDocStatusStorage`, `PGDocStatusStorage`, `MongoDocStatusStorage`, `OpenSearchDocStatusStorage` |
 
-For production deployments, PostgreSQL (recommended), MongoDB, or OpenSearch can provide all four storage types through a single backend. You can also select a specialized database for each storage type, such as Milvus or Qdrant for vector storage and Neo4j or Memgraph for graph storage.
+For production deployments, PostgreSQL (recommended), MongoDB, or OpenSearch can provide all four storage types through a single backend. You can also select a specialized database for each storage type, such as Milvus or Qdrant for vector storage and Neo4j, Memgraph, or HugeGraph for graph storage.
+
+**HugeGraph:** `HugeGraphStorage` connects to an existing external HugeGraph 1.7.x service, creates or validates only its dedicated schema, and does not migrate existing graph data. `make env-storage` supports external-service configuration without creating a HugeGraph compose service. See [HugeGraphStorage.md](./HugeGraphStorage.md) for authentication, schema, logical isolation, writer coordination, and recovery boundaries.
 
 **PostgreSQL Graph Storage — prefer `PGTableGraphStorage`:** For new PostgreSQL deployments, `PGTableGraphStorage` is the recommended `GRAPH_STORAGE` implementation and supersedes `PGGraphStorage`. It keeps the entity-relation graph in ordinary tables — JSONB properties plus B-tree indexes — instead of going through Apache AGE, which brings two practical advantages:
 
@@ -932,9 +935,10 @@ The environment variables required at startup for each storage implementation ar
 | `MilvusVectorDBStorage` | `MILVUS_URI`, `MILVUS_DB_NAME` |
 | `QdrantVectorDBStorage` | `QDRANT_URL` (`QDRANT_API_KEY` is optional) |
 | `MemgraphStorage` | `MEMGRAPH_URI` |
+| `HugeGraphStorage` | `HUGEGRAPH_URI` (optional Basic credentials must be paired; token authentication is mutually exclusive) |
 | `OpenSearchKVStorage` / `OpenSearchVectorDBStorage` / `OpenSearchGraphStorage` / `OpenSearchDocStatusStorage` | `OPENSEARCH_HOSTS` |
 
-The `WORKSPACE` environment variable isolates data for multiple LightRAG instances on the same backend (valid characters are `a-z`, `A-Z`, `0-9`, and `_`). Each storage backend also provides a backend-specific override such as `POSTGRES_WORKSPACE` or `NEO4J_WORKSPACE`. These overrides are retained only for compatibility with legacy configurations; under normal circumstances, use `WORKSPACE` consistently.
+The `WORKSPACE` environment variable isolates data for multiple LightRAG instances on the same backend (valid characters are `a-z`, `A-Z`, `0-9`, and `_`). Some backends also provide overrides such as `POSTGRES_WORKSPACE` or `NEO4J_WORKSPACE`. These overrides are retained only for compatibility with legacy configurations; under normal circumstances, use `WORKSPACE` consistently. HugeGraph does not provide a backend-specific workspace override.
 
 The table above lists only the connection parameters required at startup. Each storage implementation also provides many optional tuning environment variables, including connection pool sizes, SSL settings, sharding thresholds for batch writes and deletions, and vector index parameters. For the complete list and default values, see the repository's root-level `env.example`, where the variables are grouped by storage backend and include detailed comments.
 
