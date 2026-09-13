@@ -46,6 +46,6 @@ Ownership: `lightrag/pipeline.py`、`lightrag/distributed/pipeline.py`（可选�
 - [x] 4.1 文档/env/Helm 配置支持完整推荐部署：受支持外部数据库、同路径共享 RWX 卷、Secret、迁移维护入口、多个写 Pod、升级/回退和恢复 runbook；默认单副本不变。
 - [x] 4.2 真实 PostgreSQL + HugeGraph 的独立进程集成测试：真实重叠写、共享实体来源/weight、重复文档、kill/ACK 丢失与重建协调器后 fence、跨存储失败恢复、维护竞争；不得只测两个共享 Manager 实例。
 - [x] 4.3 运行相关 mirror 子集、跨切面里程碑全量测试、Ruff/format/配置验证、OpenSpec strict，记录准确范围、通过数与未验证项。
-- [ ] 4.4 独立最终代码审查，修复重要问题；逐条对照 spec 更新 tasks/verification，不把 foundation 或 mock 测试当完整多 Pod 交付。
+- [x] 4.4 独立最终代码审查，修复重要问题；逐条对照 spec 更新 tasks/verification，不把 foundation 或 mock 测试当完整多 Pod 交付。
 
 Ownership: docs/env/Helm、集成 tests、OpenSpec verification；不实际部署 Kubernetes，不改正在运行的本地测试配置，不自动清理既有业务 scope。编排环境验证若未执行必须明确标注，独立进程测试不能伪称 kubectl 多 Pod 测试。

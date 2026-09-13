@@ -134,6 +134,34 @@ PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh tests --test-work
 
 Task 4 独立 scoped review：spec compliant、quality Approved，无 Critical/Important；Minor T4-M1（`AUTH_ACCOUNTS` 清单还应列出 `TOKEN_SECRET`）交由整分支最终审查统一处理。4.3 已完成准确记录；4.4 整分支最终审查仍待执行，不据此提前声称交付完成。
 
+### 整分支审查修复与独立复跑
+
+整分支审查覆盖 `3d51af555..f9f67dd3c`。发现两个 Important：FR-I1（持久 retry 意图与 resume 分两次提交，暂停时接受者退出导致轮询无法继续）和 FR-I2（scan 使用旧 starter 丢失 typed admission 错误）；另有 FR-M1（HugeGraph 旧恢复指南缺 local-only 限定）和 T4-M1（账号鉴权 Secret 缺 `TOKEN_SECRET` 说明）。它们统一修复于 `03a5496c5`，不是改成自动 HA：
+
+- 新 request ID 的 intent/resume 同一 PG 事务提交；重复 pending/completed ID 不撤销后来的 pause，不重置 cutoff、epoch 或尝试次数。实际独立进程在第一笔事务已提交、SDK 响应前被 SIGKILL 后，另一进程通过普通 polling 处理一次已提交 retry。
+- scan 使用现有 cleanup-priority adapter；实际 HTTP 验证 busy 409、unavailable 503、取消传播、失败后台 join、已提交 intent 留存和鉴权仍有效。
+- HugeGraph 主指南区分 local 与 durable recovery；账号模式要求副本一致的强随机非默认 `TOKEN_SECRET`。
+
+新增定向回归先红后绿：HTTP `2 failed / 1 passed → 3 passed`；真实控制/业务路径 `5 failed / 1 passed → 6 passed`。加强后的首次真实 commit 断点对原实现反证 `1 failed`，修复后 `1 passed`。实现侧 mirror 子集 `1626 passed / 108 skipped`、真实集成 `193 passed`、doc-budget `16 passed`。
+
+主 agent 对 `eff5915b8`（`03a5496c5` 后只有报告提交）独立复跑：
+
+```bash
+PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh \
+  tests/pipeline tests/api/routes tests/distributed \
+  tests/api/test_distributed_background_start.py tests/test_docstring_budget.py \
+  --basetemp=/tmp/lightrag-distributed-root-finalfix-mirror
+
+# 配置专用 PG/HugeGraph 测试环境及 LIGHTRAG_TEST_COORDINATION_DSN 后：
+PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh \
+  tests/distributed tests/api/routes/test_distributed_controls.py \
+  tests/api/routes/test_distributed_scan_start.py \
+  tests/api/test_distributed_background_start.py tests/setup/test_distributed_chart.py \
+  --run-integration --basetemp=/tmp/lightrag-distributed-root-finalfix-real
+```
+
+结果分别 **1642 passed、108 skipped，49.94 秒**；**205 passed，38.84 秒**。范围重叠，不相加冒称独立测试总数。全仓 Ruff、全部 41 个变更 Python 文件格式、分支 diff-check 和 OpenSpec strict 再次通过。日志为 `/tmp/lightrag-distributed-root-finalfix-{mirror,real}.log`。此窄修复后未再次运行无关全量；前述全量里程碑是修复前版本且保留两项已知基线失败，不声称最终树全量全绿。最终限定复审覆盖 `f9f67dd3c..eff5915b8`，FR-I1、FR-I2、FR-M1、T4-M1 全部 ADDRESSED，无新增问题、无遗留项，spec/quality Approved。整分支审查提出的阻断项均已解除，4.4 完成；不意味着已在集群发布或全量测试无基线失败。修复原始报告保存在 [final-fix-report.md](final-fix-report.md)。
+
 ## 最终验收矩阵
 
 | 合同 | 已有证据 | 状态 |
@@ -142,7 +170,23 @@ Task 4 独立 scoped review：spec compliant、quality Approved，无 Critical/I
 | 同 workspace 真并行、共享实体不丢来源 | 独立进程/Manager + 真实 PG/HugeGraph + 生产 pipeline + HTTP 时间交叠 | Task 4 已验证 |
 | 领取先于修复、分页/丢通知/FAILED 人工重试 | 既有调度矩阵 + 独立进程重复解析计数/周期发现/重启 retry | 已验证 |
 | 持久 pending 与异常拒绝 | 既有 SQL ACK/permit 矩阵 + 独立业务进程实际 HG ACK 丢失/SIGKILL | 已验证 |
-| 全 SDK/API/后台/维护入口 | Task 2–3 已审查矩阵 + 独立维护竞争 + 实际 bootstrap CLI | 定向通过，待最终 review |
+| 全 SDK/API/后台/维护入口 | Task 2–3 已审查矩阵 + 独立维护竞争 + 实际 bootstrap CLI | 已验证，最终审查通过 |
 | 跨存储可恢复进度和 attribution anchors | 实际图已提交、向量未提交、锚点保留 → 审计 recover → 原生产 purge | Task 4 已验证 |
-| 运维迁移、诊断恢复及部署 | 实际 CLI、Helm lint/template/YAML、runbook/离线操作路径 | 实现侧通过；未实际部署集群 |
-| 整体质量门 | Ruff/format、OpenSpec strict、定向 mirror | 全量已执行并披露两项基线失败；独立最终 review 待完成 |
+| 运维迁移、诊断恢复及部署 | 实际 CLI、Helm lint/template/YAML、runbook/离线操作路径 | 实现与审查通过；未实际部署集群 |
+| 整体质量门 | Ruff/format、OpenSpec strict、定向 mirror | 最终审查与修复复核通过；全量两项基线失败如实保留 |
+
+## 实施裁定与代价
+
+本记录保留执行账本中的全部裁定，按发生顺序排列：
+
+1. 使用本仓库 Python/PostgreSQL/pytest 约定，不套用通用 skill 中不适用的 Java/Flyway、Flask 或 OpenFGA 模板；没有更改身份模型。如果该适配判断错误，迁移及集成工具需要返工。
+2. 按用户选择在当前目录功能分支实施，不建立 worktree；未主动重启正在测试的服务，但当前目录不隔离后续重启加载的代码，切换/重启仍需注意版本。
+3. 进程遗弃的写前 operation 也保留所有权，不只保留已发送而未确认的 mutation；不能从客户端消失推断后端静止。代价是即使最终无业务写，也可能需要停写审计恢复。
+4. 分布式取消区域使用原持锁 Task，不以 shield 子任务借用父锁；维持任务所有权避免自等待。代价是取消后可能保留更多 tracking 残留，需要按持久化精确目标审计，默认 local 行为不变。
+5. 分布式 PGKV 在 SQL 中原子合并共享 chunk 的 `llm_cache_list`，不让旧快照覆盖已确认归属。代价是保留额外失效引用到 chunk 删除；此方向无害，优先保证不丢 attribution，默认 local 替换语义不变。
+
+## 交付状态
+
+方案 A 的 16 项任务均已实现并记录对应验证；默认 local 行为保留，推荐 distributed profile 支持同 workspace 的不同资源并行写入、同资源互斥及显式审计恢复。未要求自动 HA、实际 Kubernetes 发布、向量收费模型重建或替换现有本地测试服务，本次也未执行它们。真实集群 RWX、网络/Secret、镜像以及运维停写/静止确认仍须按部署 runbook 验收。
+
+本次只交付当前目录功能分支 `feat/distributed-workspace-writes`，不合并主分支、不创建 PR、不归档 OpenSpec。已有测试服务配置与密钥不提交。临时 SDD 账本/评审 package 清理前，裁定、发现、修复、验收数字和限制已保存在本 change 与 Git 历史中；历史命令引用的临时环境文件不作为仓库运行依赖。
