@@ -32,6 +32,8 @@
 
 HugeGraph 在分布式模式下不再依赖其进程内全 scope 锁完成跨 Pod 保证；直接 Storage API 要么参与同样的锁/写屏障，要么明确拒绝未受控调用。默认单机路径完全保留。PG 写错误不能被封装层当作成功：必须确认当前支持的 PG 方法错误语义，修正或选用 strict 路径。
 
+PGVectorStorage 当前 upsert 仅缓冲、后续 flush 才提交；分布式模式必须保证实际向量提交仍在对应实体/关系所有权期间，不能将进程共享缓冲当作已确认写。选择分布式专用即写路径或等价的隔离提交路径，保留单机缓冲行为。PG 底层通用连接重试也不得偷偷重放不确定 mutation；分布式写确认必须覆盖实际 SQL 提交，不能假设异常等于事务已回滚。
+
 ### 4. 文档领取和流水线
 
 保留 doc_status 为事实来源；对候选文档先原子领取，再严格读回状态，再做一致性修复/解析/提取/提交。已经被其他 Pod 领取的文档不得进入修复、parse worker、feeder 或 custom-chunk 路径。领取持续覆盖全部阶段；重复入库不能覆盖处理中的文档。
@@ -45,6 +47,8 @@ FAILED 不自动重入。人工 retry/scan 在工作区独占门下发布持久�
 受控入口包括 enqueue、pipeline、parse/feeder、custom chunks/KG、entity/relation CRUD/merge、文档 purge/delete/clear、scan、retry、source conflict repair、cache clear、查询 cache write、初始化/数据迁移。SDK 与 HTTP 后台任务均需要覆盖，HTTP preflight 不能代替业务门。共享文件变更也必须在对应门内；后台任务必须自己持有有效 ticket，不能使用已结束请求的上下文。
 
 维护类操作初版用 workspace exclusive，保证正确性而不追求与入库并行。启动迁移由显式维护执行路径与协调门保护，不能让额外副本无协调地自动迁移。API 暴露不含密钥的分布式状态；忙冲突与恢复阻断提供可识别错误，不报告伪成功。
+
+取消 pipeline 在分布式模式下是持久化工作区控制意图，必须作用于全部处理 Pod，周期扫描不能立即把已取消任务重新启动；由显式新的处理/扫描请求恢复。既有 `/recovery/force_reset` 不得清除或伪报解除 durable fence，分布式模式引导到运维 CLI。
 
 人工恢复 CLI：只读 inspect；显式 recovery 要求所有 writer 已停止、HugeGraph/其他存储在途请求已结束、已提交状态与来源锚点已审计的运营确认。恢复保留审计历史、增加 generation 后解除选定 scope 的遗留锁/领取/屏障；停止旧进程是前置条件，generation 不是 HugeGraph 服务端 fence，不宣称可以拒绝已经发出的旧图请求。不得提供启动自动清屏障或简单 TTL 解锁。
 

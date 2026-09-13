@@ -8,10 +8,10 @@ Global Constraints: 默认单机兼容；分布式 profile 为 PGKV/PGDocStatus/
 
 ### Task 1: PostgreSQL coordinator, migration and recovery CLI
 
-- [ ] 1.1 新增 `lightrag/distributed/` 协调模块、显式幂等版本化 SQL 迁移和 verify-only 初始化；不修改现有 PG 业务表/数据。
-- [ ] 1.2 实现 workspace shared/exclusive operation、持久化资源多锁、文档 try-claim、操作/领取阶段和心跳，以及 mutation pending/ack/fence；所有协调变更在短事务内完成。
-- [ ] 1.3 实现无密钥 inspect 和显式带三项运维确认的审计恢复 CLI；进程死亡/协调池重建不能丢屏障、不能因 TTL 自动抢占。
-- [ ] 1.4 TDD 验证独立客户端资源并行、同 key 互斥、取消/崩溃/迟到写屏障、维护排他、迁移幂等和恢复审计。真实 PostgreSQL 测试标记 integration 并使用隔离 scope。
+- [x] 1.1 新增 `lightrag/distributed/` 协调模块、显式幂等版本化 SQL 迁移和 verify-only 初始化；不修改现有 PG 业务表/数据。
+- [x] 1.2 实现 workspace shared/exclusive operation、持久化资源多锁、文档 try-claim、操作/领取阶段和心跳，以及 mutation pending/ack/fence；所有协调变更在短事务内完成。
+- [x] 1.3 实现无密钥 inspect 和显式带三项运维确认的审计恢复 CLI；进程死亡/协调池重建不能丢屏障、不能因 TTL 自动抢占。
+- [x] 1.4 TDD 验证独立客户端资源并行、同 key 互斥、取消/崩溃/迟到写屏障、维护排他、迁移幂等和恢复审计。真实 PostgreSQL 测试标记 integration 并使用隔离 scope。
 
 Ownership: 新 `lightrag/distributed/coordinator.py`、`__init__.py`、`__main__.py`、`migrations/`、`tests/distributed/test_coordinator*.py`；不修改 pipeline/API/core。无需运行真实 LLM。允许复用 asyncpg，依赖未装则报告，不能输出 DSN 密钥。
 
