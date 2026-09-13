@@ -4659,8 +4659,8 @@ def create_document_routes(
             async def no_release():
                 pass
 
-            await start_reserved_background_task(
-                managed_tasks, work=distributed_scan, backstop_release=no_release
+            await start_background_task(
+                rag, managed_tasks, work=distributed_scan, backstop_release=no_release
             )
             return ScanResponse(
                 status="scanning_started",

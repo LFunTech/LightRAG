@@ -61,8 +61,12 @@ Supply an externally managed `lightrag-distributed-credentials` Secret through
 `envFrom.secrets`, containing `LIGHTRAG_COORDINATION_DSN`, `POSTGRES_PASSWORD`,
 HugeGraph credentials if required, `LLM_BINDING_API_KEY`,
 `EMBEDDING_BINDING_API_KEY`, and API authentication (`LIGHTRAG_API_KEY` and/or
-`AUTH_ACCOUNTS`). Do not commit credentials or put them on command lines. The
-mounted chart `.env` uses dotenv `override=False`: process Secret env values
+`AUTH_ACCOUNTS`). When using `AUTH_ACCOUNTS`, the same external Secret must also
+provide a strong random, non-default `TOKEN_SECRET`, identical across all replicas;
+account-authenticated bootstrap/startup rejects a missing/default token secret.
+API-key-only authentication does not require it. Do not commit credentials or
+put them on command lines. The mounted chart `.env` uses dotenv `override=False`:
+process Secret env values
 win even when mounted values are blank. Render validation checks chart-declared
 settings; an external Secret must not override workspace/backend/path settings.
 Runtime profile/manifest checks are the final guard, not a replacement for review.

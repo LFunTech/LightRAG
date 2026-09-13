@@ -1695,12 +1695,11 @@ class _PipelineMixin:
         await stop_polling(self)
 
     async def apipeline_request_retry(self, request_id: str | None = None) -> str:
-        """Persist one retry intent; processing/polling performs its exclusive reset."""
+        """Accept one retry and resume atomically; replay never overrides later pause."""
         runtime = get_runtime(self)
         request_id = request_id or uuid.uuid4().hex
         if runtime is not None:
             await runtime.coordinator.pipeline_control.request_retry(request_id)
-            await runtime.coordinator.pipeline_control.resume()
         else:
             ingress = await get_pipeline_ingress(self.workspace)
             from lightrag.kg.pipeline_ingress import ManualRetryPublishResult

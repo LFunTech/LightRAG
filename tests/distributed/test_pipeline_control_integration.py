@@ -82,3 +82,36 @@ async def test_status_reports_orphan_blockage_before_another_admission(clients):
     finally:
         with pytest.raises(CoordinationError):
             await context.__aexit__(None, None, None)
+
+
+async def test_retry_resumes_once_and_duplicate_never_reverses_later_pause(clients):
+    from types import SimpleNamespace
+
+    from lightrag.distributed.runtime import DistributedRuntime
+    from lightrag.pipeline import _PipelineMixin
+
+    a, b = clients
+    rag = SimpleNamespace(
+        _distributed_runtime=DistributedRuntime(a, workspace=a.workspace)
+    )
+    await b.pipeline_control.pause()
+    await _PipelineMixin.apipeline_request_retry(rag, "resume-once")
+    state = await b.pipeline_control.status()
+    assert not state["paused"]
+    assert state["pending_retries"] == 1
+    assert state["cancel_epoch"] == 1
+    await b.pipeline_control.pause()
+    await _PipelineMixin.apipeline_request_retry(rag, "resume-once")
+    state = await b.pipeline_control.status()
+    assert state["paused"]
+    assert state["pending_retries"] == 1
+    assert state["cancel_epoch"] == 2
+    async with b.operation("finish-retry", exclusive=True) as op:
+        await b.pipeline_control.finish_selection(op, "resume-once")
+        await b.pipeline_control.finish_request(op, "resume-once")
+    await _PipelineMixin.apipeline_request_retry(rag, "resume-once")
+    state = await b.pipeline_control.status()
+    assert state["paused"]
+    assert state["pending_retries"] == 0
+    await _PipelineMixin.apipeline_request_retry(rag, "new-resume")
+    assert not (await b.pipeline_control.status())["paused"]

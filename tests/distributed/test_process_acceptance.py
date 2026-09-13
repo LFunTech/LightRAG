@@ -309,3 +309,45 @@ async def test_commit_uncertainty_restart_audit_recover_and_real_purge(
     assert not final["status"]
     history = (await c.call("inspect"))["result"]
     assert history["recovery_audit"] and not history["fenced"]
+
+
+async def test_paused_retry_commit_before_response_survives_acceptor_death(processes):
+    a, b, _, root, _ = processes
+    await a.call("enqueue", text="Atlas retry commit boundary.", ids=["failed"])
+    assert "result" in await a.call("process", mode="fail_llm")
+    initial = await wait_status(a, ["failed"], DocStatus.FAILED)
+    version = initial["status"]["failed"].updated_at
+    await b.call("pause")
+    a.pipe.send(
+        {"action": "retry", "id": "commit-before-response", "stop_after_commit": True}
+    )
+    await file_exists(root / "a.retry-committed")
+    assert not a.pipe.poll(), (
+        "SDK completion must not have reached the accepting caller"
+    )
+    os.kill(a.process.pid, signal.SIGKILL)
+    await asyncio.to_thread(a.process.join, 10)
+    try:
+        os.kill(a.identity["manager"], signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    state = (await b.call("control_status"))["result"]
+    assert state["pending_retries"] == 1
+    assert state["paused"] is False
+    assert not state["recovery_required"]
+    # This is the real polling scheduler, not the explicit process/resume API.
+    assert "result" in await b.call("poll_once", mode="fail_llm")
+    retried = await wait_status(b, ["failed"], DocStatus.FAILED)
+    assert retried["status"]["failed"].updated_at != version
+    calls = retried["calls"]
+    version = retried["status"]["failed"].updated_at
+    assert calls > 0
+    assert (await b.call("control_status"))["result"]["pending_retries"] == 0
+    # Completed-request delivery is not another resume or another attempt.
+    await b.call("pause")
+    await b.call("retry", id="commit-before-response")
+    await b.call("poll_once", mode="fail_llm")
+    replay = (await b.call("audit", ids=["failed"]))["result"]
+    assert replay["calls"] == calls
+    assert replay["status"]["failed"].updated_at == version
+    assert (await b.call("control_status"))["result"]["paused"] is True

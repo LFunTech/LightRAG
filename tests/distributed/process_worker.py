@@ -5,6 +5,7 @@ import json
 import os
 import time
 from pathlib import Path
+from contextlib import asynccontextmanager
 
 import numpy as np
 
@@ -198,8 +199,29 @@ async def serve(connection, config, shared_storage):
             elif action == "stop_poll":
                 await rag.apipeline_stop_polling()
                 result = {"calls": state["calls"]}
+            elif action == "poll_once":
+                from lightrag.distributed.pipeline import process
+
+                state["mode"] = cmd.get("mode", "")
+                await process(rag, resume=False)
+                result = {"calls": state["calls"]}
             elif action == "retry":
+                if cmd.get("stop_after_commit"):
+                    original_transaction = rt.coordinator._transaction
+
+                    @asynccontextmanager
+                    async def stop_after_commit(*args, **kwargs):
+                        async with original_transaction(*args, **kwargs) as transaction:
+                            yield transaction
+                        # Stop immediately after the FIRST real commit, before
+                        # control/SDK/pipe completion or any second transaction.
+                        (root / f"{label}.retry-committed").touch()
+                        await asyncio.Event().wait()
+
+                    rt.coordinator._transaction = stop_after_commit
                 result = await rag.apipeline_request_retry(cmd["id"])
+            elif action == "control_status":
+                result = await rt.coordinator.pipeline_control.status()
             elif action == "pause":
                 await rt.coordinator.pipeline_control.pause()
                 result = True

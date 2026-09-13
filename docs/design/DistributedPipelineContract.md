@@ -64,8 +64,18 @@ cancellation. Queued documents remain available for a subsequent explicit run.
 Polling and polling stop/start do not undo pause.
 
 `apipeline_request_retry(request_id=None)` persists a server-generated (or
-caller-supplied idempotency) key before drain and explicitly resumes the control
-plane. API `/reprocess_failed` persists this intent and starts polling; `/scan`
+caller-supplied idempotency) key before drain. A **new** key and its resume
+transition commit in the **same** workspace-serialized coordinator transaction.
+If the accepting process exits after commit but before its caller receives the
+response, another process can serve that durable intent by ordinary polling;
+no second resume call or live accepting-process ticket is required. If commit
+did not happen, neither change is accepted. Replaying the same key (pending or
+completed) only reads its durable state: it does not resume or grant another
+attempt. A pause committed after acceptance therefore wins over subsequent
+polling, restart and duplicate delivery; only a new explicit request or explicit
+process/resume can clear that pause. The resume does not reset `cancel_epoch`,
+so an older active batch still observes the intervening cancellation.
+API `/reprocess_failed` persists this intent and starts polling; `/scan`
 persists intent before starting actual exclusive classification. Request lifetime
 is independent of the accepting process or its in-memory mailbox.
 
@@ -114,6 +124,11 @@ migration. Operator CLI credentials remain the recovery authority.
 - Clear, source-conflict repair and background deletion hold exclusive admission
   across actual storage and shared-file mutation, not only their HTTP preflight.
 - Scan obtains its detached exclusive ticket before signaling background startup.
+  Its typed startup adapter joins failed/cancelled unadmitted children before
+  returning 409 for busy or 503 for other coordination failures; cancellation
+  never claims `scanning_started`. Already accepted retry intent stays durable
+  even when classification did not start. Cleanup failures retain priority over
+  admission errors, exactly as for the other background mutation routes.
   It holds that ticket through rollback, retry reset, classification, archive and
   enqueue, then **releases it before** normal shared claimed processing. Unknown
   scan/filesystem errors propagate through the intermediate batch enqueue too;

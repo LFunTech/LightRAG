@@ -323,3 +323,36 @@ async def test_analyze_worker_strict_content_failure_is_failed_not_skipped(
     assert not row["metadata"].get("analyzing_stage_skipped")
     assert "strict multimodal content read failed" in row["error_msg"]
     assert await rag.chunk_entity_relation_graph.get_node("Atlas") is None
+
+
+async def test_pending_retry_replay_and_poll_preserve_later_pause(runtime_rags):
+    from lightrag.distributed.pipeline import process
+
+    rag, peer = runtime_rags
+    await configure(runtime_rags)
+    await rag.apipeline_enqueue_documents(
+        "Atlas cooperates with Borealis after explicit retry.",
+        ids=["paused-retry"],
+        file_paths=["paused-retry.txt"],
+    )
+    async with rag._distributed_runtime.operation("seed-failure"):
+        await rag.doc_status.update_doc_status_fields(
+            "paused-retry", {"status": DocStatus.FAILED}
+        )
+    before = await rag.doc_status.get_full_docs_by_ids(["paused-retry"], strict=True)
+    await rag.apipeline_request_retry("pending-once")
+    control = peer._distributed_runtime.coordinator.pipeline_control
+    await control.pause()
+    await rag.apipeline_request_retry("pending-once")
+    await process(peer, resume=False)
+    state = await control.status()
+    after = await peer.doc_status.get_full_docs_by_ids(["paused-retry"], strict=True)
+    assert state["paused"]
+    assert state["pending_retries"] == 1
+    assert after["paused-retry"].status == DocStatus.FAILED
+    assert after["paused-retry"].updated_at == before["paused-retry"].updated_at
+    # A new explicit process call, unlike replay or polling, may resume it.
+    await peer.apipeline_process_enqueue_documents()
+    after = await peer.doc_status.get_full_docs_by_ids(["paused-retry"], strict=True)
+    assert after["paused-retry"].status == DocStatus.PROCESSED
+    assert (await control.status())["pending_retries"] == 0

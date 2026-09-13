@@ -74,6 +74,12 @@ LightRAG 使用固定的 v1 专属 schema，不导入或改写已有业务图：
 
 **scope 是逻辑分区，不是 ACL 或安全租户边界。** 拥有 HugeGraph 访问权限的其他客户端仍可能读取其他 scope。需要强隔离时，应由部署侧划分 graph/graphspace、账户、权限及网络边界，不要仅依赖 workspace。
 
+### 默认 local 模式的并发与 pending（`distributed_writes=false`）
+
+**本小节仅适用于默认 local 模式。** 显式启用 `distributed_writes=true` 时，受支持的 PGKV/PGDocStatus/PGVector/HugeGraph + 同路径共享持久文件系统 profile 允许同 workspace 的独立进程/Pod 并发写；它使用 PostgreSQL 持久化 operation、资源锁及 pending/ACK，不依赖同一 Manager。所有 writer 必须遵守同一 profile、部署身份、协调数据库和规范化后端目标，不能混用 local writer。完整边界见 [DistributedRuntimeContract.md](design/DistributedRuntimeContract.md) 和 [DistributedDeployment.md](DistributedDeployment.md)。
+
+以下 local 锁、内存屏障及整个 Manager 域重启的说明不适用于 distributed 模式。
+
 部分更新是读改写：后端使用 `shared_storage` 专属 mutation 锁串行化同一范围的写入和删除。协调键同时包含**规范化后的目标服务 URI**、graph 路径与 workspace/namespace scope，互不相同的数据库目标不会共用不确定写状态。URI 使用与 `aiohttp` 一致的 `yarl.URL` 规范化，统一 scheme/host 大小写、默认端口、等价 URL 编码与 IPv6 表示，避免这些等价拼写生成不同的锁或屏障身份。该保护只覆盖**同一 `shared_storage` 协调域**内的进程；多个完全独立的 LightRAG 部署同时写同一 scope 不在安全支持范围。它不是 NetworkX 的 `requires_single_writer` 模型，不替代核心实体锁，也不提供数据库级跨部署锁。维护全量扫描若要求无遗漏、无重复，应在图静止时执行。
 
 URI 规范化**不是服务发现或后端身份识别**：不同 DNS 别名、`localhost` 与 `127.0.0.1`，以及多个反向代理地址即使最终连接同一 HugeGraph，也不能自动合并为同一协调键。**访问同一目标 scope 的全部 writer 必须统一使用同一个服务 URI，并属于同一协调域。** 不得改用别名、另一代理地址或另建协调域绕过 pending fence，否则会失去并发写入和不确定写保护。
@@ -92,7 +98,9 @@ URI 规范化**不是服务发现或后端身份识别**：不同 DNS 别名、`
 - 稳定 ID、规范无向边和非累加属性赋值使**相同确定性写入**可以幂等重放，但必须先按下面的流程解除不确定写状态。屏障存续期间，普通重试同样会被拒绝，不会自行清除屏障或重放。
 - 保留所有恢复锚点及其他存储。文档删除/重试仍遵循 [PurgeRecoveryContract](./design/PurgeRecoveryContract.md) 和 [PipelineConcurrencyContract](./design/PipelineConcurrencyContract.md)；不要绕过核心流程直接清空 graph。
 
-### 不确定写的人工恢复
+### 默认 local 模式不确定写的人工恢复（`distributed_writes=false`）
+
+以下步骤只用于默认 local 模式，不可用来解除 distributed durable fence。
 
 1. **停止全部 writer**，包括自动重启或新建 worker 的调度器；不要只关闭报错 client，也不要改用服务 URI 别名、另一代理地址或启动独立协调域来绕过屏障。
 2. 由运维在 HugeGraph 侧**确认没有仍在途或可能迟到提交的旧 mutation**，并审计已提交图状态、批次进度及 LightRAG 恢复锚点。仅健康检查成功、等待一个客户端 timeout、重新连接或一次读回都不足以证明旧请求已经停止。不能确认时保持停止状态。
@@ -100,6 +108,10 @@ URI 规范化**不是服务发现或后端身份识别**：不同 DNS 别名、`
 4. 再人工重试原来的确定性操作，或通过 LightRAG 既有文档恢复流程继续；验证所有存储和锚点一致后再恢复正常流量。不要通过删除图、scope、schema 或恢复锚点来“解锁”。
 
 这是一项有意的保守策略：即使最终发现请求没有写入，也可能需要上述人工恢复；宁可停止后继写，也不允许迟到事务覆盖已经向其他调用方确认的更新。已提交的部分批次保留，后续受控重放收敛，不做危险的补偿删除。关系权重规则仍由 [核心 relation weight contract](./ProgramingWithCore.md#relation-weight-contract) 决定。
+
+### Distributed 模式的人工恢复（`distributed_writes=true`）
+
+Distributed fence 和 pending 历史持久化在 PostgreSQL，**跨全部应用进程及 Manager 重启仍保留**。不能套用上节第 3 步反复重启“解锁”，也没有 TTL 或自动接管。运维必须停止全部 writer、确认旧在途请求已结束，并使用 `inspect` 和业务状态/来源锚点审计，再执行带三项确认及期望 generation 的显式 `recover`；历史不删除，generation 不能撤回已经发送的 HugeGraph 请求。命令及前提见 [部署恢复 runbook](DistributedDeployment.md) 和 [运行时恢复合同](design/DistributedRuntimeContract.md)。默认 local 模式不反向套用此恢复方法。
 
 ## 图浏览与成本
 

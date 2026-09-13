@@ -426,3 +426,80 @@ async def test_ingress_failed_admission_releases_local_reservation(
         await asyncio.gather(
             request, *list(app.state.background_tasks), return_exceptions=True
         )
+
+
+@pytest.mark.parametrize("failure", ["busy", "unavailable", "cancel"])
+async def test_scan_admission_http_error_retains_intent_and_joins_child(
+    distributed_api, monkeypatch, failure
+):
+    from contextlib import asynccontextmanager
+    from contextvars import Context
+
+    from lightrag.distributed import CoordinationUnavailableError
+
+    _, rag, peer, manager, app = distributed_api
+    coordinator = rag._distributed_runtime.coordinator
+    coordinator.wait_timeout = 0.05 if failure == "busy" else 10
+    entered = asyncio.Event()
+    joined = asyncio.Event()
+    original_operation = coordinator.operation
+    original_wait = coordinator._wait
+
+    async def observed_wait(attempt, timeout):
+        async def observed_attempt():
+            result = await attempt()
+            if result is None:
+                entered.set()  # Conflict confirmed; no transaction is in flight.
+            return result
+
+        return await original_wait(observed_attempt, timeout)
+
+    @asynccontextmanager
+    async def observed_operation(*args, **kwargs):
+        if failure != "cancel":
+            entered.set()
+        try:
+            if failure == "unavailable":
+                raise CoordinationUnavailableError("test admission unavailable")
+            async with original_operation(*args, **kwargs) as op:
+                yield op
+        finally:
+            joined.set()
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
+        with monkeypatch.context() as patch:
+            patch.setattr(coordinator, "operation", observed_operation)
+            if failure == "cancel":
+                patch.setattr(coordinator, "_wait", observed_wait)
+            # Keep the real shared peer ticket across the actual HTTP/exclusive wait.
+            async with peer._distributed_runtime.operation("peer_writer"):
+                request = Context().run(
+                    asyncio.create_task,
+                    client.post("/documents/scan", headers={"X-API-Key": "test-key"}),
+                )
+                await asyncio.wait_for(entered.wait(), 2)
+                if failure == "cancel":
+                    request.cancel()
+                    with pytest.raises(asyncio.CancelledError):
+                        await request
+                else:
+                    response = await request
+                    assert response.status_code == (409 if failure == "busy" else 503)
+                    assert response.json()["detail"]["error"] == (
+                        "CoordinationBusyError"
+                        if failure == "busy"
+                        else "CoordinationUnavailableError"
+                    )
+                    assert "scanning_started" not in response.text
+                assert joined.is_set()
+                assert not app.state.background_tasks
+                control = await peer._distributed_runtime.coordinator.pipeline_control.status()
+                assert control["pending_retries"] == 1
+                assert control["active_operations"] == 1  # Only the independent writer.
+    state = await peer._distributed_runtime.coordinator.inspect()
+    assert not state["fenced"]
+    assert not any(row["kind"] == "run_scanning_process" for row in state["operations"])
+    assert not list(manager.input_dir.iterdir())

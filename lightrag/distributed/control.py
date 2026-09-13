@@ -39,7 +39,7 @@ class PipelineControl:
             )
 
     async def resume(self) -> None:
-        """Only explicit process/scan/retry entry points may clear durable pause."""
+        """Explicit process entry points may clear pause; retry resumes atomically."""
         async with self._transaction() as db:
             await db.execute(
                 "UPDATE lightrag_coordination.pipeline_control SET paused=false WHERE deployment_id=$1 AND workspace=$2",
@@ -88,19 +88,34 @@ class PipelineControl:
             )
 
     async def request_retry(self, request_id: str) -> dict[str, Any]:
+        """Atomically accept a new intent and resume; duplicates never undo pause.
+
+        Request IDs retain their identity after completion. Replaying one only
+        returns its durable state, without granting another attempt or resume.
+        See docs/design/DistributedPipelineContract.md for commit ordering.
+        """
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id must be non-empty")
         async with self._transaction() as db:
-            await db.execute(
-                "INSERT INTO lightrag_coordination.pipeline_requests (deployment_id,workspace,request_id,state) VALUES($1,$2,$3,'selecting') ON CONFLICT DO NOTHING",
-                *self.coordinator._scope,
-                request_id,
-            )
             row = await db.fetchrow(
-                "SELECT request_id,state,created_at FROM lightrag_coordination.pipeline_requests WHERE deployment_id=$1 AND workspace=$2 AND request_id=$3",
+                "INSERT INTO lightrag_coordination.pipeline_requests (deployment_id,workspace,request_id,state) VALUES($1,$2,$3,'selecting') "
+                "ON CONFLICT DO NOTHING RETURNING request_id,state,created_at",
                 *self.coordinator._scope,
                 request_id,
             )
+            if row is not None:
+                # The workspace transaction orders acceptance against pause.
+                # Never resume in the caller after this transaction commits.
+                await db.execute(
+                    "UPDATE lightrag_coordination.pipeline_control SET paused=false WHERE deployment_id=$1 AND workspace=$2",
+                    *self.coordinator._scope,
+                )
+            else:
+                row = await db.fetchrow(
+                    "SELECT request_id,state,created_at FROM lightrag_coordination.pipeline_requests WHERE deployment_id=$1 AND workspace=$2 AND request_id=$3",
+                    *self.coordinator._scope,
+                    request_id,
+                )
             return dict(row)
 
     async def next_request(self, operation: Operation) -> dict[str, Any] | None:
