@@ -103,6 +103,15 @@ def test_python_dependency_installs_default_to_internal_pypi_index():
         assert "pypi.org" not in text, path.name
 
 
+def test_uv_lock_uses_internal_pypi_urls_for_frozen_sync():
+    """Frozen uv sync should not download locked artifacts from public PyPI."""
+    text = (ROOT / "uv.lock").read_text()
+    assert "https://mirror.f123.pub/repository/pypi/simple" in text
+    assert "https://mirror.f123.pub/repository/pypi/packages/" in text
+    assert "https://pypi.org/simple" not in text
+    assert "https://files.pythonhosted.org/" not in text
+
+
 def test_frontend_dependency_installs_default_to_npmmirror_registry():
     """Dockerfile frontend installs should use the same internal-friendly pattern as haier-demo."""
     mirror = "https://registry.npmmirror.com"
