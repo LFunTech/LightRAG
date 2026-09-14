@@ -334,7 +334,7 @@ docker compose up
 
 Software packages requiring `transformers`, `torch`, or `cuda` are not preinstalled in the docker images. Consequently, document extraction tools such as Docling, as well as local LLM models like Hugging Face and LMDeploy, cannot be used in an offline environment. These high-compute-resource-demanding services should not be integrated into LightRAG. Docling will be decoupled and deployed as a standalone service.
 
-The Docker images ship the spaCy runtime through the `api` extra, but they do not download or bake the pinned `zh_core_web_sm` / `en_core_web_sm` model wheels during image build. Enabling the native docx parser's opt-in `smart_heading` engine parameter therefore requires installing those models in the runtime environment first (`lightrag-download-cache --spacy-install`, or see [OfflineDeployment.md](./OfflineDeployment.md) for air-gapped hosts).
+The Docker images bake the default tiktoken BPE cache required by API startup, so normal startup does not need to fetch tokenizer data from OpenAI blob storage. They also ship the spaCy runtime through the `api` extra, but they do not download or bake the pinned `zh_core_web_sm` / `en_core_web_sm` model wheels during image build. Enabling the native docx parser's opt-in `smart_heading` engine parameter therefore requires installing those models in the runtime environment first (`lightrag-download-cache --spacy-install`, or see [OfflineDeployment.md](./OfflineDeployment.md) for air-gapped hosts).
 
 ## 📦 Build Docker Images
 

@@ -2,6 +2,7 @@
 
 import argparse
 from contextlib import asynccontextmanager
+import types
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -25,6 +26,12 @@ async def test_bootstrap_runs_preinit_maintenance(monkeypatch):
     rag.check_and_migrate_data = AsyncMock(side_effect=lambda: events.append("migrate"))
     rag.finalize_storages = AsyncMock(side_effect=lambda: events.append("finalize"))
     monkeypatch.setattr(cli, "configured_rag", lambda: rag, raising=False)
+    monkeypatch.setattr(
+        cli,
+        "preflight_bootstrap_storage",
+        AsyncMock(side_effect=lambda rag: events.append("preflight")),
+        raising=False,
+    )
     args = argparse.Namespace(
         command="bootstrap",
         actor="operator",
@@ -32,9 +39,84 @@ async def test_bootstrap_runs_preinit_maintenance(monkeypatch):
         confirm_inflight_finished=True,
     )
     result = await cli.run(args, "secret")
-    assert events[0][0] == "admit"
-    assert events[1:] == ["initialize", "migrate", "released", "finalize"]
+    assert events[0] == "preflight"
+    assert events[1][0] == "admit"
+    assert events[2:] == ["initialize", "migrate", "released", "finalize"]
     assert result == {"bootstrap": "verified"}
+
+
+async def test_bootstrap_preflight_failure_does_not_admit_maintenance(monkeypatch):
+    rag = Mock()
+    rag.distributed_writes = True
+    rag.distributed_maintenance.side_effect = AssertionError("must not admit")
+    rag.initialize_storages = AsyncMock()
+    monkeypatch.setattr(cli, "configured_rag", lambda: rag, raising=False)
+    monkeypatch.setattr(
+        cli,
+        "preflight_bootstrap_storage",
+        AsyncMock(side_effect=ValueError("pgvector preflight failed")),
+        raising=False,
+    )
+    args = argparse.Namespace(command="bootstrap", actor="operator")
+    with pytest.raises(ValueError, match="pgvector preflight failed"):
+        await cli.run(args, "secret")
+    rag.initialize_storages.assert_not_called()
+
+
+async def test_pgvector_preflight_rejects_missing_extension_without_privilege(monkeypatch):
+    class InsufficientPrivilegeError(Exception):
+        pass
+
+    class FakeTransaction:
+        def __init__(self):
+            self.rolled_back = False
+
+        async def start(self):
+            pass
+
+        async def rollback(self):
+            self.rolled_back = True
+
+    class FakeConnection:
+        def __init__(self):
+            self.transaction_obj = FakeTransaction()
+            self.closed = False
+
+        async def fetchval(self, query):
+            assert "pg_extension" in query
+            return False
+
+        def transaction(self):
+            return self.transaction_obj
+
+        async def execute(self, query):
+            if query == "CREATE EXTENSION IF NOT EXISTS vector":
+                raise InsufficientPrivilegeError
+
+        async def close(self):
+            self.closed = True
+
+    fake_connection = FakeConnection()
+    fake_asyncpg = types.SimpleNamespace(
+        connect=AsyncMock(return_value=fake_connection),
+        exceptions=types.SimpleNamespace(
+            InsufficientPrivilegeError=InsufficientPrivilegeError
+        ),
+    )
+    monkeypatch.setitem(__import__("sys").modules, "asyncpg", fake_asyncpg)
+
+    with pytest.raises(ValueError, match="cannot create"):
+        await cli._preflight_pgvector_extension(
+            {
+                "user": "app",
+                "password": "secret",
+                "database": "db",
+                "host": "db.example",
+                "port": 5432,
+            }
+        )
+    assert fake_connection.transaction_obj.rolled_back is True
+    assert fake_connection.closed is True
 
 
 def test_bootstrap_requires_stopped_and_quiescent_confirmations(monkeypatch):

@@ -58,11 +58,130 @@ def configured_rag():
         sys.argv = previous
 
 
+async def _preflight_pgvector_extension(pg_config: dict) -> None:
+    """Fail missing pgvector privilege before opening a durable operation."""
+    import asyncpg
+
+    server_settings = dict(
+        part.split("=", 1)
+        for part in str(pg_config.get("server_settings") or "").split("&")
+        if "=" in part
+    )
+    ssl_mode = str(pg_config.get("ssl_mode") or "").lower()
+    ssl = None
+    if ssl_mode in {"require", "prefer", "allow"}:
+        ssl = True
+    elif ssl_mode == "disable":
+        ssl = False
+
+    connection = None
+    transaction = None
+    try:
+        connection = await asyncpg.connect(
+            user=pg_config["user"],
+            password=pg_config["password"],
+            database=pg_config["database"],
+            host=pg_config["host"],
+            port=pg_config["port"],
+            ssl=ssl,
+            server_settings=server_settings or None,
+            command_timeout=15,
+        )
+        exists = await connection.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname='vector')"
+        )
+        if exists:
+            return
+        transaction = connection.transaction()
+        await transaction.start()
+        await connection.execute("SET LOCAL statement_timeout='10000ms'")
+        await connection.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    except asyncpg.exceptions.InsufficientPrivilegeError:
+        raise ValueError(
+            "PostgreSQL vector extension is missing and the configured user cannot "
+            "create it; provision pgvector with a privileged role or update the "
+            ".secrets/test.secrets-derived PostgreSQL credential"
+        ) from None
+    except ValueError:
+        raise
+    except Exception:
+        raise ValueError(
+            "PostgreSQL vector extension preflight failed before maintenance; "
+            "verify the .secrets/test.secrets-derived PostgreSQL endpoint, "
+            "credential and network access"
+        ) from None
+    finally:
+        if transaction is not None:
+            try:
+                await transaction.rollback()
+            except Exception:
+                pass
+        if connection is not None:
+            await connection.close()
+
+
+async def _preflight_hugegraph_permissions() -> None:
+    """Verify HugeGraph auth and graph path read access before maintenance."""
+    import aiohttp
+
+    from lightrag.kg.hugegraph_client import HugeGraphClient, HugeGraphClientError
+
+    client = HugeGraphClient()
+    try:
+        client._session = aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(limit=1),
+            timeout=aiohttp.ClientTimeout(total=min(client.timeout, 10.0)),
+            headers=client._headers,
+            auth=client._auth,
+            auto_decompress=True,
+            trust_env=False,
+        )
+        await client.request("GET", "/versions", retry=False)
+        schema = await client.request(
+            "GET",
+            f"{client.graph_path}/schema/propertykeys",
+            allow_not_found=True,
+            retry=False,
+        )
+        if schema is None:
+            raise ValueError(
+                "HugeGraph graphspace/graph path is not readable by the configured "
+                ".secrets/test.secrets-derived credential"
+            )
+    except HugeGraphClientError as exc:
+        if exc.status in {401, 403}:
+            raise ValueError(
+                "HugeGraph authentication or graph permission preflight failed; "
+                "update the .secrets/test.secrets-derived HugeGraph credential"
+            ) from None
+        raise ValueError(
+            "HugeGraph preflight failed before maintenance; verify the "
+            ".secrets/test.secrets-derived endpoint and graph path"
+        ) from None
+    finally:
+        await client.close()
+
+
+async def preflight_bootstrap_storage(rag) -> None:
+    """Check predictable storage blockers before creating durable ownership."""
+    runtime = getattr(rag, "_distributed_runtime", None)
+    pg_config = getattr(runtime, "pg_config", None)
+    vector_enabled = True
+    if isinstance(pg_config, dict):
+        raw = pg_config.get("enable_vector", True)
+        vector_enabled = raw if isinstance(raw, bool) else str(raw).lower() == "true"
+    if isinstance(pg_config, dict) and vector_enabled:
+        await _preflight_pgvector_extension(pg_config)
+    if getattr(rag, "graph_storage", None) == "HugeGraphStorage":
+        await _preflight_hugegraph_permissions()
+
+
 async def run(args, dsn: str):
     if args.command == "bootstrap":
         rag = configured_rag()
         if rag.distributed_writes is not True:
             raise ValueError("Bootstrap requires distributed writes enabled")
+        await preflight_bootstrap_storage(rag)
         # On failure do not pretend finalization/cleanup confirms uncertain writes.
         # Process exit closes transports; durable pending ownership is retained.
         async with rag.distributed_maintenance(

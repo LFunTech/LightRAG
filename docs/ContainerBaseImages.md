@@ -47,8 +47,10 @@ Dockerfile 输入，不改变上方基础镜像必须保留完整平台集的规
 基础镜像同步并不意味着完整离线构建：Dockerfile 默认 apt 与 Bun/npm
 源已按目标网络改为清华/npmmirror 镜像，PyPI 源改为 f123 内部镜像。
 Woodpecker 使用的 `Dockerfile` / `Dockerfile.lite` 不再安装 Rust toolchain，
-也不在镜像构建期下载 tiktoken 或 spaCy 模型缓存；未镜像的上游服务以及
-`Dockerfile.postgres` 的 AGE 源码下载仍需受控构建出站访问。
+也不运行会访问 GitHub/spaCy 的离线缓存下载助手；API 启动必需的
+tiktoken `o200k_base` / `cl100k_base` BPE 缓存以已校验文件提交到
+`docker/tiktoken-cache/` 并随镜像复制，避免运行时访问 OpenAI blob 卡住。
+未镜像的上游服务以及 `Dockerfile.postgres` 的 AGE 源码下载仍需受控构建出站访问。
 运行时模型连接与本次基础镜像来源调整无关。
 
 ## 在本机同步，而非在流水线补齐

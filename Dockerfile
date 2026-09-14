@@ -47,6 +47,7 @@ ENV UV_SYSTEM_PYTHON=1
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_DEFAULT_INDEX=${PYPI_INDEX_URL}
 ENV PIP_INDEX_URL=${PYPI_INDEX_URL}
+ENV TIKTOKEN_CACHE_DIR=/app/tiktoken_cache
 
 ENV PATH=/app/.venv/bin:/root/.local/bin:$PATH
 
@@ -60,11 +61,13 @@ RUN uv sync --frozen --no-dev --extra api --extra offline --no-install-project -
 # Copy project sources after the dependency layer.
 COPY lightrag/ ./lightrag/
 COPY --from=frontend-builder /app/lightrag/api/webui ./lightrag/api/webui
+COPY docker/tiktoken-cache/ /app/tiktoken_cache/
 
 # Install dependencies with uv sync (uses locked versions from uv.lock)
 # and ensure pip is available for runtime installs.
 RUN uv sync --frozen --no-dev --extra api --extra offline --no-editable \
-    && /app/.venv/bin/python -m ensurepip --upgrade
+    && /app/.venv/bin/python -m ensurepip --upgrade \
+    && /app/.venv/bin/python -c 'import tiktoken; tiktoken.encoding_for_model("gpt-4o-mini").encode("test"); tiktoken.get_encoding("cl100k_base").encode("test"); print("tiktoken cache verified")'
 
 # Create persistent data directories AFTER package installation
 RUN mkdir -p /app/data/rag_storage /app/data/inputs /app/data/prompts
