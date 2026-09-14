@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import tarfile
 import tempfile
@@ -690,13 +691,15 @@ def main(argv: list[str] | None = None) -> int:
         )
         if args.env_output:
             args.env_output.parent.mkdir(parents=True, exist_ok=True)
+            env_values = {
+                "LIGHTRAG_IMAGE_DIGEST": record["digest"],
+                "LIGHTRAG_IMAGE_REF": record["image_ref"],
+                "LIGHTRAG_IMAGE_TAG_REF": record["tag_ref"],
+            }
             args.env_output.write_text(
                 "\n".join(
-                    [
-                        f"LIGHTRAG_IMAGE_DIGEST={record['digest']}",
-                        f"LIGHTRAG_IMAGE_REF={record['image_ref']}",
-                        f"LIGHTRAG_IMAGE_TAG_REF={record['tag_ref']}",
-                    ]
+                    f"export {name}={shlex.quote(value)}"
+                    for name, value in env_values.items()
                 )
                 + "\n"
             )

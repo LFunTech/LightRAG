@@ -1,5 +1,6 @@
 import hashlib
 import json
+import subprocess
 import tarfile
 from pathlib import Path
 
@@ -327,6 +328,63 @@ def test_resolve_image_identity_selects_amd64_manifest_and_config_revision():
     assert record["digest"] == manifest_digest
     assert record["index_digest"] == index_digest
     assert record["image_ref"] == f"docker-hub.f123.pub/lfun/lightrag@{manifest_digest}"
+
+
+def test_resolve_image_env_output_exports_vars_for_deploy_child_shell(tmp_path, monkeypatch):
+    digest = "sha256:" + "4" * 64
+    image_ref = f"docker-hub.f123.pub/lfun/lightrag@{digest}"
+    tag_ref = "docker-hub.f123.pub/lfun/lightrag:v1.2.3-test"
+
+    def fake_resolve_image_identity(**kwargs):
+        return {
+            "config_digest": "sha256:" + "5" * 64,
+            "digest": digest,
+            "image": "docker-hub.f123.pub/lfun/lightrag",
+            "image_ref": image_ref,
+            "index_digest": "",
+            "platform": "linux/amd64",
+            "revision": "abc123",
+            "tag": "v1.2.3-test",
+            "tag_ref": tag_ref,
+        }
+
+    monkeypatch.setattr(delivery, "resolve_image_identity", fake_resolve_image_identity)
+    env_path = tmp_path / "image.env"
+    record_path = tmp_path / "image-record.json"
+
+    delivery.main(
+        [
+            "resolve-image",
+            "--tag",
+            "v1.2.3-test",
+            "--commit",
+            "abc123",
+            "--image",
+            "docker-hub.f123.pub/lfun/lightrag",
+            "--username",
+            "user",
+            "--password",
+            "pass",
+            "--record-output",
+            str(record_path),
+            "--env-output",
+            str(env_path),
+        ]
+    )
+
+    result = subprocess.run(
+        [
+            "sh",
+            "-c",
+            f'. "{env_path}"; sh -c \'test "$LIGHTRAG_IMAGE_DIGEST" = "{digest}" '
+            f'&& test "$LIGHTRAG_IMAGE_REF" = "{image_ref}" '
+            f'&& test "$LIGHTRAG_IMAGE_TAG_REF" = "{tag_ref}"\'',
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_release_state_rejects_concurrent_and_older_release(tmp_path):
