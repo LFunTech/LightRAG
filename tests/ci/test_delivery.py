@@ -118,17 +118,42 @@ def test_github_source_verifier_accepts_lightweight_tag_on_master(monkeypatch):
         def read(self):
             return self._data
 
-    def fake_urlopen(request, timeout):
+    def fake_open_url(request, timeout):
         requested.append(request.full_url)
         return FakeResponse(responses[request.full_url])
 
-    monkeypatch.setattr(delivery.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(delivery, "_open_url", fake_open_url)
 
     delivery._verify_release_source_via_github(
         repo="LFunTech/LightRAG", tag="v1.2.3-test", commit="abc123"
     )
 
     assert requested == list(responses)
+
+
+def test_http_delivery_requests_ignore_inherited_proxy_environment(monkeypatch):
+    calls = []
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            calls.append(("open", request.full_url, timeout))
+            return None
+
+    def fake_build_opener(*handlers):
+        calls.append(("handlers", handlers))
+        return FakeOpener()
+
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.invalid:8080")
+    monkeypatch.setattr(delivery.urllib.request, "build_opener", fake_build_opener)
+
+    request = delivery.urllib.request.Request("https://api.github.com/repos/LFunTech/LightRAG")
+    assert delivery._open_url(request, timeout=7) is None
+
+    handler_call = calls[0]
+    assert handler_call[0] == "handlers"
+    proxy_handler = handler_call[1][0]
+    assert proxy_handler.proxies == {}
+    assert calls[1] == ("open", "https://api.github.com/repos/LFunTech/LightRAG", 7)
 
 
 def test_source_archive_excludes_secret_and_untracked_files(tmp_path):

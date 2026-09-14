@@ -108,6 +108,11 @@ def _fetch_master_history(git: Callable[[list[str]], str]) -> None:
         git(["fetch", "--tags", "origin", refspec])
 
 
+def _open_url(request: urllib.request.Request, *, timeout: int = 30):
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    return opener.open(request, timeout=timeout)
+
+
 def _github_json(repo: str, path: str) -> dict[str, Any]:
     base_url = os.getenv("GITHUB_API_URL", "https://api.github.com").rstrip("/")
     url = f"{base_url}/repos/{repo}/{path.lstrip('/')}"
@@ -120,7 +125,7 @@ def _github_json(repo: str, path: str) -> dict[str, Any]:
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with _open_url(request, timeout=30) as response:
             data = json.loads(response.read().decode())
     except urllib.error.HTTPError as exc:
         raise ReleaseIdentityError(
@@ -345,7 +350,7 @@ class RegistryClient:
             headers={"Authorization": self._auth_header, "Accept": accept},
         )
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with _open_url(request, timeout=30) as response:
                 body = response.read()
                 media_type = response.headers.get("Content-Type", "").split(";", 1)[0]
                 digest = response.headers.get("Docker-Content-Digest", "")
