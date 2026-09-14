@@ -57,6 +57,14 @@ tag 发布必须等待同一 commit 的质量检查成功，不借用旧流水�
 
 推荐 **rootless BuildKit**，直接构建现有 Dockerfile。固定工具版本和可验证镜像 digest，使用 amd64 原生构建与独立 registry cache；BuildKit 状态置于单次构建的本地临时目录，不放在共享 NFS workspace 上。构建输入仍来自校验后的源码包。
 
+#### 本机预同步基础镜像（用户单独授权）
+
+所有 Dockerfile 的外部镜像输入均只引用 `docker-hub.f123.pub/base/`。包括 Dockerfile frontend、每个外部 FROM，以及最终阶段提取 uv 二进制的外部 COPY；内部 build-stage 别名不改。当前共有六个独立来源：docker/dockerfile、oven/bun、uv Python builder、Python runtime、uv binary 和 pgvector/pgvector。
+
+在本机使用 registry-to-registry 工具先解析并固定源 manifest/index digest，再按该 digest 同步完整内容和多架构子 manifest，校验目标 digest 后才修改 Dockerfile。不使用普通本机 `docker pull/tag/push` 缩减为单个 arm64 平台，不通过 Kubernetes 或 Woodpecker 执行同步。目标标签形如 `<upstream-tag>-lightrag-<digest-prefix>`，避免覆盖其他应用的公共标签；Dockerfile 还固定完整 digest。
+
+`scripts/ci/base-images.lock.json` 记录源、目标、digest 和平台，[操作文档](../../../docs/ContainerBaseImages.md)记录本机同步、校验与更新方式；本次实际结果见[验证记录](base-images-verification.md)。后续更新必须重走“先推送验证、后修改引用”，CI 不自动从公网补齐缺失镜像，也不能用 build args 绕过基础镜像来源要求。已验证 registry 拒绝匿名读取，既有 CI 和开发环境需要专用读取权限，GHCR 登录不能替代它；发布写权限不授予 PR。该改动仅收敛镜像来源，apt、Rust、PyPI、npm 和模型下载仍有构建出站依赖。
+
 实施前先以最小构建验证 Kubernetes step 的非 root UID、user namespace、seccomp/AppArmor 配置及 cache/bind mount 支持，再构建完整镜像。rootless 不等于不需要安全配置：仅构建步骤允许必要的 unconfined profile / no-process-sandbox 设置，不能全局放宽 agent 或挂载宿主 Docker socket。步骤须设置 CPU、内存和临时磁盘预算，构建失败不自动改为 privileged。
 
 备选方案：
@@ -118,6 +126,7 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 
 - **rootless 仍需容器运行时能力** → 先探针验证；失败不自动提权、不修改 agent 全局安全设置。
 - **完整镜像较大，模型依赖下载耗时** → 固定工具/模型输入、使用 registry cache、设置磁盘和超时预算；不清理其他项目镜像或卷。
+- **默认基础镜像改为内部 registry** → 在本机验证目标内容及读取权限，记录现有 CI 的接入要求；不借此覆盖其他项目标签或删除旧镜像。
 - **跨存储不提供事务及自动 HA** → 只自动执行兼容升级和正常 drain；任何未确认状态保留并交由既有审计恢复路径。
 - **首次初始化需要人工维护，环境未就绪的首个 tag 会失败** → 文档明确“先构建镜像，再准备/初始化环境，再重试部署”；不把初始化权限塞入每次部署。
 - **同一提交重建不保证 digest 相同** → 已发布版本不可变，重试验证来源并复用已确认 artifact；漂移需新 tag，而非覆盖。

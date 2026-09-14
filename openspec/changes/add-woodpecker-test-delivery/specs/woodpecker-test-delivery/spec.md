@@ -4,6 +4,22 @@
 
 ## ADDED Requirements
 
+### Requirement: All Dockerfile image inputs are locally mirrored before use
+
+Every repository Dockerfile MUST reference external image inputs only under docker-hub.f123.pub/base/, including its frontend and external copy sources. The operator SHALL copy and verify those images from the local machine before updating the Dockerfiles, preserving the source digest and full platform set without overwriting unrelated shared tags. CI MUST NOT silently fetch missing base images from an upstream registry.
+
+#### Scenario: Base image is updated
+- **WHEN** an external base image or frontend is introduced or refreshed
+- **THEN** its complete content is first mirrored and verified locally, its source and destination identity is recorded, and only then is the internal digest-pinned reference committed
+
+#### Scenario: Local machine and CI use different architectures
+- **WHEN** the operator mirrors on an arm64 machine for an amd64 build agent
+- **THEN** the destination retains both source platforms and their unchanged manifests instead of containing only the local platform
+
+#### Scenario: Internal image is unavailable
+- **WHEN** an internal base image cannot be read or fails digest verification
+- **THEN** the build fails without an automatic upstream-registry fallback
+
 ### Requirement: Release events are scoped to the fork and protected source
 
 The delivery system SHALL run non-publishing checks for master pushes and pull requests targeting master. It MUST publish only supported version tags whose resolved commit matches the event and belongs to the fork master history, without changing main. Only test-suffixed version tags SHALL automatically deploy to the confirmed test namespace.

@@ -1,9 +1,9 @@
-# syntax=docker/dockerfile:1
+# syntax=docker-hub.f123.pub/base/dockerfile:1-lightrag-ecfaec9ed6d8@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 
 # Frontend build stage
 # Build frontend assets on the native build platform to avoid
 # cross-architecture emulation issues during multi-platform builds.
-FROM --platform=$BUILDPLATFORM oven/bun:1 AS frontend-builder
+FROM --platform=$BUILDPLATFORM docker-hub.f123.pub/base/bun:1-lightrag-9114c058aeae@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895 AS frontend-builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
     && bun run build
 
 # Python build stage - using uv for faster package installation
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
+FROM docker-hub.f123.pub/base/uv:python3.12-bookworm-slim-lightrag-e5b65587bce7@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV UV_SYSTEM_PYTHON=1
@@ -70,12 +70,12 @@ RUN mkdir -p /app/data/tiktoken \
 # Pin to bookworm: keeps Python 3.12 (venv compat with the builder stage) while
 # avoiding Debian trixie's perl 5.40.x exposure (CVE-2026-12087, no patch yet),
 # and aligns the final Debian release with the builder (also bookworm).
-FROM python:3.12-slim-bookworm
+FROM docker-hub.f123.pub/base/python:3.12-slim-bookworm-lightrag-782412e85d0f@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254
 
 WORKDIR /app
 
 # Install uv for package management
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=docker-hub.f123.pub/base/uv:latest-lightrag-b485bd65cc2c@sha256:b485bd65cc2cf1c9a93b3554012c9c3778cf7b1b5fd3d3096ce9e1226c97e1e6 /uv /usr/local/bin/uv
 
 ENV UV_SYSTEM_PYTHON=1
 

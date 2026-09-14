@@ -1,3 +1,10 @@
+## 0. 本机基础镜像同步（用户单独授权，其余实施仍待批准）
+
+- [x] 0.1 盘点三个 Dockerfile 的全部外部 FROM、COPY 和 frontend，固定六个源 index digest 与多架构清单。
+- [x] 0.2 从本机同步完整基础镜像到 `docker-hub.f123.pub/base/` 独立标签，核对 index、子 manifest 及 blob 可读性，不覆盖共享标签。
+- [x] 0.3 仅在目标验证成功后，将三个 Dockerfile 改为内部 digest-pinned 引用，生成对应镜像锁定清单。
+- [x] 0.4 验证内部镜像读取与 Dockerfile 构建检查，运行镜像来源回归测试，完成操作文档与验证记录；本切片遵循用户要求提交推送到 master。
+
 ## 1. 评审与实施前置
 
 - [ ] 1.1 取得本 proposal/design/spec 的实施批准，记录 test 集群、`lightrag-test` namespace 和首次初始化维护边界。
