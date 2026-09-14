@@ -46,8 +46,8 @@ Woodpecker 构建步骤自身使用的 rootless BuildKit 工具镜像同样不�
 [`scripts/ci/tool-images.lock.json`](../scripts/ci/tool-images.lock.json)。这不是
 Dockerfile 输入，不改变上方基础镜像必须保留完整平台集的规则。
 
-基础镜像同步并不意味着完整离线构建：Dockerfile 默认 apt、PyPI、Bun/npm 与
-rustup bootstrap 源已按目标网络改为清华/npmmirror 镜像并显式失败；模型缓存、
+基础镜像同步并不意味着完整离线构建：Dockerfile 默认 apt、Bun/npm 与 rustup bootstrap 源已按目标网络改为清华/npmmirror
+镜像，PyPI 源改为 f123 内部镜像，并显式失败；模型缓存、
 未镜像的上游服务以及 `Dockerfile.postgres` 的 AGE 源码下载仍需受控构建出站访问。
 运行时模型连接与本次基础镜像来源调整无关。
 

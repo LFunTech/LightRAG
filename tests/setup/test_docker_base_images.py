@@ -90,9 +90,9 @@ def test_apt_build_stages_default_to_tsinghua_debian_mirrors():
             assert "Acquire::Retries" in before_update, path.name
 
 
-def test_python_dependency_installs_default_to_tsinghua_index():
+def test_python_dependency_installs_default_to_internal_pypi_index():
     """Dockerfile uv/pip installs should not depend on public PyPI by default."""
-    mirror = "https://pypi.tuna.tsinghua.edu.cn/simple"
+    mirror = "https://mirror.f123.pub/repository/pypi/simple"
     for path in DOCKERFILES:
         text = path.read_text()
         if "uv sync" not in text and "pip install" not in text:
