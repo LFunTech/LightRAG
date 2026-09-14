@@ -47,7 +47,7 @@ tag 发布必须等待同一 commit 的质量检查成功，不借用旧流水�
 
 ### 2. 质量门禁
 
-- Python 使用 `uv.lock` 固定的 API、offline-storage、offline-llm、pytest extras，执行完整非 integration 测试。安装必要系统库；CI 不动态下载 spaCy 模型，缺少模型时使用测试套件既有 skip 机制记录跳过原因，避免代理环境把质量门禁变成外部下载测试；对 `faiss-cpu` 先做导入探针，若 lock 版本在当前 runner CPU 上触发 SIGILL，则在项目声明范围内降级到可导入 wheel 后继续运行 Faiss 测试；与开发者 `.env` 隔离，记录 pass/skip/fail 原因。
+- Python 使用 `uv.lock` 固定的 API、offline-storage、offline-llm、pytest extras，执行完整非 integration 测试。安装必要系统库；CI 不动态下载 spaCy 模型，缺少模型时使用测试套件既有 skip 机制记录跳过原因，避免代理环境把质量门禁变成外部下载测试；对 `faiss-cpu` 先做导入探针，若 lock 版本在当前 runner CPU 上触发 SIGILL，则在项目声明范围内降级到可导入 wheel 后继续运行 Faiss 测试；pytest 前清理继承自 Woodpecker agent 的代理变量，避免离线测试依赖代理适配包；与开发者 `.env` 隔离，记录 pass/skip/fail 原因。
 - 前端在 `lightrag_webui/` 执行 frozen install、全部 Bun 测试、`tsc --noEmit`、lint、build，保留现有构建体积门禁。
 - 工作流 strict lint、CI 脚本测试、shell/Python 静态检查、Kustomize render 和分布式 manifest 回归测试均需运行。
 - 既有两个失败单独验证：若为测试配置/状态码合同错误，修正 fixture 和精确断言，同时保留匿名拒绝、错误密钥拒绝、合法密钥通过鉴权及两个 prefix 转发模式的回归覆盖；不将 `401` 简单放宽为“任意非 200”。若确需改变生产鉴权行为，停止该修复并单独评审，不混入 CI 改动。

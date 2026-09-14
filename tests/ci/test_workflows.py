@@ -62,6 +62,7 @@ def test_backend_quality_entry_records_junit_and_skips_external_integration():
     assert "timeout 30s" in text
     assert "for version in 1.13.0 1.12.0 1.11.0" in text
     assert "faiss-cpu==$version" in text
+    assert "unset HTTP_PROXY HTTPS_PROXY ALL_PROXY" in text
     assert 'PYTHON="$ROOT/.venv/bin/python" ./scripts/test.sh' in text
 
 

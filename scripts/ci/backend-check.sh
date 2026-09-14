@@ -48,5 +48,6 @@ ensure_faiss_importable() {
 }
 
 ensure_faiss_importable
+unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
 mkdir -p build/ci-reports
 PYTHON="$ROOT/.venv/bin/python" ./scripts/test.sh tests -m "not integration" --junitxml build/ci-reports/backend-pytest.xml
