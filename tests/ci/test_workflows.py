@@ -83,24 +83,26 @@ def test_release_source_workflow_runs_static_validation_and_uploads_source_once(
         },
         {"event": "tag", "ref": "refs/tags/v*"},
     ]
-    assert list(workflow["steps"]) == [
-        "clone-source",
-        "delivery-static",
-        "validate-release",
-        "upload-source",
-    ]
-    assert workflow["steps"]["delivery-static"]["depends_on"] == ["clone-source"]
-    assert workflow["steps"]["validate-release"]["depends_on"] == ["delivery-static"]
-    assert workflow["steps"]["upload-source"]["depends_on"] == ["validate-release"]
-    assert workflow["steps"]["upload-source"]["image"] == CI_TOOLS_IMAGE
-    upload_text = "\n".join(workflow["steps"]["upload-source"]["commands"])
-    assert ". scripts/ci/source-artifact.sh" in upload_text
-    assert 'resolve_storage_endpoint "$STORAGE_ENDPOINT"' in upload_text
-    assert "mc alias set deploy" in upload_text
-    assert SOURCE_ARTIFACT_PREFIX in upload_text
-    assert "source.tar.gz" in upload_text
-    assert "source.tar.gz.sha256" in upload_text
-    assert "source-record.json" in upload_text
+    assert list(workflow["steps"]) == ["release-source"]
+    source = workflow["steps"]["release-source"]
+    assert source["image"] == CI_TOOLS_IMAGE
+    assert "depends_on" not in source
+    command_text = "\n".join(source["commands"])
+    assert "scripts/ci/delivery-check.sh" in command_text
+    assert "verify-source" in command_text
+    assert "archive-source" in command_text
+    assert "verify-archive" in command_text
+    assert ". scripts/ci/source-artifact.sh" in command_text
+    assert 'resolve_storage_endpoint "$STORAGE_ENDPOINT"' in command_text
+    assert "mc alias set deploy" in command_text
+    assert SOURCE_ARTIFACT_PREFIX in command_text
+    assert "source.tar.gz" in command_text
+    assert "source.tar.gz.sha256" in command_text
+    assert "source-record.json" in command_text
+    assert source["environment"]["STORAGE_ENDPOINT"]["from_secret"] == "cos_storage_endpoint"
+    assert source["environment"]["STORAGE_BUCKET"]["from_secret"] == "cos_storage_bucket"
+    assert source["environment"]["STORAGE_ACCESS_KEY"]["from_secret"] == "cos_storage_secret_id"
+    assert source["environment"]["STORAGE_SECRET_KEY"]["from_secret"] == "cos_storage_secret_key"
     text = (WOODPECKER / "validate-release.yml").read_text()
     for forbidden in (
         "KUBECONFIG",
@@ -112,18 +114,30 @@ def test_release_source_workflow_runs_static_validation_and_uploads_source_once(
 
 def test_release_source_workflow_uses_haier_style_single_commit_clone():
     workflow = load("validate-release.yml")
-    step = workflow["steps"]["clone-source"]
+    step = workflow["steps"]["release-source"]
     assert step["image"] == CI_TOOLS_IMAGE
     assert "depends_on" not in step
 
     command_text = "\n".join(step["commands"])
-    assert "git init --object-format sha1 ." in command_text
+    assert 'git init --object-format sha1 "$CLONE_DIR"' in command_text
     assert 'git fetch --no-tags --depth=1 origin "+$${CI_COMMIT_SHA}:"' in command_text
     assert 'git reset --hard -q "$${CI_COMMIT_SHA}"' in command_text
     assert "http.lowSpeedTime 300" in command_text
     assert "git lfs" not in command_text
     assert "submodule" not in command_text
     assert not re.search(r"(?<!\$)\$\{", command_text)
+
+
+def test_release_source_clone_uses_container_local_temp_dir_not_nfs_workspace():
+    workflow = load("validate-release.yml")
+    assert list(workflow["steps"]) == ["release-source"]
+    command_text = "\n".join(workflow["steps"]["release-source"]["commands"])
+    assert 'CLONE_DIR="$${LIGHTRAG_RELEASE_CLONE_DIR:-/tmp/lightrag-release-source}"' in command_text
+    assert 'git init --object-format sha1 "$CLONE_DIR"' in command_text
+    assert 'cd "$CLONE_DIR"' in command_text
+    assert 'git reset --hard -q "$${CI_COMMIT_SHA}"' in command_text
+    assert "git init --object-format sha1 ." not in command_text
+    assert 'git config --global --replace-all safe.directory "$${workspace_dir}"' not in command_text
 
 
 def test_source_artifact_bootstrap_escapes_shell_parameter_expansion():
@@ -135,7 +149,7 @@ def test_source_artifact_bootstrap_escapes_shell_parameter_expansion():
     ):
         workflow = load(name)
         steps = workflow["steps"]
-        step_names = ["upload-source"] if name == "validate-release.yml" else ["download-source"]
+        step_names = ["release-source"] if name == "validate-release.yml" else ["download-source"]
         for step_name in step_names:
             command_text = "\n".join(steps[step_name]["commands"])
             assert not re.search(r"(?<!\$)\$\{", command_text), (name, step_name)
@@ -160,7 +174,7 @@ def test_release_source_workflow_is_the_only_manual_clone_step():
             command_text = "\n".join(step.get("commands") or [])
             if "git fetch --no-tags --depth=1" in command_text:
                 manual_clone_steps.append((name, step_name))
-    assert manual_clone_steps == [("validate-release.yml", "clone-source")]
+    assert manual_clone_steps == [("validate-release.yml", "release-source")]
 
 
 def test_downstream_workflows_skip_clone_and_download_source_from_minio():
@@ -356,7 +370,11 @@ def test_validate_release_creates_source_archive_and_record_before_build():
 
 def test_validate_release_does_not_install_packages_in_ci():
     validate = load("validate-release.yml")
-    commands = validate["steps"]["validate-release"]["commands"]
+    commands = [
+        command
+        for step in validate["steps"].values()
+        for command in step.get("commands") or []
+    ]
     assert all("apt-get" not in command for command in commands)
 
 
@@ -369,9 +387,6 @@ def test_workflows_pin_linux_amd64_runner_platform():
 def test_static_delivery_workflow_uses_available_internal_ci_image():
     text = (WOODPECKER / "validate-release.yml").read_text()
     assert "ghcr.io/" not in text
-    assert (
-        "docker-hub.f123.pub/base/uv:python3.12-bookworm-slim-lightrag-e5b65587bce7"
-        "@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58"
-        in text
-    )
+    assert CI_TOOLS_IMAGE in text
+    assert "docker-hub.f123.pub/base/uv:" not in text
     assert "docker-hub.f123.pub/base/bun:" not in text

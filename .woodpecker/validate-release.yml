@@ -14,18 +14,26 @@ when:
     ref: refs/tags/v*
 
 steps:
-  clone-source:
-    # Manual first step instead of Woodpecker custom clone: strict lint only
-    # allows configured clone images, while this keeps the haier-demo
-    # single-commit/no-tags/no-submodule/no-LFS fetch behavior.
+  release-source:
+    # Keep the Git worktree off the Woodpecker NFS workspace. This step
+    # clones into container-local /tmp, validates the release, archives it,
+    # and uploads the source package for every downstream skip_clone workflow.
     image: docker-hub.f123.pub/base/ci-tools:alpine-3.22.4
     commands:
       - |
-        set -eu
+        set -euo pipefail
+        : "$${STORAGE_ENDPOINT:?STORAGE_ENDPOINT is required}"
+        : "$${STORAGE_BUCKET:?STORAGE_BUCKET is required}"
+        : "$${STORAGE_ACCESS_KEY:?STORAGE_ACCESS_KEY is required}"
+        : "$${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY is required}"
+
         export GIT_TERMINAL_PROMPT=0
-        workspace_dir="$${CI_WORKSPACE:-$(pwd)}"
+        export HOME="$${LIGHTRAG_RELEASE_HOME:-/tmp/lightrag-release-home}"
+        CLONE_DIR="$${LIGHTRAG_RELEASE_CLONE_DIR:-/tmp/lightrag-release-source}"
+        rm -rf "$HOME" "$CLONE_DIR"
+        mkdir -p "$HOME" "$CLONE_DIR"
+
         if [ -n "$${CI_NETRC_MACHINE:-}" ] && [ -n "$${CI_NETRC_USERNAME:-}" ] && [ -n "$${CI_NETRC_PASSWORD:-}" ]; then
-          mkdir -p "$${HOME}"
           trap 'rm -f "$HOME/.netrc"' EXIT
           {
             printf 'machine %s\n' "$${CI_NETRC_MACHINE}"
@@ -34,13 +42,15 @@ steps:
           } > "$HOME/.netrc"
           chmod 600 "$HOME/.netrc"
         fi
-        git init --object-format sha1 .
+
+        git init --object-format sha1 "$CLONE_DIR"
         git config --global http.postBuffer 524288000
         git config --global http.lowSpeedLimit 1000
         git config --global http.lowSpeedTime 300
         git config --global http.version HTTP/1.1
         git config --global http.retryCount 5
-        git config --global --replace-all safe.directory "$${workspace_dir}"
+        git config --global --replace-all safe.directory "$CLONE_DIR"
+        cd "$CLONE_DIR"
         git remote add origin "$${CI_REPO_CLONE_URL}"
         fetch_repo() {
           git fetch --no-tags --depth=1 origin "+$${CI_COMMIT_SHA}:"
@@ -49,39 +59,25 @@ steps:
           echo "Clone attempt $${i}..."
           if fetch_repo; then
             git reset --hard -q "$${CI_COMMIT_SHA}"
-            echo "Source clone completed"
-            exit 0
+            echo "Source clone completed in $CLONE_DIR"
+            break
           fi
           if [ "$${i}" -lt 5 ]; then
             echo "Source clone failed; retrying in 20 seconds..."
             sleep 20
+          else
+            echo "Source clone failed after all retries" >&2
+            exit 1
           fi
         done
-        echo "Source clone failed after all retries" >&2
-        exit 1
-  delivery-static:
-    image: docker-hub.f123.pub/base/uv:python3.12-bookworm-slim-lightrag-e5b65587bce7@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
-    depends_on: [clone-source]
-    commands:
-      - scripts/ci/delivery-check.sh
-  validate-release:
-    image: docker-hub.f123.pub/base/uv:python3.12-bookworm-slim-lightrag-e5b65587bce7@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
-    depends_on: [delivery-static]
-    commands:
-      - mkdir -p build/release
-      - python -m scripts.ci.delivery verify-source --tag "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA" --repo "$CI_REPO" --allowed-repo "LFunTech/LightRAG" --pipeline-id "$CI_PIPELINE_NUMBER" > build/release/release-identity.json
-      - python -m scripts.ci.delivery archive-source --repo . --output build/release/source.tar.gz --identity build/release/release-identity.json --record-output build/release/source-record.json
-      - python -m scripts.ci.delivery verify-archive --archive build/release/source.tar.gz --record build/release/source-record.json --identity build/release/release-identity.json --extract-to build/release/extracted-source
-  upload-source:
-    image: docker-hub.f123.pub/base/ci-tools:alpine-3.22.4
-    depends_on: [validate-release]
-    commands:
-      - |
-        set -euo pipefail
-        : "$${STORAGE_ENDPOINT:?STORAGE_ENDPOINT is required}"
-        : "$${STORAGE_BUCKET:?STORAGE_BUCKET is required}"
-        : "$${STORAGE_ACCESS_KEY:?STORAGE_ACCESS_KEY is required}"
-        : "$${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY is required}"
+
+        scripts/ci/delivery-check.sh
+
+        mkdir -p build/release
+        python3 -m scripts.ci.delivery verify-source --tag "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA" --repo "$CI_REPO" --allowed-repo "LFunTech/LightRAG" --pipeline-id "$CI_PIPELINE_NUMBER" > build/release/release-identity.json
+        python3 -m scripts.ci.delivery archive-source --repo . --output build/release/source.tar.gz --identity build/release/release-identity.json --record-output build/release/source-record.json
+        python3 -m scripts.ci.delivery verify-archive --archive build/release/source.tar.gz --record build/release/source-record.json --identity build/release/release-identity.json --extract-to build/release/extracted-source
+
         . scripts/ci/source-artifact.sh
         STORAGE_ENDPOINT_ROOT="$(resolve_storage_endpoint "$STORAGE_ENDPOINT")"
         ARTIFACT_PREFIX="lightrag/ci-source/$CI_COMMIT_SHA/$CI_PIPELINE_NUMBER"
