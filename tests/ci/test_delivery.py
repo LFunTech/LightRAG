@@ -21,7 +21,13 @@ def test_release_source_requires_expected_repo_commit_and_master_ancestry(tmp_pa
 
     def fake_git(args):
         calls.append(args)
-        if args == ["fetch", "--depth=0", "origin", "master", "--tags"]:
+        if args == [
+            "fetch",
+            "--tags",
+            "--unshallow",
+            "origin",
+            "+refs/heads/master:refs/remotes/origin/master",
+        ]:
             return ""
         if args[:2] == ["rev-parse", "v1.2.3-test^{commit}"]:
             return "abc123\n"
@@ -38,7 +44,14 @@ def test_release_source_requires_expected_repo_commit_and_master_ancestry(tmp_pa
     )
     assert identity.commit == "abc123"
     assert identity.deploy_environment == "test"
-    assert ["fetch", "--depth=0", "origin", "master", "--tags"] in calls
+    assert all("--depth=0" not in call for call in calls)
+    assert [
+        "fetch",
+        "--tags",
+        "--unshallow",
+        "origin",
+        "+refs/heads/master:refs/remotes/origin/master",
+    ] in calls
 
 
 def test_release_source_rejects_moved_tag():
@@ -208,7 +221,7 @@ def test_registry_auth_file_is_0600_and_masks_secret(tmp_path):
 
 def test_release_source_rejects_unprovable_master_ancestry():
     def fake_git(args):
-        if args == ["fetch", "--depth=0", "origin", "master", "--tags"]:
+        if args and args[0] == "fetch":
             raise delivery.subprocess.CalledProcessError(1, args)
         return ""
 

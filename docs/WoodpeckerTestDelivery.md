@@ -13,10 +13,10 @@ This Kustomize runbook covers the LightRAG fork delivery path for protected `vX.
 ## Required CI onboarding
 
 1. Enable the repository in Woodpecker with protected tags matching `v*`, `v*-pre` and `v*-test`.
-2. Configure secrets only for tag events where the workflow needs them:
-   - `lightrag_cos_access_key` / `lightrag_cos_secret_key` for LightRAG source archive and release records.
-   - `registry_username` / `registry_password` scoped to `docker-hub.f123.pub/lfun/lightrag`.
-   - `lightrag_test_kubeconfig` for the `lightrag-test-deployer` ServiceAccount in `lightrag-test`.
+2. Reuse existing Woodpecker global/organization secrets where their scope matches the LightRAG release boundary:
+   - Organization COS secrets: `cos_storage_endpoint`, `cos_storage_bucket`, `cos_storage_secret_id`, `cos_storage_secret_key`.
+   - Global registry secrets: `DOCKER_USERNAME`, `DOCKER_PASSWORD`.
+   - Global test-cluster kubeconfig: `kubeconfig_test`, injected into the workflow as `LIGHTRAG_TEST_KUBECONFIG`.
 3. Do not expose runtime model, database or graph credentials to build steps. Runtime credentials live in the Kubernetes Secret `lightrag-runtime`.
 
 ## First-time test environment initialization

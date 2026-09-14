@@ -12,11 +12,15 @@ steps:
     image: docker-hub.f123.pub/base/uv:python3.12-bookworm-slim-lightrag-e5b65587bce7@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
     commands:
       - mkdir -p build/release
-      - python -m scripts.ci.delivery verify-source --tag "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA" --repo "$CI_REPO" --allowed-repo "minwang/LightRAG" --pipeline-id "$CI_PIPELINE_NUMBER" > build/release/release-identity.json
+      - python -m scripts.ci.delivery verify-source --tag "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA" --repo "$CI_REPO" --allowed-repo "LFunTech/LightRAG" --pipeline-id "$CI_PIPELINE_NUMBER" > build/release/release-identity.json
       - python -m scripts.ci.delivery archive-source --repo . --output build/release/source.tar.gz --identity build/release/release-identity.json --record-output build/release/source-record.json
       - python -m scripts.ci.delivery verify-archive --archive build/release/source.tar.gz --record build/release/source-record.json --identity build/release/release-identity.json --extract-to build/release/extracted-source
     environment:
-      COS_ACCESS_KEY:
-        from_secret: lightrag_cos_access_key
-      COS_SECRET_KEY:
-        from_secret: lightrag_cos_secret_key
+      STORAGE_ENDPOINT:
+        from_secret: cos_storage_endpoint
+      STORAGE_BUCKET:
+        from_secret: cos_storage_bucket
+      STORAGE_ACCESS_KEY:
+        from_secret: cos_storage_secret_id
+      STORAGE_SECRET_KEY:
+        from_secret: cos_storage_secret_key

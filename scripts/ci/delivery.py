@@ -90,6 +90,14 @@ def _run_git(args: list[str], cwd: Path | None = None) -> str:
     return result.stdout
 
 
+def _fetch_master_history(git: Callable[[list[str]], str]) -> None:
+    refspec = "+refs/heads/master:refs/remotes/origin/master"
+    try:
+        git(["fetch", "--tags", "--unshallow", "origin", refspec])
+    except subprocess.CalledProcessError:
+        git(["fetch", "--tags", "origin", refspec])
+
+
 def verify_release_source(
     *,
     tag: str,
@@ -104,7 +112,7 @@ def verify_release_source(
         raise ReleaseIdentityError(f"repository {repo!r} is not allowed")
     git = git or _run_git
     try:
-        git(["fetch", "--depth=0", "origin", "master", "--tags"])
+        _fetch_master_history(git)
         tag_commit = git(["rev-parse", f"{tag}^{{commit}}"]).strip()
         if tag_commit != event_commit:
             raise ReleaseIdentityError(
@@ -481,7 +489,7 @@ def buildkit_command(
         "--opt",
         "platform=linux/amd64",
         "--opt",
-        f"label:org.opencontainers.image.source=https://github.com/{os.getenv('CI_REPO', 'minwang/LightRAG')}",
+        f"label:org.opencontainers.image.source=https://github.com/{os.getenv('CI_REPO', 'LFunTech/LightRAG')}",
         "--opt",
         f"label:org.opencontainers.image.revision={commit}",
         "--export-cache",
@@ -560,8 +568,12 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--image", default="docker-hub.f123.pub/lfun/lightrag")
     build.add_argument("--cache-ref", default="docker-hub.f123.pub/lfun/lightrag:buildcache")
     build.add_argument("--registry", default="docker-hub.f123.pub")
-    build.add_argument("--username", default=os.getenv("REGISTRY_USERNAME"))
-    build.add_argument("--password", default=os.getenv("REGISTRY_PASSWORD"))
+    build.add_argument(
+        "--username", default=os.getenv("REGISTRY_USERNAME") or os.getenv("DOCKER_USERNAME")
+    )
+    build.add_argument(
+        "--password", default=os.getenv("REGISTRY_PASSWORD") or os.getenv("DOCKER_PASSWORD")
+    )
 
     validate_image = sub.add_parser("validate-image")
     validate_image.add_argument("--manifest", type=Path, required=True)
@@ -573,8 +585,12 @@ def main(argv: list[str] | None = None) -> int:
     resolve_image.add_argument("--tag", required=True)
     resolve_image.add_argument("--commit", required=True)
     resolve_image.add_argument("--image", default="docker-hub.f123.pub/lfun/lightrag")
-    resolve_image.add_argument("--username", default=os.getenv("REGISTRY_USERNAME"))
-    resolve_image.add_argument("--password", default=os.getenv("REGISTRY_PASSWORD"))
+    resolve_image.add_argument(
+        "--username", default=os.getenv("REGISTRY_USERNAME") or os.getenv("DOCKER_USERNAME")
+    )
+    resolve_image.add_argument(
+        "--password", default=os.getenv("REGISTRY_PASSWORD") or os.getenv("DOCKER_PASSWORD")
+    )
     resolve_image.add_argument("--record-output", type=Path, required=True)
     resolve_image.add_argument("--env-output", type=Path)
 

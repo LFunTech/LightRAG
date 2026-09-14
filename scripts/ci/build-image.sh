@@ -3,8 +3,10 @@ set -euo pipefail
 
 : "${CI_COMMIT_TAG:?CI_COMMIT_TAG is required}"
 : "${CI_COMMIT_SHA:?CI_COMMIT_SHA is required}"
-: "${REGISTRY_USERNAME:?REGISTRY_USERNAME is required}"
-: "${REGISTRY_PASSWORD:?REGISTRY_PASSWORD is required}"
+REGISTRY_USERNAME="${REGISTRY_USERNAME:-${DOCKER_USERNAME:-}}"
+REGISTRY_PASSWORD="${REGISTRY_PASSWORD:-${DOCKER_PASSWORD:-}}"
+: "${REGISTRY_USERNAME:?REGISTRY_USERNAME or DOCKER_USERNAME is required}"
+: "${REGISTRY_PASSWORD:?REGISTRY_PASSWORD or DOCKER_PASSWORD is required}"
 
 case "$CI_COMMIT_TAG" in
   v[0-9]*.[0-9]*.[0-9]*|v[0-9]*.[0-9]*.[0-9]*-pre|v[0-9]*.[0-9]*.[0-9]*-test) ;;
@@ -18,7 +20,7 @@ REGISTRY="${REGISTRY:-docker-hub.f123.pub}"
 IMAGE_REPOSITORY="${LIGHTRAG_IMAGE_REPOSITORY:-lfun/lightrag}"
 IMAGE="${REGISTRY%/}/${IMAGE_REPOSITORY}"
 CACHE_REF="${LIGHTRAG_IMAGE_CACHE_REF:-${IMAGE}:buildcache}"
-SOURCE_URL="https://github.com/${CI_REPO:-minwang/LightRAG}"
+SOURCE_URL="https://github.com/${CI_REPO:-LFunTech/LightRAG}"
 DOCKER_CONFIG_DIR="${DOCKER_CONFIG:-${HOME:-/tmp}/.docker}"
 METADATA_FILE="build/release/build-metadata.json"
 

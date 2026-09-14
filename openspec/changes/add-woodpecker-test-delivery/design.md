@@ -91,7 +91,7 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 
 首次接入是单独的显式环境准备，不属于每个 tag 自动部署：
 
-1. 创建 namespace 和命名空间限定的发布 ServiceAccount/RBAC，向 CI 提供专用 `lightrag_test_kubeconfig`，而非复制 ai-center 的集群管理员 kubeconfig。
+1. 创建 namespace 和命名空间限定的发布 ServiceAccount/RBAC；Woodpecker 优先引用已有 global `kubeconfig_test` 注入为 `LIGHTRAG_TEST_KUBECONFIG`，若该凭据权限越界再改为专用 LightRAG kubeconfig，而非复制 ai-center 的集群管理员 kubeconfig。
 2. 预置 LightRAG 专属 PG/pgvector 数据库、协调库/权限及 HugeGraph 数据域。可以使用经授权的 test 基础设施，但不共享其他应用的数据库或图数据；不猜测任何现有 Service 就是可用目标。
 3. 预置两个 `syno-nfs` RWX PVC，跨不同节点实际验证 UID 1000 的创建、读取、原子 rename 和排他创建操作，保留证据。数据库底层存储按其自身要求选择，不把应用 RWX 文件卷充当数据库持久化方案。
 4. 创建外部运行 Secret 与 pull Secret，固定服务器地址、workspace、embedding 模型/维度及共享路径。继续使用已选的真实百炼模型 `qwen-plus` / `text-embedding-v4`（1024 维）；地址与密钥通过环境输入，不写入源码。API key 必须设置，账号模式另需一致且强随机的 TOKEN_SECRET。

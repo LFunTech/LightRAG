@@ -14,7 +14,7 @@ steps:
       - mkdir -p build/release
       - python -m scripts.ci.delivery resolve-image --tag "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA" --image "docker-hub.f123.pub/lfun/lightrag" --record-output build/release/image-record.json
     environment:
-      REGISTRY_USERNAME:
-        from_secret: registry_username
-      REGISTRY_PASSWORD:
-        from_secret: registry_password
+      DOCKER_USERNAME:
+        from_secret: DOCKER_USERNAME
+      DOCKER_PASSWORD:
+        from_secret: DOCKER_PASSWORD

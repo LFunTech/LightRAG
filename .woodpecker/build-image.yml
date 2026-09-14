@@ -15,7 +15,7 @@ steps:
       - scripts/ci/build-image.sh
     environment:
       BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
-      REGISTRY_USERNAME:
-        from_secret: registry_username
-      REGISTRY_PASSWORD:
-        from_secret: registry_password
+      DOCKER_USERNAME:
+        from_secret: DOCKER_USERNAME
+      DOCKER_PASSWORD:
+        from_secret: DOCKER_PASSWORD

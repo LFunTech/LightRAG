@@ -18,7 +18,7 @@ def test_deploy_workflow_uses_kubectl_apply_k_not_helm():
     assert "imageID" in script
     workflow = yaml.safe_load(text)
     step = workflow["steps"]["deploy-test"]
-    assert "lightrag_test_kubeconfig" in text
+    assert "kubeconfig_test" in text
     assert "LIGHTRAG_TEST_KUBECONFIG" in step["environment"]
 
 

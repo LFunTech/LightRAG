@@ -50,8 +50,33 @@ def test_release_secrets_do_not_appear_in_pull_request_workflow():
         p.read_text() for p in WOODPECKER.glob("*.yml") if p.name != "quality.yml"
     )
     assert "from_secret" in release_text
-    assert "lightrag_test_kubeconfig" in release_text
-    assert "registry_password" in release_text
+    assert "kubeconfig_test" in release_text
+    assert "DOCKER_PASSWORD" in release_text
+    assert "cos_storage_secret_key" in release_text
+
+
+def test_release_workflows_reference_existing_global_or_org_secrets():
+    release_text = "\n".join(
+        p.read_text() for p in WOODPECKER.glob("*.yml") if p.name != "quality.yml"
+    )
+    for expected in (
+        "DOCKER_USERNAME",
+        "DOCKER_PASSWORD",
+        "cos_storage_endpoint",
+        "cos_storage_bucket",
+        "cos_storage_secret_id",
+        "cos_storage_secret_key",
+        "kubeconfig_test",
+    ):
+        assert expected in release_text
+    for old_name in (
+        "registry_username",
+        "registry_password",
+        "lightrag_cos_access_key",
+        "lightrag_cos_secret_key",
+        "lightrag_test_kubeconfig",
+    ):
+        assert old_name not in release_text
 
 
 def test_release_workflows_delegate_complex_steps_to_tested_scripts():
@@ -133,6 +158,7 @@ def test_local_check_scripts_are_not_invoked_by_woodpecker():
 
 def test_validate_release_creates_source_archive_and_record_before_build():
     text = (WOODPECKER / "validate-release.yml").read_text()
+    assert '--allowed-repo "LFunTech/LightRAG"' in text
     assert "archive-source" in text
     assert "verify-archive" in text
     assert "release-identity.json" in text
