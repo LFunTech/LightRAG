@@ -84,6 +84,7 @@ echo "kaniko version: $($KANIKO_EXECUTOR version 2>/dev/null || true)"
   --cache-copy-layers \
   --cache-repo="${CACHE_REPO}" \
   --custom-platform=linux/amd64 \
+  --snapshot-mode=redo \
   --digest-file="${DIGEST_FILE}" \
   --image-name-with-digest-file="${IMAGE_NAME_WITH_DIGEST_FILE}"
 

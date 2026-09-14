@@ -77,6 +77,12 @@ def test_build_image_uses_haier_style_kaniko_builder_for_streamed_logs():
     assert step["commands"] == ["sh scripts/ci/build-image.sh"]
 
 
+def test_build_image_uses_redo_snapshot_mode_for_large_python_venv_layers():
+    script = (ROOT / "scripts/ci/build-image.sh").read_text()
+    assert "--snapshot-mode=redo" in script
+    assert "--use-new-run" not in script
+
+
 def test_release_source_workflow_runs_static_validation_and_uploads_source_once():
     workflow = load("validate-release.yml")
     assert "depends_on" not in workflow
@@ -284,6 +290,7 @@ def test_build_image_script_streams_kaniko_logs_and_records_digest():
     assert "--cache-copy-layers" in script
     assert '--cache-repo="${CACHE_REPO}"' in script
     assert "--custom-platform=linux/amd64" in script
+    assert "--snapshot-mode=redo" in script
     assert '--digest-file="${DIGEST_FILE}"' in script
     assert "buildctl-daemonless.sh" not in script
     assert "BUILDKIT_PROGRESS" not in script
