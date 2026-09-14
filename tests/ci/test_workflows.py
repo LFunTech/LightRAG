@@ -156,6 +156,13 @@ def test_release_workflows_delegate_complex_steps_to_tested_scripts():
     assert "sed -i" not in deploy
 
 
+def test_build_image_script_streams_plain_buildkit_progress():
+    script = (ROOT / "scripts/ci/build-image.sh").read_text()
+    assert "starting rootless BuildKit image build" in script
+    assert "BUILDKIT_PROGRESS=plain" in script
+    assert "--progress=plain" in script
+
+
 def test_tag_delivery_workflows_are_self_contained_not_static_only():
     build = load("build-image.yml")
     pre = load("pre-deploy.yml")

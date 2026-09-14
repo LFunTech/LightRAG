@@ -40,7 +40,15 @@ export DOCKER_CONFIG="$DOCKER_CONFIG_DIR"
 # reachable directly from the runner network.
 unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
 
+export BUILDKIT_PROGRESS=plain
+echo "starting rootless BuildKit image build"
+echo "image tag: ${IMAGE}:${CI_COMMIT_TAG}"
+echo "commit: ${CI_COMMIT_SHA}"
+echo "cache ref: ${CACHE_REF}"
+echo "metadata file: ${METADATA_FILE}"
+
 buildctl-daemonless.sh build \
+  --progress=plain \
   --frontend dockerfile.v0 \
   --local context=. \
   --local dockerfile=. \

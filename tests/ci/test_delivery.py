@@ -389,6 +389,7 @@ def test_buildkit_command_uses_rootless_amd64_cache_revision_and_auth(tmp_path):
     )
     joined = " ".join(cmd)
     assert cmd[:2] == ["buildctl-daemonless.sh", "build"]
+    assert "--progress=plain" in cmd
     assert "platform=linux/amd64" in joined
     assert "org.opencontainers.image.revision=abc123" in joined
     assert "docker-hub.f123.pub/lfun/lightrag:v1.2.3-test" in joined

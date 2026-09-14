@@ -565,6 +565,7 @@ def buildkit_command(
     return [
         "buildctl-daemonless.sh",
         "build",
+        "--progress=plain",
         "--frontend",
         "dockerfile.v0",
         "--local",

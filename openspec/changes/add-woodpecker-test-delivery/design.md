@@ -56,6 +56,8 @@ tag 发布必须等待同一 commit 的交付静态校验成功，不借用旧�
 
 推荐 **rootless BuildKit**，直接构建现有 Dockerfile。固定工具版本和可验证镜像 digest，使用 amd64 原生构建与独立 registry cache；BuildKit 状态置于单次构建的本地临时目录，不放在共享 NFS workspace 上。构建输入仍来自校验后的源码包。
 
+构建入口必须向 stdout/stderr 输出可持续刷新的非敏感进度：脚本在调用 BuildKit 前打印 tag、commit、cache ref 和 metadata 文件位置，并强制 `BUILDKIT_PROGRESS=plain` / `--progress=plain`，避免 Woodpecker 只能看到一个长时间运行但无上下文的步骤。不得打印 registry 密码、COS 密钥或完整运行 Secret。
+
 #### 本机预同步基础镜像（用户单独授权）
 
 所有 Dockerfile 的外部镜像输入均只引用 `docker-hub.f123.pub/base/`。包括 Dockerfile frontend、每个外部 FROM，以及最终阶段提取 uv 二进制的外部 COPY；内部 build-stage 别名不改。当前共有六个独立来源：docker/dockerfile、oven/bun、uv Python builder、Python runtime、uv binary 和 pgvector/pgvector。
