@@ -20,7 +20,23 @@ def test_kustomize_test_deployment_preserves_distributed_profile_without_plainte
     assert env["LIGHTRAG_GRAPH_STORAGE"] == "HugeGraphStorage"
     assert env["EMBEDDING_MODEL"] == "text-embedding-v4"
     assert env["EMBEDDING_DIM"] == "1024"
-    forbidden = {"POSTGRES_PASSWORD", "HUGEGRAPH_PASSWORD", "LLM_BINDING_API_KEY", "EMBEDDING_BINDING_API_KEY", "LIGHTRAG_API_KEY"}
+    forbidden = {
+        "POSTGRES_HOST",
+        "POSTGRES_PORT",
+        "POSTGRES_DATABASE",
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD",
+        "HUGEGRAPH_URI",
+        "HUGEGRAPH_GRAPH",
+        "HUGEGRAPH_GRAPHSPACE",
+        "HUGEGRAPH_USERNAME",
+        "HUGEGRAPH_PASSWORD",
+        "LLM_BINDING_API_KEY",
+        "LLM_BINDING_HOST",
+        "EMBEDDING_BINDING_API_KEY",
+        "EMBEDDING_BINDING_HOST",
+        "LIGHTRAG_API_KEY",
+    }
     assert not (forbidden & set(env))
 
 
@@ -40,11 +56,28 @@ def test_kustomize_network_policy_keeps_application_private_with_explicit_intern
     assert policy["spec"]["policyTypes"] == ["Ingress", "Egress"]
     assert policy["spec"]["ingress"]
     assert all("ipBlock" not in peer for rule in policy["spec"]["ingress"] for peer in rule.get("from", []))
+    backend_rule = next(
+        rule
+        for rule in policy["spec"]["egress"]
+        if {port["port"] for port in rule.get("ports", [])} == {5432, 8080}
+    )
+    assert "to" not in backend_rule
 
 
-def test_runbook_records_manual_initialization_and_remote_verification_boundary():
+def test_kustomize_pvcs_pin_test_cluster_rwx_storage_class():
+    docs = list(yaml.safe_load_all((BASE / "pvc.yaml").read_text()))
+    assert {doc["metadata"]["name"] for doc in docs} == {
+        "lightrag-test-inputs-rwx",
+        "lightrag-test-working-rwx",
+    }
+    assert all(doc["spec"]["storageClassName"] == "syno-nfs" for doc in docs)
+
+
+def test_runbook_records_pipeline_managed_initialization_and_remote_verification_boundary():
     text = RUNBOOK.read_text()
     assert "lightrag-test" in text
-    assert "not part of every tag deployment" in text
+    assert "test.secrets" in text
+    assert "Woodpecker repo secrets" in text
+    assert "creates or updates Kubernetes runtime Secrets" in text
     assert "Remote acceptance not yet run" in text
     assert "Do not claim YAML lint, Kustomize render, or local test results as deployment success" in text

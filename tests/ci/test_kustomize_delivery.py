@@ -47,7 +47,23 @@ def test_kustomize_deployment_preserves_distributed_profile_without_plaintext_se
     assert env["LIGHTRAG_GRAPH_STORAGE"] == "HugeGraphStorage"
     assert env["EMBEDDING_MODEL"] == "text-embedding-v4"
     assert env["EMBEDDING_DIM"] == "1024"
-    forbidden = {"POSTGRES_PASSWORD", "HUGEGRAPH_PASSWORD", "LIGHTRAG_API_KEY", "LLM_BINDING_API_KEY", "EMBEDDING_BINDING_API_KEY"}
+    forbidden = {
+        "POSTGRES_HOST",
+        "POSTGRES_PORT",
+        "POSTGRES_DATABASE",
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD",
+        "HUGEGRAPH_URI",
+        "HUGEGRAPH_GRAPH",
+        "HUGEGRAPH_GRAPHSPACE",
+        "HUGEGRAPH_USERNAME",
+        "HUGEGRAPH_PASSWORD",
+        "LIGHTRAG_API_KEY",
+        "LLM_BINDING_API_KEY",
+        "LLM_BINDING_HOST",
+        "EMBEDDING_BINDING_API_KEY",
+        "EMBEDDING_BINDING_HOST",
+    }
     assert not (forbidden & set(env))
 
 

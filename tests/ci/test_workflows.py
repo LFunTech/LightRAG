@@ -320,6 +320,43 @@ def test_tag_delivery_workflows_are_self_contained_not_static_only():
     ]
 
 
+def test_deploy_test_workflow_injects_repo_runtime_secrets_from_test_secret_file():
+    deploy = load("deploy-test.yml")
+    env = deploy["steps"]["deploy-test"]["environment"]
+    expected = {
+        "LIGHTRAG_TEST_API_KEY": "lightrag_test_api_key",
+        "LIGHTRAG_TEST_LLM_API_KEY": "lightrag_test_bailian_api_key",
+        "LIGHTRAG_TEST_EMBEDDING_API_KEY": "lightrag_test_bailian_api_key",
+        "LIGHTRAG_TEST_DASHSCOPE_WORKSPACE_ID": "lightrag_test_dashscope_workspace_id",
+        "LIGHTRAG_TEST_LLM_BINDING_HOST": "lightrag_test_bailian_api_host",
+        "LIGHTRAG_TEST_EMBEDDING_BINDING_HOST": "lightrag_test_bailian_api_host",
+        "LIGHTRAG_TEST_POSTGRES_HOST": "lightrag_test_postgres_host",
+        "LIGHTRAG_TEST_POSTGRES_PORT": "lightrag_test_postgres_port",
+        "LIGHTRAG_TEST_POSTGRES_USER": "lightrag_test_postgres_user",
+        "LIGHTRAG_TEST_POSTGRES_DATABASE": "lightrag_test_postgres_database",
+        "LIGHTRAG_TEST_POSTGRES_PASSWORD": "lightrag_test_postgres_password",
+        "LIGHTRAG_TEST_HUGEGRAPH_URI": "lightrag_test_hugegraph_uri",
+        "LIGHTRAG_TEST_HUGEGRAPH_GRAPH": "lightrag_test_hugegraph_graph",
+        "LIGHTRAG_TEST_HUGEGRAPH_GRAPHSPACE": "lightrag_test_hugegraph_graphspace",
+        "LIGHTRAG_TEST_HUGEGRAPH_USERNAME": "lightrag_test_hugegraph_username",
+        "LIGHTRAG_TEST_HUGEGRAPH_PASSWORD": "lightrag_test_hugegraph_password",
+    }
+    for variable, secret_name in expected.items():
+        assert env[variable]["from_secret"] == secret_name
+
+
+def test_deploy_test_script_bootstraps_namespace_secrets_and_snapshot_in_pipeline():
+    script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
+    assert "ensure_namespace()" in script
+    assert "apply_registry_pull_secret()" in script
+    assert "apply_runtime_secret()" in script
+    assert "apply_environment_snapshot()" in script
+    assert "kubectl get namespace \"$NAMESPACE\" >/dev/null" not in script
+    assert "create secret docker-registry lightrag-registry-pull" in script
+    assert "create secret generic lightrag-runtime" in script
+    assert "create configmap lightrag-test-environment" in script
+
+
 def test_deploy_test_script_uses_posix_shell_and_prints_kubernetes_status():
     script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
     assert script.startswith("#!/usr/bin/env sh\n")

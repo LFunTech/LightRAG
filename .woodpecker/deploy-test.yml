@@ -94,3 +94,43 @@ steps:
     environment:
       LIGHTRAG_TEST_KUBECONFIG:
         from_secret: kubeconfig_test
+      DOCKER_USERNAME:
+        from_secret: DOCKER_USERNAME
+      DOCKER_PASSWORD:
+        from_secret: DOCKER_PASSWORD
+      LIGHTRAG_TEST_API_KEY:
+        from_secret: lightrag_test_api_key
+      LIGHTRAG_TEST_LLM_API_KEY:
+        from_secret: lightrag_test_bailian_api_key
+      LIGHTRAG_TEST_EMBEDDING_API_KEY:
+        from_secret: lightrag_test_bailian_api_key
+      LIGHTRAG_TEST_BAILIAN_REGION:
+        from_secret: lightrag_test_bailian_region
+      LIGHTRAG_TEST_DASHSCOPE_WORKSPACE_ID:
+        from_secret: lightrag_test_dashscope_workspace_id
+      LIGHTRAG_TEST_LLM_BINDING_HOST:
+        from_secret: lightrag_test_bailian_api_host
+      LIGHTRAG_TEST_EMBEDDING_BINDING_HOST:
+        from_secret: lightrag_test_bailian_api_host
+      LIGHTRAG_TEST_POSTGRES_HOST:
+        from_secret: lightrag_test_postgres_host
+      LIGHTRAG_TEST_POSTGRES_PORT:
+        from_secret: lightrag_test_postgres_port
+      LIGHTRAG_TEST_POSTGRES_USER:
+        from_secret: lightrag_test_postgres_user
+      LIGHTRAG_TEST_POSTGRES_DATABASE:
+        from_secret: lightrag_test_postgres_database
+      LIGHTRAG_TEST_POSTGRES_PASSWORD:
+        from_secret: lightrag_test_postgres_password
+      LIGHTRAG_TEST_HUGEGRAPH_URI:
+        from_secret: lightrag_test_hugegraph_uri
+      LIGHTRAG_TEST_HUGEGRAPH_GRAPH:
+        from_secret: lightrag_test_hugegraph_graph
+      LIGHTRAG_TEST_HUGEGRAPH_GRAPHSPACE:
+        from_secret: lightrag_test_hugegraph_graphspace
+      LIGHTRAG_TEST_HUGEGRAPH_USERNAME:
+        from_secret: lightrag_test_hugegraph_username
+      LIGHTRAG_TEST_HUGEGRAPH_PASSWORD:
+        from_secret: lightrag_test_hugegraph_password
+      LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD:
+        from_secret: lightrag_test_hugegraph_auth_method

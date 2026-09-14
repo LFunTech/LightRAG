@@ -3,6 +3,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: lightrag-test-inputs-rwx
 spec:
+  storageClassName: syno-nfs
   accessModes: [ReadWriteMany]
   resources:
     requests:
@@ -13,6 +14,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: lightrag-test-working-rwx
 spec:
+  storageClassName: syno-nfs
   accessModes: [ReadWriteMany]
   resources:
     requests:

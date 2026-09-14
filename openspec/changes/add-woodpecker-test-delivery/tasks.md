@@ -10,6 +10,7 @@
 - [x] 1.1 取得本 proposal/design/spec 的实施批准，记录 test 集群、`lightrag-test` namespace 和首次初始化维护边界。
 - [ ] 1.2 核对 Woodpecker 仓库接入、受保护 tag、Secret 事件/镜像限制、COS/registry 权限及命名空间级部署凭据；只记录名称和验证结果。
   - 2026-09-14 只读核对：Woodpecker `LFunTech/LightRAG` 已启用，默认分支 `master`，仓库为 public；global secrets 存在 `DOCKER_USERNAME`、`DOCKER_PASSWORD`、`kubeconfig_test`（tag 事件可用），organization secrets 存在 `cos_storage_endpoint`、`cos_storage_bucket`、`cos_storage_secret_id`、`cos_storage_secret_key`（tag 事件可用），repo-local secrets 为空。GitHub rulesets 当前为空，`lightrag-test` namespace 当前不存在，因此受保护 tag 与命名空间级部署资源仍待管理员显式完成。
+  - 2026-09-14 追加核对：按用户指定从本仓库 `.secrets/test.secrets` 同步了 LightRAG repo secrets，仅记录名称：`lightrag_test_bailian_api_key`、`lightrag_test_bailian_api_host`、`lightrag_test_bailian_region`、`lightrag_test_dashscope_workspace_id`、`lightrag_test_postgres_host`、`lightrag_test_postgres_port`、`lightrag_test_postgres_user`、`lightrag_test_postgres_database`、`lightrag_test_postgres_password`、`lightrag_test_hugegraph_uri`、`lightrag_test_hugegraph_graph`、`lightrag_test_hugegraph_graphspace`、`lightrag_test_hugegraph_username`、`lightrag_test_hugegraph_password`、`lightrag_test_api_key`；事件范围为 `tag`，CLI 当前对带点 tag 的镜像限制校验不兼容，未设置 image 限制。受保护 tag/ruleset 仍待管理员确认。
 - [x] 1.3 验证 Kaniko 构建探针：内部工具镜像 digest、registry auth、amd64 构建参数、cache-repo 和临时存储预算；失败不自动提权或挂载宿主 Docker socket。
 
 ## 2. 本地回归基线与流水线静态门禁
@@ -47,7 +48,7 @@
 - [x] 5.1 先补 Kustomize 回归测试，再增加 digest replacement 及全程 Service 路由暂停能力；保留既有 Helm chart 默认 local 模式不作为 Woodpecker 部署入口。
 - [x] 5.2 提供 test 专用分布式 values：两 Pod、每 Pod 一个进程、共享 PG/HugeGraph/工作区与路径、非 root、显式 Secret、连接池预算及足够的退出宽限期。
 - [x] 5.3 提供命名空间级发布 RBAC、内部访问控制配套与前置检查，禁止公网 Service/Ingress，避免将模型/数据库凭据放入构建步骤或日志。
-- [x] 5.4 提供首次环境准备与显式初始化操作文档，覆盖专属数据库/图域、两个 RWX PVC、真实百炼配置、鉴权、受控出站和已有 bootstrap 维护流程。
+- [x] 5.4 提供流水线托管的测试环境准备与显式维护边界文档，覆盖 `.secrets/test.secrets` 到 Woodpecker repo secrets 的同步、专属数据库/图域、两个 RWX PVC、真实百炼配置、鉴权、受控出站和既有 bootstrap/recover 不进入普通 tag 部署的边界。
 
 ## 6. 保守自动升级与验收
 
@@ -73,6 +74,7 @@
 - [ ] 7.2 本地运行完整非 integration 后端测试和完整前端检查，分项记录 pass/skip/fail；确认这些测试结果不被写成 Woodpecker 门禁。
 - [ ] 7.3 在批准的 test 集群创建独立测试资源、完成跨节点 RWX 实测和显式初始化；记录目标与证据，不修改本机/Kind 服务或其他应用资源。
   - 2026-09-14 只读核对：test 集群 `lightrag-test` namespace 不存在；可见 StorageClass 为 `syno-nfs`；`database` namespace 当前无 PostgreSQL/HugeGraph Service。首次环境初始化仍需操作者创建 namespace/RWX PVC/runtime Secret/registry pull Secret、专属 PG/HugeGraph 后端和 `lightrag-test-environment` 初始化快照。
+  - 2026-09-14 方向修正：用户明确要求这些 Kubernetes 侧资源由流水线处理，并指出本仓库 `.secrets/test.secrets` 已提供 HugeGraph/数据库连接。已将 repo secrets 同步到 Woodpecker，并修改 deploy-test 流水线为创建/更新 namespace、pull Secret、runtime Secret、profile snapshot 和 `syno-nfs` PVC；真实跨节点 RWX 与双 Pod 业务验收仍待新 tag 远端运行记录。
 - [ ] 7.4 在获得触发授权后用测试 tag 跑通真实 Woodpecker 构建、镜像验证和初次双 Pod 部署，保存 pipeline/tag/commit/digest、imageID 及业务验收结果。
   - 2026-09-14 `v1.5.31-test` / pipeline #41 已跑通真实 Woodpecker 源码归档、镜像构建和 pre-deploy 镜像验证；`deploy-test` 已进入真实部署步骤，但因 `image.env` 未 export 导致脚本入参缺失而失败。修复后仍需新测试 tag 验证初次双 Pod 部署。
   - 2026-09-14 `v1.5.32-test` / pipeline #42 已跑通真实 Woodpecker 源码归档、镜像构建、pre-deploy 镜像验证和 deploy-test 的 image env 传播；构建 digest 为 `sha256:575beb3cf5c93be229b94cc00d0f7cbf581a33d96fe73cbfe58f187242da296f`。deploy-test 随后按前置检查失败于 `namespaces "lightrag-test" not found`，说明下一步阻塞在首次 test 环境初始化，而不是 CI 构建/变量传递。

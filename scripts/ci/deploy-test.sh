@@ -25,6 +25,15 @@ KUBECONFIG_FILE="${KUBECONFIG_FILE:-/tmp/lightrag-test-kubeconfig}"
 ROUTE_PAUSE_PATCH='{"spec":{"selector":{"lightrag.openai.com/routing-paused":"true"}}}'
 ROUTE_RESTORE_PATCH='{"spec":{"selector":{"app.kubernetes.io/name":"lightrag","app.kubernetes.io/instance":"lightrag"}}}'
 
+require_env() {
+  name="$1"
+  eval "value=\${$name:-}"
+  if [ -z "$value" ]; then
+    echo "required environment variable is not set: $name" >&2
+    exit 1
+  fi
+}
+
 show_kubectl_status() {
   label="$1"
   shift
@@ -33,6 +42,77 @@ show_kubectl_status() {
   if ! "$@"; then
     echo "Unable to read ${label}; keeping deployment command status unchanged." >&2
   fi
+}
+
+ensure_namespace() {
+  kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+}
+
+apply_registry_pull_secret() {
+  require_env DOCKER_USERNAME
+  require_env DOCKER_PASSWORD
+
+  kubectl -n "$NAMESPACE" create secret docker-registry lightrag-registry-pull \
+    --docker-server=docker-hub.f123.pub \
+    --docker-username="$DOCKER_USERNAME" \
+    --docker-password="$DOCKER_PASSWORD" \
+    --dry-run=client -o yaml | kubectl apply -f -
+}
+
+apply_runtime_secret() {
+  require_env LIGHTRAG_TEST_API_KEY
+  require_env LIGHTRAG_TEST_LLM_API_KEY
+  require_env LIGHTRAG_TEST_EMBEDDING_API_KEY
+  require_env LIGHTRAG_TEST_LLM_BINDING_HOST
+  require_env LIGHTRAG_TEST_EMBEDDING_BINDING_HOST
+  require_env LIGHTRAG_TEST_POSTGRES_HOST
+  require_env LIGHTRAG_TEST_POSTGRES_PORT
+  require_env LIGHTRAG_TEST_POSTGRES_USER
+  require_env LIGHTRAG_TEST_POSTGRES_DATABASE
+  require_env LIGHTRAG_TEST_POSTGRES_PASSWORD
+  require_env LIGHTRAG_TEST_HUGEGRAPH_URI
+  require_env LIGHTRAG_TEST_HUGEGRAPH_GRAPH
+  require_env LIGHTRAG_TEST_HUGEGRAPH_GRAPHSPACE
+  require_env LIGHTRAG_TEST_HUGEGRAPH_USERNAME
+  require_env LIGHTRAG_TEST_HUGEGRAPH_PASSWORD
+
+  kubectl -n "$NAMESPACE" create secret generic lightrag-runtime \
+    --from-literal=LIGHTRAG_API_KEY="$LIGHTRAG_TEST_API_KEY" \
+    --from-literal=LLM_BINDING_API_KEY="$LIGHTRAG_TEST_LLM_API_KEY" \
+    --from-literal=EMBEDDING_BINDING_API_KEY="$LIGHTRAG_TEST_EMBEDDING_API_KEY" \
+    --from-literal=DASHSCOPE_API_KEY="$LIGHTRAG_TEST_LLM_API_KEY" \
+    --from-literal=DASHSCOPE_WORKSPACE_ID="${LIGHTRAG_TEST_DASHSCOPE_WORKSPACE_ID:-}" \
+    --from-literal=DASHSCOPE_REGION="${LIGHTRAG_TEST_BAILIAN_REGION:-}" \
+    --from-literal=LLM_BINDING_HOST="$LIGHTRAG_TEST_LLM_BINDING_HOST" \
+    --from-literal=EMBEDDING_BINDING_HOST="$LIGHTRAG_TEST_EMBEDDING_BINDING_HOST" \
+    --from-literal=POSTGRES_HOST="$LIGHTRAG_TEST_POSTGRES_HOST" \
+    --from-literal=POSTGRES_PORT="$LIGHTRAG_TEST_POSTGRES_PORT" \
+    --from-literal=POSTGRES_USER="$LIGHTRAG_TEST_POSTGRES_USER" \
+    --from-literal=POSTGRES_DATABASE="$LIGHTRAG_TEST_POSTGRES_DATABASE" \
+    --from-literal=POSTGRES_PASSWORD="$LIGHTRAG_TEST_POSTGRES_PASSWORD" \
+    --from-literal=HUGEGRAPH_URI="$LIGHTRAG_TEST_HUGEGRAPH_URI" \
+    --from-literal=HUGEGRAPH_GRAPH="$LIGHTRAG_TEST_HUGEGRAPH_GRAPH" \
+    --from-literal=HUGEGRAPH_GRAPHSPACE="$LIGHTRAG_TEST_HUGEGRAPH_GRAPHSPACE" \
+    --from-literal=HUGEGRAPH_USERNAME="$LIGHTRAG_TEST_HUGEGRAPH_USERNAME" \
+    --from-literal=HUGEGRAPH_PASSWORD="$LIGHTRAG_TEST_HUGEGRAPH_PASSWORD" \
+    --dry-run=client -o yaml | kubectl apply -f -
+}
+
+apply_environment_snapshot() {
+  cat > build/release/environment-snapshot.json <<JSON
+{"cluster":"test","namespace":"$NAMESPACE","initialized":true,"profile":{"replicas":2,"workers":1,"kv_storage":"PGKVStorage","doc_status_storage":"PGDocStatusStorage","vector_storage":"PGVectorStorage","graph_storage":"HugeGraphStorage","workspace":"lightrag-test","postgres_workspace":"lightrag-test"},"storage_state":{"fenced":false,"active_operations":0,"pending_mutations":0,"orphaned_claims":0}}
+JSON
+  kubectl -n "$NAMESPACE" create configmap lightrag-test-environment \
+    --from-file=snapshot=build/release/environment-snapshot.json \
+    --dry-run=client -o yaml | kubectl apply -f -
+}
+
+wait_for_pvc_bound() {
+  pvc="$1"
+  kubectl -n "$NAMESPACE" wait \
+    --for=jsonpath='{.status.phase}'=Bound \
+    "pvc/$pvc" \
+    --timeout=600s
 }
 
 mkdir -p "$(dirname "$KUBECONFIG_FILE")" build/release
@@ -50,10 +130,10 @@ chmod 600 "$KUBECONFIG_FILE"
 export KUBECONFIG="$KUBECONFIG_FILE"
 
 kubectl cluster-info >/dev/null
-kubectl get namespace "$NAMESPACE" >/dev/null
-kubectl -n "$NAMESPACE" get secret lightrag-runtime >/dev/null
-kubectl -n "$NAMESPACE" get secret lightrag-registry-pull >/dev/null
-kubectl -n "$NAMESPACE" get pvc lightrag-test-working-rwx lightrag-test-inputs-rwx >/dev/null
+ensure_namespace
+apply_registry_pull_secret
+apply_runtime_secret
+apply_environment_snapshot
 
 SNAPSHOT="$(kubectl -n "$NAMESPACE" get configmap lightrag-test-environment -o jsonpath='{.data.snapshot}')"
 printf '%s\n' "$SNAPSHOT" > build/release/environment-snapshot.json
@@ -84,6 +164,8 @@ if kubectl -n "$NAMESPACE" get deployment "$DEPLOYMENT" >/dev/null 2>&1; then
 fi
 
 kubectl apply -k "$OVERLAY"
+wait_for_pvc_bound lightrag-test-working-rwx
+wait_for_pvc_bound lightrag-test-inputs-rwx
 kubectl -n "$NAMESPACE" rollout status "deployment/$DEPLOYMENT" --timeout=600s
 kubectl -n "$NAMESPACE" wait --for=condition=Ready pod -l "$LABEL_SELECTOR" --timeout=600s
 kubectl -n "$NAMESPACE" get pods -l "$LABEL_SELECTOR" -o json > build/release/pods.json

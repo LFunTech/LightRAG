@@ -5,8 +5,8 @@
 - `../haier-demo/.woodpecker/system-deploy.yml` 是当前可用的本机对照：它使用单 commit 自定义 clone、tag-only list-form `when`、内部 CI 工具镜像、镜像发布后 manifest 校验，以及脚本化 Kubernetes apply/status 输出。LightRAG 必须复用这些已验证的流水线组织模式；其业务 Secret、Ingress、单副本和启动迁移不能直接移植。目标 Woodpecker strict lint 未将 haier 的自定义 clone 镜像列入 clone allowlist，所以 LightRAG 将同一段单 commit/no-tags clone 脚本作为 `skip_clone: true` 后的普通步骤执行，而不是使用顶层 `clone:`；该步骤把 Git worktree 放在容器本地 `/tmp`，避免 Kubernetes backend 的 NFS workspace 在 `git reset --hard` checkout 时长时间阻塞。
 - 本仓库原 `Dockerfile`/`Dockerfile.lite` 使用 BuildKit-only cache/bind `RUN --mount` 和 `$BUILDPLATFORM`。远端 #35 显示 rootless BuildKit 在 apt 阶段长时间无最终错误日志并以 exit 1 结束；为复用 haier-demo 可用模式，Woodpecker 构建改用内部 digest-pinned Kaniko，同时将 Dockerfile 改造为 Kaniko 可解析的多阶段构建。现有 GitHub Actions 不调整。
 - test 集群为 Kubernetes `v1.32.13+rke2r1`、amd64 节点；Woodpecker server/agent 均为 `v3.18.1`，agent 使用 Kubernetes backend、`woodpecker-pipelines` namespace 和 `syno-nfs` RWX workspace。
-- `lightrag-test` namespace 尚不存在。发现 `syno-nfs` StorageClass 不等于证明应用共享文件语义；必须跨节点验证。
-- 新增 Kustomize 环境 overlay 提供两个 Pod、共享持久卷、非 root、显式运行 Secret 引用和默认暂停路由；普通启动只校验存储。其镜像引用通过 Kustomize replacement 注入已验证 digest。
+- `lightrag-test` namespace 尚不存在。发现 `syno-nfs` StorageClass 不等于证明应用共享文件语义；流水线负责创建 namespace/PVC/Secret/profile snapshot，仍必须跨节点验证共享存储。
+- 新增 Kustomize 环境 overlay 提供两个 Pod、共享持久卷、非 root、显式运行 Secret 引用和默认暂停路由；部署步骤从 Woodpecker repo secrets 生成 `lightrag-runtime`，这些 repo secrets 来自本仓库 `.secrets/test.secrets`。其镜像引用通过 Kustomize replacement 注入已验证 digest。
 - 定向重跑两个已有 API prefix 测试，仍为 `2 failed, 32 deselected`：API-key-only 配置未携带凭据时实际 403，断言期待 401。当前鉴权代码明确区分 API key 的 403 和账号登录的 401；实施时应在干净配置下进一步验证测试合同，不能先标记跳过。
 
 参考合同：[分布式部署](../../../docs/DistributedDeployment.md)、[运行时合同](../../../docs/design/DistributedRuntimeContract.md)、[pipeline 合同](../../../docs/design/DistributedPipelineContract.md)。
@@ -17,6 +17,7 @@
 
 - 发布一个已验证 commit 对应的完整镜像，部署的 digest 与验证产物一致，失败步骤不能被误报成功。
 - 自动测试发布针对专属、初始化完毕、仅由受控应用写入的 workspace；兼容升级允许停机，不允许新旧版本混写。
+- 自动测试发布在流水线内幂等准备 Kubernetes 资源：namespace、pull Secret、runtime Secret、profile snapshot 和 RWX PVC；连接值只来自 Woodpecker secrets。
 - 凭据按质量检查、源码/镜像发布、测试部署分别隔离，部署控制权限限定在 `lightrag-test`。
 - 用真实 Woodpecker 和 test 集群验证完整链路，并明确区分模板验证、环境准备和实际发布证据。
 
@@ -24,7 +25,7 @@
 
 - 不提供生产/pre 自动部署，不修改 `main` 或其他仓库，不升级 CI 基础设施。
 - 不改变业务鉴权接口、分布式协议、存储 schema 或失败恢复语义；不引入零停机、自动接管或自动数据回滚承诺。
-- 不在每次发布时创建数据库、清空测试数据、执行 bootstrap/migrate/recover，或用本机服务替代目标环境。
+- 不在每次发布时创建数据库服务、清空测试数据、执行 bootstrap/migrate/recover，或用本机服务替代目标环境；Kubernetes runtime Secret、pull Secret、snapshot、namespace 和 PVC 的幂等创建属于部署准备。
 - amd64 是此次已确认测试集群的交付平台；本 change 不撤销现有 GitHub Actions 的多架构能力，也不声称 Woodpecker 已验证 arm64。
 
 ## Decisions
@@ -95,16 +96,16 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 
 使用 Kustomize 测试 overlay：两副本、`WORKERS=1`、PGKV/PGDocStatus/PGVector/HugeGraph、稳定且一致的 deployment ID/workspace、两条共同 RWX 路径、非 root UID/GID 1000，禁用 Service links。HugeGraph 连接池按整个两副本部署预算配置，测试起点为每 Pod 1 个连接。Kubernetes 执行方式参考 haier 的 `deploy-test.sh`/`deploy.sh`/`status.sh`：从全局 `kubeconfig_test` 注入 kubeconfig、脚本化前置检查、应用受审 manifest、等待 rollout，并在步骤结尾输出 Deployment/Pod/Service 状态；LightRAG 不创建公网 Ingress，也不在发布脚本里执行 bootstrap/migrate。
 
-首次接入是单独的显式环境准备，不属于每个 tag 自动部署：
+首次接入由流水线执行 Kubernetes 侧幂等准备，不要求人工预先创建 namespace、运行 Secret、pull Secret、profile ConfigMap 或 PVC：
 
-1. 创建 namespace 和命名空间限定的发布 ServiceAccount/RBAC；Woodpecker 优先引用已有 global `kubeconfig_test` 注入为 `LIGHTRAG_TEST_KUBECONFIG`，若该凭据权限越界再改为专用 LightRAG kubeconfig，而非复制 ai-center 的集群管理员 kubeconfig。
-2. 预置 LightRAG 专属 PG/pgvector 数据库、协调库/权限及 HugeGraph 数据域。可以使用经授权的 test 基础设施，但不共享其他应用的数据库或图数据；不猜测任何现有 Service 就是可用目标。
-3. 预置两个 `syno-nfs` RWX PVC，跨不同节点实际验证 UID 1000 的创建、读取、原子 rename 和排他创建操作，保留证据。数据库底层存储按其自身要求选择，不把应用 RWX 文件卷充当数据库持久化方案。
-4. 创建外部运行 Secret 与 pull Secret，固定服务器地址、workspace、embedding 模型/维度及共享路径。继续使用已选的真实百炼模型 `qwen-plus` / `text-embedding-v4`（1024 维）；地址与密钥通过环境输入，不写入源码。API key 必须设置，账号模式另需一致且强随机的 TOKEN_SECRET。
-5. 配置内部访问控制，仅允许明确的内部调用方和验收作业访问应用端口；Service 为 ClusterIP，不创建公网入口。DNS、数据库、HugeGraph 和模型 HTTPS 出站分别放行；不能宣称 ClusterIP 本身提供访问控制，也不能把 HTTPS 任意出站称为域名级白名单。
-6. 完成备份、停止所有写入者并确认后端请求结束后，操作员显式执行已有 migrate/bootstrap 流程。保留日志与实际检查记录，不能由 CI 自动填写确认开关。新环境也不省略 schema/profile 验证。
+1. Woodpecker 优先引用已有 global `kubeconfig_test` 注入为 `LIGHTRAG_TEST_KUBECONFIG`，若该凭据权限越界再改为专用 LightRAG kubeconfig，而非复制 ai-center 的集群管理员 kubeconfig。部署脚本用该 kubeconfig 创建/更新 `lightrag-test` namespace 和命名空间内资源。
+2. 本仓库 `.secrets/test.secrets` 是 test 连接值来源；其中百炼、PostgreSQL 和 HugeGraph 条目同步为 `LFunTech/LightRAG` repo secrets，workflow 只通过 `from_secret` 注入 `deploy-test`。全局 `DOCKER_USERNAME`/`DOCKER_PASSWORD` 继续用于 registry 与 pull Secret，缺失或空值立即失败且不打印明文。
+3. `deploy-test.sh` 参考 haier 的 `ensure_namespace` / `apply_runtime_secret` / `apply_registry_secret` 模式，用 `kubectl create ... --dry-run=client -o yaml | kubectl apply -f -` 创建/更新 `lightrag-registry-pull`、`lightrag-runtime` 和 `lightrag-test-environment`。`lightrag-runtime` 包含 API key、百炼/OpenAI-compatible host/key、DashScope workspace header、PG 连接字段、HugeGraph REST/graphspace/graph/Basic 凭据；Deployment 只保留非敏感 profile 常量，连接字段全部来自 Secret。
+4. Kustomize overlay 创建 ServiceAccount/RBAC、ClusterIP Service、NetworkPolicy 和两个 `syno-nfs` RWX PVC；发布脚本在 rollout 前等待 PVC Bound，并在验收阶段通过双 Pod 行为验证共享存储和分布式后端。数据库底层存储按其自身要求选择，不把应用 RWX 文件卷充当数据库持久化方案。
+5. 使用经授权的 test 基础设施中 LightRAG 专属 PG/pgvector 数据库、协调库/权限及 HugeGraph 数据域，不共享其他应用的数据。普通 tag 部署可让 HugeGraphStorage 补齐自己的兼容 schema，但不会创建 HugeGraph 服务、清空图、执行数据迁移、recover 或 rollback。
+6. 配置内部访问控制：Service 为 ClusterIP，不创建公网入口；DNS、数据库、HugeGraph 端口和模型 HTTPS 出站分别放行。不能宣称 ClusterIP 本身提供访问控制，也不能把 HTTPS 任意出站称为域名级白名单。对可创建 Pod/Job 的发布身份，不能声称 namespace 内的 Secret 对该身份不可读：其命名空间级权限边界必须在接入文档中明示。
 
-运行 Secret 预置在 Kubernetes，发布只引用它；CI 不需要取得模型/数据库明文用于构建或打印完整运行环境。对可创建 Pod/Job 的发布身份，不能声称 namespace 内的 Secret 对该身份不可读：其命名空间级权限边界必须在接入文档中明示。
+CI 会取得部署所需模型/数据库明文以生成 Kubernetes Secret，但仅限 `deploy-test` 步骤；源码归档、镜像构建和镜像校验步骤不接收这些运行时 secret。
 
 ### 6. 自动升级状态机
 
@@ -134,7 +135,7 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 - **完整镜像较大，模型依赖下载耗时** → 固定工具/模型输入、使用 registry cache、设置磁盘和超时预算；不清理其他项目镜像或卷。
 - **默认基础镜像改为内部 registry** → 在本机验证目标内容及读取权限，记录现有 CI 的接入要求；不借此覆盖其他项目标签或删除旧镜像。
 - **跨存储不提供事务及自动 HA** → 只自动执行兼容升级和正常 drain；任何未确认状态保留并交由既有审计恢复路径。
-- **首次初始化需要人工维护，环境未就绪的首个 tag 会失败** → 文档明确“先构建镜像，再准备/初始化环境，再重试部署”；不把初始化权限塞入每次部署。
+- **流水线获得运行时 secret 后会创建 namespace/PVC/Secret** → 这是 test 环境部署准备，不是数据库服务创建或故障恢复；缺失 secret、后端不可达或不安全存储状态仍失败并保留证据。
 - **同一提交重建不保证 digest 相同** → 已发布版本不可变，重试验证来源并复用已确认 artifact；漂移需新 tag，而非覆盖。
 - **共享 RWX 不保证共享文件正确性** → test 集群跨节点验证真实语义；PVC 声明只是一项检查。
 - **仓库测试不属于 Woodpecker 门禁** → 测试失败仍按本地/外部 CI 规则修复，但 Woodpecker 不运行 pytest/Bun test，也不把跳过或失败写成发布门禁结果。
@@ -144,6 +145,6 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 
 1. 评审本 proposal 后实现并验证工作流、脚本、Kustomize 配套、测试和运行手册，不修改现有本地服务。
 2. 合并/提交到 fork `master` 并 push，保持 `main` 原始引用；不自动创建 release 或触发生产/pre 发布。
-3. 管理员接入 Woodpecker 仓库、受保护 tag 和按事件/镜像限制的 Secret；完成独立测试环境准备及显式初始化。
+3. 管理员接入 Woodpecker 仓库、受保护 tag 和按事件限制的 Secret；将 `.secrets/test.secrets` 同步到 LightRAG repo secrets，并确认 test 后端连接只指向专属 PG/HugeGraph 域。
 4. 在授权后触发测试 tag，完成初次部署、兼容升级及拒绝路径验收，再宣布自动测试交付链路可用。
 5. 失败回退时停止写入并按分布式部署手册核查，不自动降级为 local writer、不删除协调历史、不恢复跨存储不一致的局部备份。

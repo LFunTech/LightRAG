@@ -92,36 +92,18 @@ spec:
               value: PGVectorStorage
             - name: LIGHTRAG_GRAPH_STORAGE
               value: HugeGraphStorage
-            - name: POSTGRES_HOST
-              value: lightrag-test-postgres.database.svc.cluster.local
-            - name: POSTGRES_PORT
-              value: "5432"
-            - name: POSTGRES_DATABASE
-              value: lightrag_test
-            - name: POSTGRES_USER
-              value: lightrag_test
-            - name: HUGEGRAPH_URI
-              value: http://lightrag-test-hugegraph.database.svc.cluster.local:8080
-            - name: HUGEGRAPH_GRAPH
-              value: lightrag_test
-            - name: HUGEGRAPH_GRAPHSPACE
-              value: DEFAULT
             - name: HUGEGRAPH_AUTO_CREATE_SCHEMA
-              value: "false"
+              value: "true"
             - name: LLM_BINDING
               value: openai
             - name: LLM_MODEL
               value: qwen-plus
-            - name: LLM_BINDING_HOST
-              value: https://dashscope.aliyuncs.com/compatible-mode/v1
             - name: EMBEDDING_BINDING
               value: openai
             - name: EMBEDDING_MODEL
               value: text-embedding-v4
             - name: EMBEDDING_DIM
               value: "1024"
-            - name: EMBEDDING_BINDING_HOST
-              value: https://dashscope.aliyuncs.com/compatible-mode/v1
           volumeMounts:
             - name: rag-storage
               mountPath: /app/data/rag_storage

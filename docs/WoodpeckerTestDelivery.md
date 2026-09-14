@@ -7,7 +7,7 @@ This Kustomize runbook covers the LightRAG fork delivery path for protected `vX.
 - `main` remains the upstream mirror and is not a release source.
 - Woodpecker is tag-only for this repository; `master` pushes and PRs do not start LightRAG Woodpecker pipelines.
 - Source archives, image records and deployment state use LightRAG-owned COS/registry paths only. All Woodpecker workflows declare `skip_clone: true`; the release-source workflow performs the only manual single-commit clone inside container-local `/tmp`, uploads the source package through MinIO/S3-compatible `mc`, and downstream workflows download that package instead of cloning again.
-- Initial environment preparation is **not part of every tag deployment**. Automatic deployment refuses missing schemas, runtime Secrets, PVCs, profile registration or unknown storage state.
+- Test environment preparation is part of the `deploy-test` pipeline: it creates or updates the `lightrag-test` namespace, registry pull Secret, Kubernetes runtime Secrets, environment snapshot ConfigMap, and Kustomize-managed PVCs before rollout. It still refuses missing Woodpecker secrets or unsafe storage state without printing secret values.
 - Do not claim YAML lint, Kustomize render, or local test results as deployment success. Static validation, local/separate-CI testing, environment initialization and remote acceptance are separate evidence classes.
 
 ## Required CI onboarding
@@ -17,25 +17,29 @@ This Kustomize runbook covers the LightRAG fork delivery path for protected `vX.
    - Organization COS secrets: `cos_storage_endpoint`, `cos_storage_bucket`, `cos_storage_secret_id`, `cos_storage_secret_key`.
    - Global registry secrets: `DOCKER_USERNAME`, `DOCKER_PASSWORD`.
    - Global test-cluster kubeconfig: `kubeconfig_test`, injected into the workflow as `LIGHTRAG_TEST_KUBECONFIG`.
-   - 2026-09-14 check: these names exist as global/organization secrets on `https://woodpecker.f123.pub`; `LFunTech/LightRAG` has no repository-local secrets.
+   - Repository runtime secrets populated from `.secrets/test.secrets`: `lightrag_test_bailian_api_key`, `lightrag_test_bailian_api_host`, `lightrag_test_bailian_region`, `lightrag_test_dashscope_workspace_id`, `lightrag_test_postgres_host`, `lightrag_test_postgres_port`, `lightrag_test_postgres_user`, `lightrag_test_postgres_database`, `lightrag_test_postgres_password`, `lightrag_test_hugegraph_uri`, `lightrag_test_hugegraph_graph`, `lightrag_test_hugegraph_graphspace`, `lightrag_test_hugegraph_username`, `lightrag_test_hugegraph_password`.
+   - Repository application API secret: `lightrag_test_api_key`.
+   - 2026-09-14 check: these names exist on `https://woodpecker.f123.pub`; runtime connection values were loaded from `.secrets/test.secrets`, while the application API key was generated as a repository secret because it is not a provider/database credential.
 3. Add the missing repository release controls before declaring the pipeline ready: the GitHub repository currently has no rulesets, so protected release tags still need explicit configuration.
-4. Do not expose runtime model, database or graph credentials to build steps. Runtime credentials live in the Kubernetes Secret `lightrag-runtime`.
+4. Do not expose runtime model, database or graph credentials to build steps. They are injected only into `deploy-test`, which creates or updates the Kubernetes Secret `lightrag-runtime` with `kubectl create secret ... --dry-run=client -o yaml | kubectl apply -f -`.
 
-## First-time test environment initialization
+## Pipeline-managed test environment initialization
 
-An operator must explicitly prepare the environment before expecting automatic `-test` deployment to pass:
+The `deploy-test` workflow creates or updates Kubernetes runtime Secrets and prepares the Kubernetes-side test environment on every `vX.Y.Z-test` deployment attempt while keeping the operation idempotent:
 
-1. Apply the Kustomize overlay `k8s-deploy/lightrag-kustomize/overlays/test` or its reviewed RBAC subset to create `lightrag-test`, ServiceAccount, Role and RoleBinding. As of 2026-09-14, `lightrag-test` does not exist on the test cluster.
-2. Create `lightrag-test-inputs-rwx` and `lightrag-test-working-rwx` PVCs with the approved RWX StorageClass.
-3. Verify cross-node filesystem semantics as UID/GID 1000: create/read, atomic rename and exclusive create on both PVCs.
-4. Provision LightRAG-only PostgreSQL/pgvector schemas and HugeGraph graph/domain. Do not share another application's data stores.
-5. Create `lightrag-runtime` with API key, token secret when account auth is enabled, PG password, HugeGraph credentials and Bailian-compatible model keys for `qwen-plus` and `text-embedding-v4` (1024 dimensions).
-6. Stop all writers, wait for in-flight requests to finish, and run the existing explicit migrate/bootstrap maintenance procedure. CI must not auto-bootstrap or auto-recover.
+1. It writes the test kubeconfig from global `kubeconfig_test` and creates the `lightrag-test` namespace if missing.
+2. It creates or updates `lightrag-registry-pull` from global `DOCKER_USERNAME` / `DOCKER_PASSWORD`.
+3. It creates or updates `lightrag-runtime` from the Woodpecker repo secrets loaded from `.secrets/test.secrets`, including Bailian/OpenAI-compatible model API key and host, DashScope workspace header, PostgreSQL connection fields, HugeGraph REST endpoint, graphspace, graph and credentials.
+4. It writes `lightrag-test-environment` with the expected test profile: two replicas, one worker per Pod, `PGKVStorage`, `PGDocStatusStorage`, `PGVectorStorage`, `HugeGraphStorage`, and matching `WORKSPACE` / `POSTGRES_WORKSPACE`.
+5. It applies `k8s-deploy/lightrag-kustomize/overlays/test`, creating the ServiceAccount/RBAC, private Service, NetworkPolicy and the two `syno-nfs` RWX PVCs.
+6. It waits for both PVCs to bind, rolls out the two application Pods, verifies image identity, health/authentication and cross-Pod ingestion/query before restoring Service routing.
+
+The pipeline does not run repository tests and does not perform destructive data recovery or rollback. Existing storage fences, unknown writers, incompatible profiles or failed acceptance still stop the deployment for operator investigation.
 
 ## Release flow
 
 1. Push/PR to `master`: no LightRAG Woodpecker pipeline is selected. Keep backend pytest, frontend Bun tests, frontend typecheck/lint/build scripts and external integration tests as local or separate-CI evidence.
-2. Protected tag `vX.Y.Z-test`: the source workflow performs the only clone into container-local `/tmp`, runs delivery static checks, verifies repository/tag/commit/master ancestry, archives the cloned source, uploads the archive/checksum/record to the LightRAG COS path with `mc`, then downstream workflows download the archive from MinIO/COS to build and verify `docker-hub.f123.pub/lfun/lightrag` and deploy by digest to `lightrag-test` with Kustomize and `kubectl apply -k`, keeping Service routing paused.
+2. Protected tag `vX.Y.Z-test`: the source workflow performs the only clone into container-local `/tmp`, runs delivery static checks, verifies repository/tag/commit/master ancestry, archives the cloned source, uploads the archive/checksum/record to the LightRAG COS path with `mc`, then downstream workflows download the archive from MinIO/COS to build and verify `docker-hub.f123.pub/lfun/lightrag` and deploy by digest to `lightrag-test` with pipeline-managed Secret/namespace/PVC preparation, Kustomize and `kubectl apply -k`, keeping Service routing paused.
    - The release-source step follows the working `../haier-demo` pattern: internal CI tools image, `git init`, no tag/submodule/LFS fetch, `--depth=1` for `CI_COMMIT_SHA`, and retry logging. It is implemented as a normal step rather than top-level `clone:` because strict Woodpecker lint only accepts server-allowlisted clone images. The Git worktree stays under `/tmp/lightrag-release-source`, not the Woodpecker NFS workspace, so `git reset --hard` does not materialize the repository through the shared workspace mount.
    - Image building is `scripts/ci/build-image.sh` inside the digest-pinned internal Kaniko debug image. It follows the working `../haier-demo` shape: registry auth is written only inside the step, cache layers go to `docker-hub.f123.pub/lfun/cache-lightrag`, Kaniko logs stream to Woodpecker stdout, `--snapshot-mode=redo` avoids full content hashing on large Python venv layers, and the produced image is labeled with the source commit. The Dockerfiles default Debian apt sources to Tsinghua before `apt-get update`, default Python dependency installs to the internal f123 PyPI mirror, keep `uv.lock` registry/artifact URLs on that mirror so frozen `uv sync` does not use `files.pythonhosted.org`, and default Bun/npm installs to `registry.npmmirror.com`. The Woodpecker release build does not install Rust/Cargo toolchains and does not download tiktoken or spaCy offline model caches during image build.
    - Image verification is `python -m scripts.ci.delivery resolve-image`, which resolves the registry digest and checks the image config revision label against the release commit.
@@ -44,7 +48,7 @@ An operator must explicitly prepare the environment before expecting automatic `
 4. Restore Service routing only after acceptance succeeds.
 5. Tags `vX.Y.Z-pre` and `vX.Y.Z` publish and verify images but do not deploy.
 
-A plain `master` push does not start Woodpecker by design. To exercise the build and deploy chain, create a protected `vX.Y.Z-test` tag after the scoped registry, COS and kubeconfig secrets and the initialized `lightrag-test` namespace are in place.
+A plain `master` push does not start Woodpecker by design. To exercise the build and deploy chain, create a protected `vX.Y.Z-test` tag after the scoped registry, COS, kubeconfig and `.secrets/test.secrets`-derived repository secrets are in place.
 
 ## Failure and rollback
 
@@ -52,7 +56,7 @@ If a release lock, old writer shutdown, storage fence, pending operation, image 
 
 ## Evidence status
 
-Remote acceptance not yet run until the approved test cluster resources, scoped secrets and tag-trigger authorization are configured and a real Woodpecker pipeline records pipeline ID, commit, tag, digest, per-Pod image IDs and business acceptance results.
+Remote acceptance not yet run until tag-trigger authorization is configured and a real Woodpecker pipeline records pipeline ID, commit, tag, digest, pipeline-managed environment preparation, per-Pod image IDs and business acceptance results.
 
 2026-09-14 diagnostic note: tag `v1.5.23-test` / Woodpecker pipeline #31 confirmed the source archive upload/download path, rootless BuildKit startup, and Tsinghua Debian apt source rewrite. The Woodpecker UI log for the build step stopped at `#23 ... Fetched 80.6 MB in 45s`, but Kubernetes-side observation showed that step had continued through package installation and finished later; the visible line was stale/incomplete progress, not the final command state. The same run also exposed two Dockerfile issues: Rust used `https://sh.rustup.rs` and its `curl | sh` pipeline could hide a download/DNS failure, while `uv sync` still used public PyPI/Fastly by default. The Dockerfiles now default uv/pip to `https://mirror.f123.pub/repository/pypi/simple`, keep the other package sources explicit, and fail fast on rustup download errors, but a new tag pipeline is still required for end-to-end remote proof.
 
@@ -68,4 +72,4 @@ Remote acceptance not yet run until the approved test cluster resources, scoped 
 
 2026-09-14 diagnostic note: tag `v1.5.31-test` / Woodpecker pipeline #41 passed source archive download, complete Kaniko image build and pre-deploy image verification. The build pushed digest `sha256:42df257a4bb8a244633bceb6b96fd7495a8ab262f43a89efa9ab0bbea927e8a9`. Its deploy step then exposed an environment-contract bug: `resolve-image --env-output` wrote plain shell assignments, but the workflow sourced that file before launching `deploy-test.sh` as a child shell, so `LIGHTRAG_IMAGE_DIGEST` was not exported. The env output now writes exported variables.
 
-2026-09-14 diagnostic note: tag `v1.5.32-test` / Woodpecker pipeline #42 passed source archive, image build, pre-deploy image verification and deploy image-env propagation. The build pushed digest `sha256:575beb3cf5c93be229b94cc00d0f7cbf581a33d96fe73cbfe58f187242da296f`. The deploy step then failed at the intended first-time environment gate because the test cluster does not yet have namespace `lightrag-test`; a same-day read-only check also found only StorageClass `syno-nfs` and no PostgreSQL/HugeGraph Service in namespace `database`. Finish the first-time test environment initialization before expecting tag deployment to reach Pod rollout and acceptance.
+2026-09-14 diagnostic note: tag `v1.5.32-test` / Woodpecker pipeline #42 passed source archive, image build, pre-deploy image verification and deploy image-env propagation. The build pushed digest `sha256:575beb3cf5c93be229b94cc00d0f7cbf581a33d96fe73cbfe58f187242da296f`. The deploy step then failed at the old first-time environment gate because the test cluster did not yet have namespace `lightrag-test`. The deploy workflow now consumes `.secrets/test.secrets`-derived Woodpecker repo secrets and prepares namespace, registry/runtime Secrets, profile snapshot and PVCs inside the pipeline before rollout.
