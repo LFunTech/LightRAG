@@ -17,6 +17,10 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser(
         "migrate", help="Explicitly apply versioned coordination SQL migrations"
     )
+    commands.add_parser(
+        "preflight",
+        help="Check storage prerequisites without durable maintenance or writes",
+    )
     bootstrap = commands.add_parser(
         "bootstrap",
         help="Initialize business storages under explicit maintenance (server environment config)",
@@ -177,6 +181,12 @@ async def preflight_bootstrap_storage(rag) -> None:
 
 
 async def run(args, dsn: str):
+    if args.command == "preflight":
+        rag = configured_rag()
+        if rag.distributed_writes is not True:
+            raise ValueError("Preflight requires distributed writes enabled")
+        await preflight_bootstrap_storage(rag)
+        return {"preflight": "verified"}
     if args.command == "bootstrap":
         rag = configured_rag()
         if rag.distributed_writes is not True:

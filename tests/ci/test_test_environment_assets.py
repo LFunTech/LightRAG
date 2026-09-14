@@ -84,6 +84,7 @@ def test_runbook_records_pipeline_managed_initialization_and_remote_verification
     assert "lightrag_test_hugegraph_gremlin" in text
     assert "lightrag_test_hugegraph_auth_method" in text
     assert "coordination migration Job" in text
+    assert "lightrag-storage-preflight" in text
     assert "storage bootstrap Job" in text
     assert "creates or updates Kubernetes runtime Secrets" in text
     assert "Remote acceptance not yet run" in text

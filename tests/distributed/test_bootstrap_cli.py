@@ -63,6 +63,32 @@ async def test_bootstrap_preflight_failure_does_not_admit_maintenance(monkeypatc
     rag.initialize_storages.assert_not_called()
 
 
+async def test_preflight_command_checks_storage_without_maintenance(monkeypatch):
+    events = []
+    rag = Mock()
+    rag.distributed_writes = True
+    rag.distributed_maintenance.side_effect = AssertionError("must not admit")
+    rag.initialize_storages = AsyncMock()
+    rag.check_and_migrate_data = AsyncMock()
+    rag.finalize_storages = AsyncMock()
+    monkeypatch.setattr(cli, "configured_rag", lambda: rag, raising=False)
+    monkeypatch.setattr(
+        cli,
+        "preflight_bootstrap_storage",
+        AsyncMock(side_effect=lambda rag: events.append("preflight")),
+        raising=False,
+    )
+    args = argparse.Namespace(command="preflight")
+
+    result = await cli.run(args, "secret")
+
+    assert result == {"preflight": "verified"}
+    assert events == ["preflight"]
+    rag.initialize_storages.assert_not_called()
+    rag.check_and_migrate_data.assert_not_called()
+    rag.finalize_storages.assert_not_called()
+
+
 async def test_pgvector_preflight_rejects_missing_extension_without_privilege(monkeypatch):
     class InsufficientPrivilegeError(Exception):
         pass

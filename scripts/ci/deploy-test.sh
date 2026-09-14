@@ -127,6 +127,56 @@ print(
 PY
 }
 
+storage_profile_env_yaml() {
+  cat <<'YAML'
+          env:
+            - name: HOST
+              value: 0.0.0.0
+            - name: PORT
+              value: "9621"
+            - name: LIGHTRAG_DISTRIBUTED_WRITES
+              value: "true"
+            - name: LIGHTRAG_SHARED_STORAGE
+              value: "true"
+            - name: LIGHTRAG_DEPLOYMENT_ID
+              value: lightrag_test
+            - name: LIGHTRAG_COORDINATION_POOL_MODE
+              value: direct
+            - name: LIGHTRAG_DISTRIBUTED_POLL_INTERVAL
+              value: "1"
+            - name: WORKSPACE
+              value: lightrag_test
+            - name: POSTGRES_WORKSPACE
+              value: lightrag_test
+            - name: INPUT_DIR
+              value: /app/data/inputs
+            - name: WORKING_DIR
+              value: /app/data/rag_storage
+            - name: WORKERS
+              value: "1"
+            - name: LIGHTRAG_KV_STORAGE
+              value: PGKVStorage
+            - name: LIGHTRAG_DOC_STATUS_STORAGE
+              value: PGDocStatusStorage
+            - name: LIGHTRAG_VECTOR_STORAGE
+              value: PGVectorStorage
+            - name: LIGHTRAG_GRAPH_STORAGE
+              value: HugeGraphStorage
+            - name: HUGEGRAPH_AUTO_CREATE_SCHEMA
+              value: "true"
+            - name: LLM_BINDING
+              value: openai
+            - name: LLM_MODEL
+              value: qwen-plus
+            - name: EMBEDDING_BINDING
+              value: openai
+            - name: EMBEDDING_MODEL
+              value: text-embedding-v4
+            - name: EMBEDDING_DIM
+              value: "1024"
+YAML
+}
+
 apply_runtime_secret() {
   require_env LIGHTRAG_TEST_API_KEY
   require_env LIGHTRAG_TEST_LLM_API_KEY
@@ -171,6 +221,64 @@ apply_runtime_secret() {
     --from-literal=HUGEGRAPH_PASSWORD="$LIGHTRAG_TEST_HUGEGRAPH_PASSWORD" \
     --from-literal=HUGEGRAPH_AUTH_METHOD="$LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD" \
     --dry-run=client -o yaml | kubectl apply -f -
+}
+
+preflight_storage_profile() {
+  echo "Preflighting LightRAG test storage profile with verified image ${LIGHTRAG_IMAGE_DIGEST}"
+  kubectl -n "$NAMESPACE" delete job lightrag-storage-preflight --ignore-not-found --wait=true
+  {
+    cat <<YAML
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: lightrag-storage-preflight
+  labels:
+    app.kubernetes.io/name: lightrag
+    app.kubernetes.io/instance: lightrag
+    app.kubernetes.io/component: storage-preflight
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lightrag
+        app.kubernetes.io/instance: lightrag
+        app.kubernetes.io/component: storage-preflight
+    spec:
+      restartPolicy: Never
+      imagePullSecrets:
+        - name: lightrag-registry-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: preflight
+          image: ${LIGHTRAG_IMAGE_REF}
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "python -m lightrag.distributed preflight"]
+          envFrom:
+            - secretRef:
+                name: lightrag-runtime
+YAML
+    storage_profile_env_yaml
+    cat <<'YAML'
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+YAML
+  } | kubectl -n "$NAMESPACE" apply -f -
+
+  if ! wait_for_job_terminal lightrag-storage-preflight 600 storage-preflight "Storage preflight"; then
+    exit 1
+  fi
+
+  kubectl -n "$NAMESPACE" logs job/lightrag-storage-preflight --tail=120 || true
+  kubectl -n "$NAMESPACE" delete job lightrag-storage-preflight --wait=true
 }
 
 migrate_coordination_schema() {
@@ -268,51 +376,7 @@ spec:
           envFrom:
             - secretRef:
                 name: lightrag-runtime
-          env:
-            - name: HOST
-              value: 0.0.0.0
-            - name: PORT
-              value: "9621"
-            - name: LIGHTRAG_DISTRIBUTED_WRITES
-              value: "true"
-            - name: LIGHTRAG_SHARED_STORAGE
-              value: "true"
-            - name: LIGHTRAG_DEPLOYMENT_ID
-              value: lightrag_test
-            - name: LIGHTRAG_COORDINATION_POOL_MODE
-              value: direct
-            - name: LIGHTRAG_DISTRIBUTED_POLL_INTERVAL
-              value: "1"
-            - name: WORKSPACE
-              value: lightrag_test
-            - name: POSTGRES_WORKSPACE
-              value: lightrag_test
-            - name: INPUT_DIR
-              value: /app/data/inputs
-            - name: WORKING_DIR
-              value: /app/data/rag_storage
-            - name: WORKERS
-              value: "1"
-            - name: LIGHTRAG_KV_STORAGE
-              value: PGKVStorage
-            - name: LIGHTRAG_DOC_STATUS_STORAGE
-              value: PGDocStatusStorage
-            - name: LIGHTRAG_VECTOR_STORAGE
-              value: PGVectorStorage
-            - name: LIGHTRAG_GRAPH_STORAGE
-              value: HugeGraphStorage
-            - name: HUGEGRAPH_AUTO_CREATE_SCHEMA
-              value: "true"
-            - name: LLM_BINDING
-              value: openai
-            - name: LLM_MODEL
-              value: qwen-plus
-            - name: EMBEDDING_BINDING
-              value: openai
-            - name: EMBEDDING_MODEL
-              value: text-embedding-v4
-            - name: EMBEDDING_DIM
-              value: "1024"
+$(storage_profile_env_yaml)
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -363,10 +427,13 @@ ensure_namespace
 apply_registry_pull_secret
 apply_runtime_secret
 kubectl -n "$NAMESPACE" delete job \
+  lightrag-storage-preflight \
   lightrag-coordination-migrate \
   lightrag-storage-bootstrap \
   --ignore-not-found \
   --wait=true
+
+preflight_storage_profile
 
 if kubectl -n "$NAMESPACE" get service "$SERVICE" >/dev/null 2>&1; then
   kubectl -n "$NAMESPACE" patch service "$SERVICE" --type=merge -p "$ROUTE_PAUSE_PATCH"
