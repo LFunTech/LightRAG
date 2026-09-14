@@ -29,6 +29,7 @@
 
 - [ ] 4.1 使用已验证的 rootless BuildKit 构建现有完整 Dockerfile，设置 amd64、资源预算、独立 registry cache 及 source/revision 标签，不创建另一份生产 Dockerfile。
   - 2026-09-14 `v1.5.22-test` / pipeline #30 已进入完整 BuildKit 构建并实时输出日志，但旧 Dockerfile apt 阶段仍使用 `deb.debian.org`，构建下载速度过慢；已停止该过时流水线并按 haier-demo 模式将三个 Dockerfile 的 apt 默认源改为清华镜像。rootless 完整构建成功仍待新 tag 远端验证。
+  - 2026-09-14 `v1.5.23-test` / pipeline #31 确认 `validate-release` 只 clone 一次、源码包上传到 COS 并由 `build-image` 下载校验；BuildKit rootless pod 成功启动且 apt 已命中清华源。排查时 Woodpecker build 日志停在 `#23 ... Fetched 80.6 MB in 45s`，但 Kubernetes 侧可见该层继续执行 apt 解包/配置并完成；真正问题是 rootless dpkg 阶段慢、旧 rustup 仍访问 `sh.rustup.rs` 且 `curl | sh` 会吞掉下载失败、后续 `uv sync` 仍默认走公网 PyPI。已停止该过时流水线，构建源修复后仍待新 tag 远端验证。
 - [ ] 4.2 安全生成与清理 registry 凭据，发布到 `docker-hub.f123.pub/lfun/lightrag`，实现既有版本冲突拒绝及来源一致的幂等重试。
 - [ ] 4.3 校验 manifest/index、平台、revision 和 digest，持久化发布记录，添加镜像身份不符和未知格式等拒绝路径测试。
 - [x] 4.4 完成 build-image/pre-deploy 工作流，验证失败无后续副作用，并确认 pre/prod tag 不部署。
@@ -52,7 +53,8 @@
 ## 7. 验证与真实接入
 
 - [x] 7.1 运行 Woodpecker strict lint、交付脚本本地测试/静态检查、Kustomize render 和相关 manifest 回归；保存命令、版本及结果。
-  - 2026-09-14 本地验证：`./scripts/test.sh tests/setup/test_docker_base_images.py tests/ci` → 64 passed；`uv run ruff check scripts/ci/delivery.py tests/ci/test_workflows.py tests/ci/test_delivery.py tests/ci/test_source_artifact_script.py` → pass；`WOODPECKER_SERVER=https://woodpecker.f123.pub woodpecker-cli lint --strict .woodpecker/*.yml` → 4 个 workflow valid；`scripts/ci/delivery-check.sh` → pass，包含 shell/Python/JSON、Kustomize render、strict Woodpecker lint 和 OpenSpec strict validation；`openspec validate add-woodpecker-test-delivery --strict` → valid；`git diff --check` → pass；`docker buildx build --check --platform linux/amd64 -f Dockerfile .`、`Dockerfile.lite`、`Dockerfile.postgres` → Check complete, no warnings found。版本：woodpecker-cli 3.14.1、OpenSpec 1.9.0、kubectl client v1.36.1 / kustomize v5.8.1、uv Python 3.12.11、ruff 0.15.12。
+  - 2026-09-14 本地验证：`./scripts/test.sh tests/setup/test_docker_base_images.py tests/ci` → 67 passed；`uv run ruff check scripts/ci/delivery.py tests/ci/test_workflows.py tests/ci/test_delivery.py tests/ci/test_source_artifact_script.py tests/setup/test_docker_base_images.py` → pass；`WOODPECKER_SERVER=https://woodpecker.f123.pub woodpecker-cli lint --strict .woodpecker/*.yml` → 4 个 workflow valid；`scripts/ci/delivery-check.sh` → pass，包含 shell/Python/JSON、Kustomize render、strict Woodpecker lint 和 OpenSpec strict validation；`openspec validate add-woodpecker-test-delivery --strict` → valid；`git diff --check` → pass；`docker buildx build --check --platform linux/amd64 -f Dockerfile .`、`Dockerfile.lite`、`Dockerfile.postgres` → Check complete, no warnings found。版本：woodpecker-cli 3.14.1、OpenSpec 1.9.0、kubectl client v1.36.1 / kustomize v5.8.1、uv Python 3.12.11、ruff 0.15.12。
+  - 2026-09-14 构建源修复验证：Dockerfile package source 回归覆盖 PyPI、Bun/npm 与 rustup 镜像要求，防止回退到公网 PyPI、`sh.rustup.rs` 或 `curl | sh`。
 - [ ] 7.2 本地运行完整非 integration 后端测试和完整前端检查，分项记录 pass/skip/fail；确认这些测试结果不被写成 Woodpecker 门禁。
 - [ ] 7.3 在批准的 test 集群创建独立测试资源、完成跨节点 RWX 实测和显式初始化；记录目标与证据，不修改本机/Kind 服务或其他应用资源。
 - [ ] 7.4 在获得触发授权后用测试 tag 跑通真实 Woodpecker 构建、镜像验证和初次双 Pod 部署，保存 pipeline/tag/commit/digest、imageID 及业务验收结果。

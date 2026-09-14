@@ -88,3 +88,43 @@ def test_apt_build_stages_default_to_tsinghua_debian_mirrors():
             assert "deb.debian.org/debian-security" in before_update, path.name
             assert "deb.debian.org/debian" in before_update, path.name
             assert "Acquire::Retries" in before_update, path.name
+
+
+def test_python_dependency_installs_default_to_tsinghua_index():
+    """Dockerfile uv/pip installs should not depend on public PyPI by default."""
+    mirror = "https://pypi.tuna.tsinghua.edu.cn/simple"
+    for path in DOCKERFILES:
+        text = path.read_text()
+        if "uv sync" not in text and "pip install" not in text:
+            continue
+        assert f"ARG PYPI_INDEX_URL={mirror}" in text, path.name
+        assert "UV_DEFAULT_INDEX=${PYPI_INDEX_URL}" in text, path.name
+        assert "PIP_INDEX_URL=${PYPI_INDEX_URL}" in text, path.name
+        assert "pypi.org" not in text, path.name
+
+
+def test_frontend_dependency_installs_default_to_npmmirror_registry():
+    """Dockerfile frontend installs should use the same internal-friendly pattern as haier-demo."""
+    mirror = "https://registry.npmmirror.com"
+    for path in DOCKERFILES:
+        text = path.read_text()
+        if "bun install" not in text:
+            continue
+        assert f"ARG NPM_REGISTRY={mirror}" in text, path.name
+        assert "NPM_CONFIG_REGISTRY=${NPM_REGISTRY}" in text, path.name
+
+
+def test_rustup_install_uses_tsinghua_mirror_and_cannot_swallow_download_errors():
+    """Rust bootstrap must not use curl|sh, which lets /bin/sh hide curl failures."""
+    mirror = "https://mirrors.tuna.tsinghua.edu.cn/rustup"
+    for path in DOCKERFILES:
+        text = path.read_text()
+        if "rustup" not in text and ".cargo/bin" not in text:
+            continue
+        assert f"ARG RUSTUP_DIST_SERVER={mirror}" in text, path.name
+        assert f"ARG RUSTUP_UPDATE_ROOT={mirror}/rustup" in text, path.name
+        assert f"{mirror}/rustup/dist/x86_64-unknown-linux-gnu/rustup-init" in text, (
+            path.name
+        )
+        assert "sh.rustup.rs" not in text, path.name
+        assert "| sh" not in text, path.name

@@ -2,11 +2,20 @@
 
 ARG APT_DEBIAN_MIRROR=http://mirrors.tuna.tsinghua.edu.cn/debian
 ARG APT_SECURITY_MIRROR=http://mirrors.tuna.tsinghua.edu.cn/debian-security
+ARG PYPI_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+ARG RUSTUP_DIST_SERVER=https://mirrors.tuna.tsinghua.edu.cn/rustup
+ARG RUSTUP_UPDATE_ROOT=https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup
+ARG RUSTUP_INIT_URL=https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup/dist/x86_64-unknown-linux-gnu/rustup-init
 
 # Frontend build stage
 # Build frontend assets on the native build platform to avoid
 # cross-architecture emulation issues during multi-platform builds.
 FROM --platform=$BUILDPLATFORM docker-hub.f123.pub/base/bun:1-lightrag-9114c058aeae@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895 AS frontend-builder
+
+ARG NPM_REGISTRY
+
+ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
 
 WORKDIR /app
 
@@ -16,7 +25,7 @@ COPY lightrag_webui/ ./lightrag_webui/
 # Build frontend assets for inclusion in the API package
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     cd lightrag_webui \
-    && bun install --frozen-lockfile \
+    && bun install --frozen-lockfile --registry "$NPM_CONFIG_REGISTRY" \
     && bun run build
 
 # Python build stage - using uv for package installation
@@ -24,10 +33,18 @@ FROM docker-hub.f123.pub/base/uv:python3.12-bookworm-slim-lightrag-e5b65587bce7@
 
 ARG APT_DEBIAN_MIRROR
 ARG APT_SECURITY_MIRROR
+ARG PYPI_INDEX_URL
+ARG RUSTUP_DIST_SERVER
+ARG RUSTUP_UPDATE_ROOT
+ARG RUSTUP_INIT_URL
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV UV_SYSTEM_PYTHON=1
 ENV UV_COMPILE_BYTECODE=1
+ENV UV_DEFAULT_INDEX=${PYPI_INDEX_URL}
+ENV PIP_INDEX_URL=${PYPI_INDEX_URL}
+ENV RUSTUP_DIST_SERVER=${RUSTUP_DIST_SERVER}
+ENV RUSTUP_UPDATE_ROOT=${RUSTUP_UPDATE_ROOT}
 
 WORKDIR /app
 
@@ -60,7 +77,14 @@ RUN set -eux; \
         build-essential \
         pkg-config; \
     rm -rf /var/lib/apt/lists/*; \
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    rustup_init=/tmp/rustup-init; \
+    curl --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 180 \
+        --proto '=https' --tlsv1.2 -sSfL \
+        "${RUSTUP_INIT_URL}" \
+        -o "${rustup_init}"; \
+    chmod +x "${rustup_init}"; \
+    "${rustup_init}" -y --no-modify-path --profile minimal; \
+    rm -f "${rustup_init}"
 
 ENV PATH="/root/.cargo/bin:/root/.local/bin:${PATH}"
 
@@ -101,6 +125,7 @@ FROM docker-hub.f123.pub/base/python:3.12-slim-bookworm-lightrag-782412e85d0f@sh
 
 ARG APT_DEBIAN_MIRROR
 ARG APT_SECURITY_MIRROR
+ARG PYPI_INDEX_URL
 
 WORKDIR /app
 
@@ -108,6 +133,8 @@ WORKDIR /app
 COPY --from=docker-hub.f123.pub/base/uv:latest-lightrag-b485bd65cc2c@sha256:b485bd65cc2cf1c9a93b3554012c9c3778cf7b1b5fd3d3096ce9e1226c97e1e6 /uv /usr/local/bin/uv
 
 ENV UV_SYSTEM_PYTHON=1
+ENV UV_DEFAULT_INDEX=${PYPI_INDEX_URL}
+ENV PIP_INDEX_URL=${PYPI_INDEX_URL}
 
 # Copy installed packages and application code
 COPY --from=builder /root/.local /root/.local
