@@ -166,6 +166,18 @@ def test_validate_release_creates_source_archive_and_record_before_build():
     assert "source.tar.gz" in text
 
 
+def test_validate_release_installs_git_before_release_scripts():
+    validate = load("validate-release.yml")
+    commands = validate["steps"]["validate-release"]["commands"]
+    install_index = next(
+        i for i, command in enumerate(commands) if "apt-get install" in command and "git" in command
+    )
+    script_index = next(
+        i for i, command in enumerate(commands) if "python -m scripts.ci.delivery" in command
+    )
+    assert install_index < script_index
+
+
 def test_workflows_pin_linux_amd64_runner_platform():
     for path in WOODPECKER.glob("*.yml"):
         workflow = load(path.name)
