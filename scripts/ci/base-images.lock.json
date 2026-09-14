@@ -12,16 +12,6 @@
       "manifest_count": 4
     },
     {
-      "source": "ghcr.io/astral-sh/uv:python3.12-bookworm-slim",
-      "digest": "sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58",
-      "mirror": "docker-hub.f123.pub/base/uv:python3.12-bookworm-slim-lightrag-e5b65587bce7",
-      "platforms": [
-        "linux/amd64",
-        "linux/arm64"
-      ],
-      "manifest_count": 4
-    },
-    {
       "source": "docker.io/library/python:3.12-slim-bookworm",
       "digest": "sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254",
       "mirror": "docker-hub.f123.pub/base/python:3.12-slim-bookworm-lightrag-782412e85d0f",

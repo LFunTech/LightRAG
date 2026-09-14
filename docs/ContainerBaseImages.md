@@ -14,7 +14,6 @@ Dockerfile 使用 `内部仓库:独立标签@sha256:完整摘要`，不能只固
 | 用途 | 原始来源 | 内部仓库 |
 | --- | --- | --- |
 | 前端构建 | `docker.io/oven/bun:1` | `docker-hub.f123.pub/base/bun` |
-| Python/uv 构建环境 | `ghcr.io/astral-sh/uv:python3.12-bookworm-slim` | `docker-hub.f123.pub/base/uv` |
 | Python 运行环境 | `docker.io/library/python:3.12-slim-bookworm` | `docker-hub.f123.pub/base/python` |
 | uv 二进制 | `ghcr.io/astral-sh/uv:latest` | `docker-hub.f123.pub/base/uv` |
 | PostgreSQL/pgvector | `docker.io/pgvector/pgvector:pg18-trixie` | `docker-hub.f123.pub/base/pgvector` |

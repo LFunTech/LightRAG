@@ -147,6 +147,16 @@ def test_release_dockerfiles_do_not_download_offline_model_caches_during_build()
         assert "TIKTOKEN_CACHE_DIR" not in text, path.name
 
 
+def test_release_dockerfiles_install_python_dependencies_in_final_stage_only():
+    """Kaniko must not cross-stage save or copy a large Python virtualenv."""
+    for path in (ROOT / "Dockerfile", ROOT / "Dockerfile.lite"):
+        text = path.read_text()
+        assert " AS builder" not in text, path.name
+        assert "--from=builder" not in text, path.name
+        assert "COPY --from=builder /app/.venv" not in text, path.name
+        assert "COPY --from=builder /root/.local" not in text, path.name
+
+
 def test_dockerfiles_are_kaniko_compatible_without_buildkit_run_mounts():
     """Woodpecker builds with Kaniko, so Dockerfiles must avoid BuildKit-only syntax."""
     for path in DOCKERFILES:

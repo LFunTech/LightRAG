@@ -21,45 +21,10 @@ RUN cd lightrag_webui \
     && bun install --frozen-lockfile --registry "$NPM_CONFIG_REGISTRY" \
     && bun run build
 
-# Python build stage - using uv for package installation
-FROM docker-hub.f123.pub/base/uv:python3.12-bookworm-slim-lightrag-e5b65587bce7@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 AS builder
-
-ARG PYPI_INDEX_URL
-
-ENV UV_SYSTEM_PYTHON=1
-ENV UV_COMPILE_BYTECODE=1
-ENV UV_DEFAULT_INDEX=${PYPI_INDEX_URL}
-ENV PIP_INDEX_URL=${PYPI_INDEX_URL}
-
-WORKDIR /app
-
-ENV PATH="/root/.local/bin:${PATH}"
-
-# Ensure shared data directory exists for uv caches
-RUN mkdir -p /root/.local/share/uv
-
-# Copy project metadata and sources
-COPY pyproject.toml .
-COPY setup.py .
-COPY uv.lock .
-
-# Install project dependencies (base + API extras) without the project to improve caching
-RUN uv sync --frozen --no-dev --extra api --no-install-project --no-editable
-
-# Copy project sources after dependency layer
-COPY lightrag/ ./lightrag/
-
-# Include pre-built frontend assets from the previous stage
-COPY --from=frontend-builder /app/lightrag/api/webui ./lightrag/api/webui
-
-# Sync project in non-editable mode and ensure pip is available for runtime installs
-RUN uv sync --frozen --no-dev --extra api --no-editable \
-    && /app/.venv/bin/python -m ensurepip --upgrade
-
 # Final stage
-# Pin to bookworm: keeps Python 3.12 (venv compat with the builder stage) while
+# Pin to bookworm: keeps the release image on Python 3.12 while
 # avoiding Debian trixie's perl 5.40.x exposure (CVE-2026-12087, no patch yet),
-# and aligns the final Debian release with the builder (also bookworm).
+# and keeps the runtime base on the stable Debian release.
 FROM docker-hub.f123.pub/base/python:3.12-slim-bookworm-lightrag-782412e85d0f@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254
 
 ARG APT_DEBIAN_MIRROR
@@ -72,19 +37,22 @@ WORKDIR /app
 COPY --from=docker-hub.f123.pub/base/uv:latest-lightrag-b485bd65cc2c@sha256:b485bd65cc2cf1c9a93b3554012c9c3778cf7b1b5fd3d3096ce9e1226c97e1e6 /uv /usr/local/bin/uv
 
 ENV UV_SYSTEM_PYTHON=1
+ENV UV_COMPILE_BYTECODE=1
 ENV UV_DEFAULT_INDEX=${PYPI_INDEX_URL}
 ENV PIP_INDEX_URL=${PYPI_INDEX_URL}
 
-# Copy installed packages and application code
-COPY --from=builder /root/.local /root/.local
-COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /app/lightrag ./lightrag
+ENV PATH=/app/.venv/bin:/root/.local/bin:$PATH
+
+# Copy project metadata first and install third-party dependencies without the
+# project package to keep the dependency layer cacheable.
 COPY pyproject.toml .
 COPY setup.py .
 COPY uv.lock .
+RUN uv sync --frozen --no-dev --extra api --no-install-project --no-editable
 
-# Ensure the installed scripts are on PATH
-ENV PATH=/app/.venv/bin:/root/.local/bin:$PATH
+# Copy project sources after the dependency layer.
+COPY lightrag/ ./lightrag/
+COPY --from=frontend-builder /app/lightrag/api/webui ./lightrag/api/webui
 
 # Sync dependencies inside the final image using uv
 # And ensure pip is available for runtime installs

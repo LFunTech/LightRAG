@@ -56,7 +56,8 @@ setup 测试输出：`/tmp/lightrag-base-images-setup-tests.log`。这些临时�
 ## Kaniko 切换后的输入收敛（2026-09-14）
 
 后续 Woodpecker 构建改为 Kaniko，`Dockerfile` 与 `Dockerfile.lite` 删除了不再使用的
-BuildKit parser frontend directive。因此当前 `scripts/ci/base-images.lock.json` 只记录实际
-Dockerfile 外部 FROM/COPY 输入（五类来源），不再包含 `docker.io/docker/dockerfile:1`。
-上方“六个原始 tag”的同步记录是当时完成基础镜像迁移的历史证据，不再表示当前
-Dockerfile 输入数量。
+BuildKit parser frontend directive；进一步排查后又删除了不必要的 Python builder stage。
+因此当前 `scripts/ci/base-images.lock.json` 只记录实际 Dockerfile 外部 FROM/COPY 输入
+（四类来源），不再包含 `docker.io/docker/dockerfile:1` 或
+`ghcr.io/astral-sh/uv:python3.12-bookworm-slim`。上方“六个原始 tag”的同步记录是当时完成
+基础镜像迁移的历史证据，不再表示当前 Dockerfile 输入数量。
