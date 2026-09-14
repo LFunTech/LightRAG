@@ -55,7 +55,9 @@ def test_backend_quality_entry_records_junit_and_skips_external_integration():
     text = (ROOT / "scripts/ci/backend-check.sh").read_text()
     assert "--junitxml" in text
     assert "not integration" in text
-    assert "lightrag-download-cache --spacy-install" in text
+    assert "libcairo2" in text
+    assert "DOCX_SMART_HEADING=false" in text
+    assert "lightrag-download-cache --spacy-install" not in text
 
 
 def test_validate_release_creates_source_archive_and_record_before_build():
