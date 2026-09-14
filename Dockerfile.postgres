@@ -1,14 +1,43 @@
+ARG APT_DEBIAN_MIRROR=http://mirrors.tuna.tsinghua.edu.cn/debian
+ARG APT_SECURITY_MIRROR=http://mirrors.tuna.tsinghua.edu.cn/debian-security
+
 # Build stage: compile Apache AGE against PostgreSQL 18 on top of pgvector
 FROM docker-hub.f123.pub/base/pgvector:pg18-trixie-lightrag-78bf48b801e7@sha256:78bf48b801e792f99e3ac62b5036fd3876e9be48afda16c1e331af1c75ceb2ff AS build
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends --no-install-suggests \
+ARG APT_DEBIAN_MIRROR
+ARG APT_SECURITY_MIRROR
+
+RUN set -eux; \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i \
+            -e "s|https://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+            -e "s|http://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+            -e "s|https://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+            -e "s|http://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+            -e "s|https://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g" \
+            -e "s|http://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g" \
+            /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    if [ -f /etc/apt/sources.list ]; then \
+        sed -i \
+            -e "s|https://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+            -e "s|http://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+            -e "s|https://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+            -e "s|http://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+            -e "s|https://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g" \
+            -e "s|http://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g" \
+            /etc/apt/sources.list; \
+    fi; \
+    printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/80-ci-retries; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends --no-install-suggests \
        ca-certificates \
        git \
        bison \
        build-essential \
        flex \
-       postgresql-server-dev-18
+       postgresql-server-dev-18; \
+    rm -rf /var/lib/apt/lists/*
 
 RUN git clone --depth 1 --branch release/PG18/1.7.0 https://github.com/apache/age.git /usr/src/age \
     && cd /usr/src/age \
@@ -18,9 +47,35 @@ RUN git clone --depth 1 --branch release/PG18/1.7.0 https://github.com/apache/ag
 # Final stage: Create a final image by copying the files created in the build stage
 FROM docker-hub.f123.pub/base/pgvector:pg18-trixie-lightrag-78bf48b801e7@sha256:78bf48b801e792f99e3ac62b5036fd3876e9be48afda16c1e331af1c75ceb2ff
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends --no-install-suggests \
-    locales
+ARG APT_DEBIAN_MIRROR
+ARG APT_SECURITY_MIRROR
+
+RUN set -eux; \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i \
+            -e "s|https://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+            -e "s|http://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+            -e "s|https://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+            -e "s|http://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+            -e "s|https://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g" \
+            -e "s|http://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g" \
+            /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    if [ -f /etc/apt/sources.list ]; then \
+        sed -i \
+            -e "s|https://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+            -e "s|http://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+            -e "s|https://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+            -e "s|http://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
+            -e "s|https://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g" \
+            -e "s|http://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g" \
+            /etc/apt/sources.list; \
+    fi; \
+    printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/80-ci-retries; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends --no-install-suggests \
+    locales; \
+    rm -rf /var/lib/apt/lists/*
 
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
     && locale-gen \

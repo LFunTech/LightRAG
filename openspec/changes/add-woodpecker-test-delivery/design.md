@@ -54,7 +54,7 @@ tag 发布必须等待同一 commit 的交付静态校验成功，不借用旧�
 
 ### 3. 构建器选择与权限
 
-推荐 **rootless BuildKit**，直接构建现有 Dockerfile。固定工具版本和可验证镜像 digest，使用 amd64 原生构建与独立 registry cache；BuildKit 状态置于单次构建的本地临时目录，不放在共享 NFS workspace 上。构建输入仍来自校验后的源码包。这里参考 haier 的 registry auth、cache 和镜像发布/校验组织方式，但不照搬 Kaniko：LightRAG 现有 Dockerfile 使用 Dockerfile frontend 的 cache/bind `RUN --mount` 语义，改用 Kaniko 需要另建或改造生产 Dockerfile，会引入构建路径漂移。
+推荐 **rootless BuildKit**，直接构建现有 Dockerfile。固定工具版本和可验证镜像 digest，使用 amd64 原生构建与独立 registry cache；BuildKit 状态置于单次构建的本地临时目录，不放在共享 NFS workspace 上。构建输入仍来自校验后的源码包。这里参考 haier 的 registry auth、cache、apt mirror 和镜像发布/校验组织方式，但不照搬 Kaniko：LightRAG 现有 Dockerfile 使用 Dockerfile frontend 的 cache/bind `RUN --mount` 语义，改用 Kaniko 需要另建或改造生产 Dockerfile，会引入构建路径漂移。三个 Dockerfile 的 apt 阶段默认使用 `http://mirrors.tuna.tsinghua.edu.cn/debian` 与 `http://mirrors.tuna.tsinghua.edu.cn/debian-security`，执行 `apt-get update` 前先改写 `/etc/apt/sources.list*` 并设置 apt retry/timeout，避免 Woodpecker 构建落回 Debian 默认源。
 
 构建入口必须向 stdout/stderr 输出可持续刷新的非敏感进度：脚本在调用 BuildKit 前打印 tag、commit、cache ref 和 metadata 文件位置，并强制 `BUILDKIT_PROGRESS=plain` / `--progress=plain`，避免 Woodpecker 只能看到一个长时间运行但无上下文的步骤。不得打印 registry 密码、COS 密钥或完整运行 Secret。
 

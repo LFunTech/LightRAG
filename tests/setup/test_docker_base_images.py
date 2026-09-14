@@ -65,3 +65,26 @@ def test_image_lock_covers_exactly_the_dockerfile_inputs():
         assert re.fullmatch(r"sha256:[0-9a-f]{64}", entry["digest"])
         assert "linux/amd64" in entry["platforms"]
         assert any(p.startswith("linux/arm64") for p in entry["platforms"])
+
+
+
+def test_apt_build_stages_default_to_tsinghua_debian_mirrors():
+    """Every Dockerfile apt stage rewrites Debian sources before apt-get update."""
+    debian_mirror = "http://mirrors.tuna.tsinghua.edu.cn/debian"
+    security_mirror = "http://mirrors.tuna.tsinghua.edu.cn/debian-security"
+    for path in DOCKERFILES:
+        text = path.read_text()
+        if "apt-get update" not in text:
+            continue
+        assert f"ARG APT_DEBIAN_MIRROR={debian_mirror}" in text, path.name
+        assert f"ARG APT_SECURITY_MIRROR={security_mirror}" in text, path.name
+        for stage in re.split(r"(?m)^FROM ", text)[1:]:
+            if "apt-get update" not in stage:
+                continue
+            before_update = stage[: stage.index("apt-get update")]
+            assert "ARG APT_DEBIAN_MIRROR" in before_update, path.name
+            assert "ARG APT_SECURITY_MIRROR" in before_update, path.name
+            assert "/etc/apt/sources.list.d/debian.sources" in before_update, path.name
+            assert "deb.debian.org/debian-security" in before_update, path.name
+            assert "deb.debian.org/debian" in before_update, path.name
+            assert "Acquire::Retries" in before_update, path.name
