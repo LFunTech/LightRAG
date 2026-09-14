@@ -2,9 +2,6 @@ ARG APT_DEBIAN_MIRROR=http://mirrors.tuna.tsinghua.edu.cn/debian
 ARG APT_SECURITY_MIRROR=http://mirrors.tuna.tsinghua.edu.cn/debian-security
 ARG PYPI_INDEX_URL=https://mirror.f123.pub/repository/pypi/simple
 ARG NPM_REGISTRY=https://registry.npmmirror.com
-ARG RUSTUP_DIST_SERVER=https://mirrors.tuna.tsinghua.edu.cn/rustup
-ARG RUSTUP_UPDATE_ROOT=https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup
-ARG RUSTUP_INIT_URL=https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup/dist/x86_64-unknown-linux-gnu/rustup-init
 
 # Frontend build stage. The Woodpecker path uses Kaniko on an amd64 runner,
 # so keep this stage free of BuildKit-only platform directives.
@@ -27,62 +24,16 @@ RUN cd lightrag_webui \
 # Python build stage - using uv for faster package installation
 FROM docker-hub.f123.pub/base/uv:python3.12-bookworm-slim-lightrag-e5b65587bce7@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 AS builder
 
-ARG APT_DEBIAN_MIRROR
-ARG APT_SECURITY_MIRROR
 ARG PYPI_INDEX_URL
-ARG RUSTUP_DIST_SERVER
-ARG RUSTUP_UPDATE_ROOT
-ARG RUSTUP_INIT_URL
 
-ENV DEBIAN_FRONTEND=noninteractive
 ENV UV_SYSTEM_PYTHON=1
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_DEFAULT_INDEX=${PYPI_INDEX_URL}
 ENV PIP_INDEX_URL=${PYPI_INDEX_URL}
-ENV RUSTUP_DIST_SERVER=${RUSTUP_DIST_SERVER}
-ENV RUSTUP_UPDATE_ROOT=${RUSTUP_UPDATE_ROOT}
 
 WORKDIR /app
 
-# Install system deps (Rust is required by some wheels)
-RUN set -eux; \
-    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
-        sed -i \
-            -e "s|https://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
-            -e "s|http://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
-            -e "s|https://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
-            -e "s|http://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
-            -e "s|https://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g" \
-            -e "s|http://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g" \
-            /etc/apt/sources.list.d/debian.sources; \
-    fi; \
-    if [ -f /etc/apt/sources.list ]; then \
-        sed -i \
-            -e "s|https://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
-            -e "s|http://deb.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
-            -e "s|https://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
-            -e "s|http://security.debian.org/debian-security|${APT_SECURITY_MIRROR}|g" \
-            -e "s|https://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g" \
-            -e "s|http://deb.debian.org/debian|${APT_DEBIAN_MIRROR}|g" \
-            /etc/apt/sources.list; \
-    fi; \
-    printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' > /etc/apt/apt.conf.d/80-ci-retries; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends \
-        curl \
-        build-essential \
-        pkg-config; \
-    rm -rf /var/lib/apt/lists/*; \
-    rustup_init=/tmp/rustup-init; \
-    curl --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 180 \
-        --proto '=https' --tlsv1.2 -sSfL \
-        "${RUSTUP_INIT_URL}" \
-        -o "${rustup_init}"; \
-    chmod +x "${rustup_init}"; \
-    "${rustup_init}" -y --no-modify-path --profile minimal; \
-    rm -f "${rustup_init}"
-
-ENV PATH="/root/.cargo/bin:/root/.local/bin:${PATH}"
+ENV PATH="/root/.local/bin:${PATH}"
 
 # Ensure shared data directory exists for uv caches
 RUN mkdir -p /root/.local/share/uv
@@ -104,13 +55,6 @@ COPY --from=frontend-builder /app/lightrag/api/webui ./lightrag/api/webui
 # Sync project in non-editable mode and ensure pip is available for runtime installs
 RUN uv sync --frozen --no-dev --extra api --extra offline --no-editable \
     && /app/.venv/bin/python -m ensurepip --upgrade
-
-# Prepare offline cache directory, pre-populate tiktoken data, and download the
-# pinned spaCy model wheels for the docx smart_heading engine parameter.
-# Use uv run to execute commands from the virtual environment
-RUN mkdir -p /app/data/tiktoken /app/spacy_models \
-    && uv run lightrag-download-cache --cache-dir /app/data/tiktoken --spacy-dir /app/spacy_models || status=$?; \
-    if [ -n "${status:-}" ] && [ "$status" -ne 0 ] && [ "$status" -ne 2 ]; then exit "$status"; fi
 
 # Final stage
 # Pin to bookworm: keeps Python 3.12 (venv compat with the builder stage) while
@@ -150,26 +94,13 @@ COPY uv.lock .
 ENV PATH=/app/.venv/bin:/root/.local/bin:$PATH
 
 # Install dependencies with uv sync (uses locked versions from uv.lock)
-# and ensure pip is available for runtime installs. The pinned spaCy model
-# wheels (docx smart_heading) MUST be installed after uv sync — sync is exact
-# and would remove packages that are not in the lock. Kaniko cannot use
-# BuildKit bind mounts, so copy the wheels from the builder and delete them
-# in the same layer after installation.
-COPY --from=builder /app/spacy_models /tmp/spacy_models
+# and ensure pip is available for runtime installs.
 RUN uv sync --frozen --no-dev --extra api --extra offline --no-editable \
-    && /app/.venv/bin/python -m ensurepip --upgrade \
-    && /app/.venv/bin/python -m pip install --no-index --no-cache-dir \
-        --find-links=/tmp/spacy_models zh_core_web_sm en_core_web_sm \
-    && rm -rf /tmp/spacy_models
+    && /app/.venv/bin/python -m ensurepip --upgrade
 
 # Create persistent data directories AFTER package installation
-RUN mkdir -p /app/data/rag_storage /app/data/inputs /app/data/prompts /app/data/tiktoken
+RUN mkdir -p /app/data/rag_storage /app/data/inputs /app/data/prompts
 
-# Copy offline cache into the newly created directory
-COPY --from=builder /app/data/tiktoken /app/data/tiktoken
-
-# Point to the prepared cache
-ENV TIKTOKEN_CACHE_DIR=/app/data/tiktoken
 ENV WORKING_DIR=/app/data/rag_storage
 ENV INPUT_DIR=/app/data/inputs
 ENV PROMPT_DIR=/app/data/prompts
@@ -179,8 +110,8 @@ ENV PROMPT_DIR=/app/data/prompts
 # libcairo2 is the native library cairosvg (SVG->PNG rasterization for native
 # markdown images) binds to via cffi at runtime; cairosvg installs fine without
 # it but svg2png() fails with "no library called cairo-2 was found".
-# chown -R /app MUST run after every data COPY above so the venv (pipmaster
-# installs packages at runtime), data dirs, and the tiktoken cache are writable.
+# chown -R /app makes the venv (pipmaster installs packages at runtime) and
+# data dirs writable.
 RUN set -eux; \
     if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
         sed -i \

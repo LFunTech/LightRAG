@@ -29,7 +29,7 @@
 
 ## Impact
 
-计划涉及 `.woodpecker/`、`scripts/ci/`、`tests/ci/`、`k8s-deploy/lightrag-kustomize/` 的 digest/测试部署配套及对应 `tests/setup/`、部署文档与本 change artifacts。根据追加要求，`Dockerfile`、`Dockerfile.lite` 和 `Dockerfile.postgres` 的镜像来源统一改为 `docker-hub.f123.pub/base/`；保留原镜像内容、构建阶段及已有多架构能力，不创建分叉的生产 Dockerfile。开发者与现有 CI 需要能够访问该 registry；这不是完整离线构建承诺，但 Dockerfile 的默认 apt、Bun/npm 与 rustup bootstrap 源已按目标网络改为清华/npmmirror 镜像，PyPI 源改为 f123 内部镜像，并显式失败。为适配 Kaniko，Dockerfile/Dockerfile.lite 不再使用 BuildKit cache/bind mount 语法；镜像内容仍来自同一生产 Dockerfile 路径，不创建分叉 Dockerfile。
+计划涉及 `.woodpecker/`、`scripts/ci/`、`tests/ci/`、`k8s-deploy/lightrag-kustomize/` 的 digest/测试部署配套及对应 `tests/setup/`、部署文档与本 change artifacts。根据追加要求，`Dockerfile`、`Dockerfile.lite` 和 `Dockerfile.postgres` 的镜像来源统一改为 `docker-hub.f123.pub/base/`；保留原镜像内容、构建阶段及已有多架构能力，不创建分叉的生产 Dockerfile。开发者与现有 CI 需要能够访问该 registry；这不是完整离线构建承诺，但 Dockerfile 的默认 apt 与 Bun/npm 源已按目标网络改为清华/npmmirror 镜像，PyPI 源改为 f123 内部镜像。为适配 Kaniko，Dockerfile/Dockerfile.lite 不再使用 BuildKit cache/bind mount 语法；为避免把不必要组件加入流水线，它们也不再安装 Rust/Cargo toolchain，且不在构建期下载 tiktoken 或 spaCy 离线模型缓存。镜像内容仍来自同一生产 Dockerfile 路径，不创建分叉 Dockerfile。
 
 外部依赖为已有 Woodpecker 3.18.1 Kubernetes agent、COS、私有镜像仓库，以及 test 集群专属的命名空间、命名空间范围部署凭据、运行 Secret、PG/pgvector、HugeGraph 和两个 RWX 根目录。测试环境尚未预置时发布必须明确失败，不降级为文件后端或无认证单 Pod。
 

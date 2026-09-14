@@ -123,20 +123,28 @@ def test_frontend_dependency_installs_default_to_npmmirror_registry():
         assert "NPM_CONFIG_REGISTRY=${NPM_REGISTRY}" in text, path.name
 
 
-def test_rustup_install_uses_tsinghua_mirror_and_cannot_swallow_download_errors():
-    """Rust bootstrap must not use curl|sh, which lets /bin/sh hide curl failures."""
-    mirror = "https://mirrors.tuna.tsinghua.edu.cn/rustup"
-    for path in DOCKERFILES:
+def test_release_dockerfiles_do_not_install_rust_toolchain():
+    """The amd64 release build uses locked wheels and must not bootstrap Cargo."""
+    forbidden = (
+        "rustup",
+        "RUSTUP_",
+        ".cargo/bin",
+        "build-essential",
+        "pkg-config",
+    )
+    for path in (ROOT / "Dockerfile", ROOT / "Dockerfile.lite"):
         text = path.read_text()
-        if "rustup" not in text and ".cargo/bin" not in text:
-            continue
-        assert f"ARG RUSTUP_DIST_SERVER={mirror}" in text, path.name
-        assert f"ARG RUSTUP_UPDATE_ROOT={mirror}/rustup" in text, path.name
-        assert f"{mirror}/rustup/dist/x86_64-unknown-linux-gnu/rustup-init" in text, (
-            path.name
-        )
-        assert "sh.rustup.rs" not in text, path.name
-        assert "| sh" not in text, path.name
+        for marker in forbidden:
+            assert marker not in text, f"{path.name} still contains {marker}"
+
+
+def test_release_dockerfiles_do_not_download_offline_model_caches_during_build():
+    """CI image builds must not block on GitHub/OpenAI cache downloads."""
+    for path in (ROOT / "Dockerfile", ROOT / "Dockerfile.lite"):
+        text = path.read_text()
+        assert "lightrag-download-cache" not in text, path.name
+        assert "spacy_models" not in text, path.name
+        assert "TIKTOKEN_CACHE_DIR" not in text, path.name
 
 
 def test_dockerfiles_are_kaniko_compatible_without_buildkit_run_mounts():
