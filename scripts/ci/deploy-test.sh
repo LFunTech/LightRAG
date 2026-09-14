@@ -59,6 +59,34 @@ apply_registry_pull_secret() {
     --dry-run=client -o yaml | kubectl apply -f -
 }
 
+make_coordination_dsn() {
+  python3 - \
+    "$LIGHTRAG_TEST_POSTGRES_USER" \
+    "$LIGHTRAG_TEST_POSTGRES_PASSWORD" \
+    "$LIGHTRAG_TEST_POSTGRES_HOST" \
+    "$LIGHTRAG_TEST_POSTGRES_PORT" \
+    "$LIGHTRAG_TEST_POSTGRES_DATABASE" <<'PY'
+from urllib.parse import quote
+import sys
+
+user, password, host, port, database = sys.argv[1:]
+if ":" in host and not host.startswith("["):
+    host = f"[{host}]"
+print(
+    "postgresql://"
+    + quote(user, safe="")
+    + ":"
+    + quote(password, safe="")
+    + "@"
+    + host
+    + ":"
+    + port
+    + "/"
+    + quote(database, safe="")
+)
+PY
+}
+
 apply_runtime_secret() {
   require_env LIGHTRAG_TEST_API_KEY
   require_env LIGHTRAG_TEST_LLM_API_KEY
@@ -76,8 +104,11 @@ apply_runtime_secret() {
   require_env LIGHTRAG_TEST_HUGEGRAPH_USERNAME
   require_env LIGHTRAG_TEST_HUGEGRAPH_PASSWORD
 
+  LIGHTRAG_COORDINATION_DSN="$(make_coordination_dsn)"
+
   kubectl -n "$NAMESPACE" create secret generic lightrag-runtime \
     --from-literal=LIGHTRAG_API_KEY="$LIGHTRAG_TEST_API_KEY" \
+    --from-literal=LIGHTRAG_COORDINATION_DSN="$LIGHTRAG_COORDINATION_DSN" \
     --from-literal=LLM_BINDING_API_KEY="$LIGHTRAG_TEST_LLM_API_KEY" \
     --from-literal=EMBEDDING_BINDING_API_KEY="$LIGHTRAG_TEST_EMBEDDING_API_KEY" \
     --from-literal=DASHSCOPE_API_KEY="$LIGHTRAG_TEST_LLM_API_KEY" \
@@ -100,7 +131,7 @@ apply_runtime_secret() {
 
 apply_environment_snapshot() {
   cat > build/release/environment-snapshot.json <<JSON
-{"cluster":"test","namespace":"$NAMESPACE","initialized":true,"profile":{"replicas":2,"workers":1,"kv_storage":"PGKVStorage","doc_status_storage":"PGDocStatusStorage","vector_storage":"PGVectorStorage","graph_storage":"HugeGraphStorage","workspace":"lightrag-test","postgres_workspace":"lightrag-test"},"storage_state":{"fenced":false,"active_operations":0,"pending_mutations":0,"orphaned_claims":0}}
+{"cluster":"test","namespace":"$NAMESPACE","initialized":true,"profile":{"replicas":2,"workers":1,"kv_storage":"PGKVStorage","doc_status_storage":"PGDocStatusStorage","vector_storage":"PGVectorStorage","graph_storage":"HugeGraphStorage","workspace":"lightrag_test","postgres_workspace":"lightrag_test"},"storage_state":{"fenced":false,"active_operations":0,"pending_mutations":0,"orphaned_claims":0}}
 JSON
   kubectl -n "$NAMESPACE" create configmap lightrag-test-environment \
     --from-file=snapshot=build/release/environment-snapshot.json \

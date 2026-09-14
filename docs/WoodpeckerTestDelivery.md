@@ -30,7 +30,7 @@ The `deploy-test` workflow creates or updates Kubernetes runtime Secrets and pre
 1. It writes the test kubeconfig from global `kubeconfig_test` and creates the `lightrag-test` namespace if missing.
 2. It creates or updates `lightrag-registry-pull` from global `DOCKER_USERNAME` / `DOCKER_PASSWORD`.
 3. It creates or updates `lightrag-runtime` from the Woodpecker repo secrets loaded from `.secrets/test.secrets`, including Bailian/OpenAI-compatible model API key and host, DashScope workspace header, PostgreSQL connection fields, HugeGraph REST endpoint, graphspace, graph and credentials.
-4. It writes `lightrag-test-environment` with the expected test profile: two replicas, one worker per Pod, `PGKVStorage`, `PGDocStatusStorage`, `PGVectorStorage`, `HugeGraphStorage`, and matching `WORKSPACE` / `POSTGRES_WORKSPACE`.
+4. It writes `lightrag-test-environment` with the expected test profile: two replicas, one worker per Pod, `PGKVStorage`, `PGDocStatusStorage`, `PGVectorStorage`, `HugeGraphStorage`, and matching `WORKSPACE` / `POSTGRES_WORKSPACE` set to the valid workspace identifier `lightrag_test` while the Kubernetes namespace remains `lightrag-test`.
 5. It applies `k8s-deploy/lightrag-kustomize/overlays/test`, creating the ServiceAccount/RBAC, private Service, NetworkPolicy and the two `syno-nfs` RWX PVCs.
 6. It waits for both PVCs to bind, rolls out the two application Pods, verifies image identity, health/authentication and cross-Pod ingestion/query before restoring Service routing.
 

@@ -351,6 +351,8 @@ def test_deploy_test_script_bootstraps_namespace_secrets_and_snapshot_in_pipelin
     assert "apply_registry_pull_secret()" in script
     assert "apply_runtime_secret()" in script
     assert "apply_environment_snapshot()" in script
+    assert "make_coordination_dsn()" in script
+    assert "--from-literal=LIGHTRAG_COORDINATION_DSN=\"$LIGHTRAG_COORDINATION_DSN\"" in script
     assert "kubectl get namespace \"$NAMESPACE\" >/dev/null" not in script
     assert "create secret docker-registry lightrag-registry-pull" in script
     assert "create secret generic lightrag-runtime" in script

@@ -75,6 +75,7 @@
 - [ ] 7.3 在批准的 test 集群创建独立测试资源、完成跨节点 RWX 实测和显式初始化；记录目标与证据，不修改本机/Kind 服务或其他应用资源。
   - 2026-09-14 只读核对：test 集群 `lightrag-test` namespace 不存在；可见 StorageClass 为 `syno-nfs`；`database` namespace 当前无 PostgreSQL/HugeGraph Service。首次环境初始化仍需操作者创建 namespace/RWX PVC/runtime Secret/registry pull Secret、专属 PG/HugeGraph 后端和 `lightrag-test-environment` 初始化快照。
   - 2026-09-14 方向修正：用户明确要求这些 Kubernetes 侧资源由流水线处理，并指出本仓库 `.secrets/test.secrets` 已提供 HugeGraph/数据库连接。已将 repo secrets 同步到 Woodpecker，并修改 deploy-test 流水线为创建/更新 namespace、pull Secret、runtime Secret、profile snapshot 和 `syno-nfs` PVC；真实跨节点 RWX 与双 Pod 业务验收仍待新 tag 远端运行记录。
+  - 2026-09-14 `v1.5.33-test` / pipeline #43 已证明上述资源创建到达 test 集群并绑定两个 PVC；deploy 进入 Pod rollout 后失败，根因是分布式运行时还要求 `LIGHTRAG_COORDINATION_DSN`。已改为由流水线从 `.secrets/test.secrets` 的 PostgreSQL 字段生成 coordination DSN 写入 `lightrag-runtime`，并把应用 workspace/deployment id 统一为合法的 `lightrag_test`，避免启动时从 `lightrag-test` 清洗后与 PG workspace 不一致。远端重跑仍待新 tag。
 - [ ] 7.4 在获得触发授权后用测试 tag 跑通真实 Woodpecker 构建、镜像验证和初次双 Pod 部署，保存 pipeline/tag/commit/digest、imageID 及业务验收结果。
   - 2026-09-14 `v1.5.31-test` / pipeline #41 已跑通真实 Woodpecker 源码归档、镜像构建和 pre-deploy 镜像验证；`deploy-test` 已进入真实部署步骤，但因 `image.env` 未 export 导致脚本入参缺失而失败。修复后仍需新测试 tag 验证初次双 Pod 部署。
   - 2026-09-14 `v1.5.32-test` / pipeline #42 已跑通真实 Woodpecker 源码归档、镜像构建、pre-deploy 镜像验证和 deploy-test 的 image env 传播；构建 digest 为 `sha256:575beb3cf5c93be229b94cc00d0f7cbf581a33d96fe73cbfe58f187242da296f`。deploy-test 随后按前置检查失败于 `namespaces "lightrag-test" not found`，说明下一步阻塞在首次 test 环境初始化，而不是 CI 构建/变量传递。

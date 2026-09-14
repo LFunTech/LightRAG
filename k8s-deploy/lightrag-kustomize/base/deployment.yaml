@@ -69,15 +69,15 @@ spec:
             - name: LIGHTRAG_SHARED_STORAGE
               value: "true"
             - name: LIGHTRAG_DEPLOYMENT_ID
-              value: lightrag-test
+              value: lightrag_test
             - name: LIGHTRAG_COORDINATION_POOL_MODE
               value: direct
             - name: LIGHTRAG_DISTRIBUTED_POLL_INTERVAL
               value: "1"
             - name: WORKSPACE
-              value: lightrag-test
+              value: lightrag_test
             - name: POSTGRES_WORKSPACE
-              value: lightrag-test
+              value: lightrag_test
             - name: INPUT_DIR
               value: /app/data/inputs
             - name: WORKING_DIR

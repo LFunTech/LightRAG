@@ -12,7 +12,7 @@
 - 使用内部 digest-pinned Kaniko 构建现有完整 Dockerfile，目标 `linux/amd64`、镜像仓库 `docker-hub.f123.pub/lfun/lightrag`，并将 Dockerfile/Dockerfile.lite 改为不依赖 BuildKit-only `RUN --mount` 或 `$BUILDPLATFORM`。唯一源码工作流 clone 后将源码包、校验和与记录上传到独立 COS/MinIO 路径，后续工作流 `skip_clone` 并从该路径下载源码；源码与发布记录绑定 commit、pipeline 身份和校验和；部署使用已校验的镜像 digest。
 - 全部 Dockerfile 的外部基础镜像先由本机同步到 `docker-hub.f123.pub/base/`，验证完整多架构 manifest 与 digest 后再替换引用，包括外部 `COPY --from`；Kaniko 构建路径不再保留 Dockerfile frontend parser directive。使用独立标签及 digest pin，不覆盖其他项目共享标签，不由流水线自动补镜像或回退公网镜像源。
 - 新增测试环境 Kustomize overlay 和命名空间级发布配套，复用现有分布式部署合同，运行两个 Pod、每 Pod 一个进程；使用 `.secrets/test.secrets` 派生的 Woodpecker repo secrets 生成运行配置，目标为 PG/pgvector、HugeGraph 和真实共享持久存储，不使用本机测试模型替身。
-- 自动发布先执行幂等测试环境准备：创建/更新 `lightrag-test` namespace、registry pull Secret、`lightrag-runtime`、profile snapshot 和两个 `syno-nfs` RWX PVC，再串行发布、旧副本优雅退出、持久化状态检查、新副本启动及验收。模式迁移、故障恢复和回滚仍是显式维护操作，不加入发布自动补偿。
+- 自动发布先执行幂等测试环境准备：创建/更新 `lightrag-test` namespace、registry pull Secret、包含 `LIGHTRAG_COORDINATION_DSN` 的 `lightrag-runtime`、profile snapshot 和两个 `syno-nfs` RWX PVC；应用 workspace/deployment id 使用合法的 `lightrag_test`。随后再串行发布、旧副本优雅退出、持久化状态检查、新副本启动及验收。模式迁移、故障恢复和回滚仍是显式维护操作，不加入发布自动补偿。
 - 默认仅 ClusterIP，无公网 Ingress/NodePort/LoadBalancer；明确内部访问控制、API 鉴权及数据库/模型受控出站要求。
 - 增加工作流、发布脚本及 Kustomize manifest 本地回归覆盖；全量非 integration 后端测试和完整前端检查仅作为本地/外部 CI 验证责任，不在 Woodpecker 流水线执行，也不作为 Woodpecker 发布门禁。
 - 提供首次接入、Secret/RBAC 配置、测试基础设施初始化、正常发布、失败处理及受控回滚文档。真实远端发布验收与静态检查分别记录，不以 YAML lint 代替部署成功。

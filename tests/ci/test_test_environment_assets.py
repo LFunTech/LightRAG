@@ -17,6 +17,9 @@ def test_kustomize_test_deployment_preserves_distributed_profile_without_plainte
     assert container["envFrom"] == [{"secretRef": {"name": "lightrag-runtime"}}]
     env = {item["name"]: item["value"] for item in container["env"]}
     assert env["WORKERS"] == "1"
+    assert env["LIGHTRAG_DEPLOYMENT_ID"] == "lightrag_test"
+    assert env["WORKSPACE"] == "lightrag_test"
+    assert env["POSTGRES_WORKSPACE"] == "lightrag_test"
     assert env["LIGHTRAG_GRAPH_STORAGE"] == "HugeGraphStorage"
     assert env["EMBEDDING_MODEL"] == "text-embedding-v4"
     assert env["EMBEDDING_DIM"] == "1024"
