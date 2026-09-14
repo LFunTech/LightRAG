@@ -58,6 +58,10 @@ def test_backend_quality_entry_records_junit_and_skips_external_integration():
     assert "libcairo2" in text
     assert "DOCX_SMART_HEADING=false" in text
     assert "lightrag-download-cache --spacy-install" not in text
+    assert "ensure_faiss_importable" in text
+    assert "for version in 1.13.0 1.12.0 1.11.0" in text
+    assert "faiss-cpu==$version" in text
+    assert 'PYTHON="$ROOT/.venv/bin/python" ./scripts/test.sh' in text
 
 
 def test_validate_release_creates_source_archive_and_record_before_build():
