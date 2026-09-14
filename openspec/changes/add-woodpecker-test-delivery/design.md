@@ -17,7 +17,7 @@
 
 - 发布一个已验证 commit 对应的完整镜像，部署的 digest 与验证产物一致，失败步骤不能被误报成功。
 - 自动测试发布针对专属、初始化完毕、仅由受控应用写入的 workspace；兼容升级允许停机，不允许新旧版本混写。
-- 自动测试发布在流水线内幂等准备 Kubernetes 资源：namespace、pull Secret、runtime Secret、coordination migration Job、profile snapshot 和 RWX PVC；连接值只来自 Woodpecker secrets。
+- 自动测试发布在流水线内幂等准备 Kubernetes 资源：namespace、pull Secret、runtime Secret、coordination migration Job、storage bootstrap Job、profile snapshot 和 RWX PVC；连接值只来自 Woodpecker secrets。
 - 凭据按质量检查、源码/镜像发布、测试部署分别隔离，部署控制权限限定在 `lightrag-test`。
 - 用真实 Woodpecker 和 test 集群验证完整链路，并明确区分模板验证、环境准备和实际发布证据。
 
@@ -25,7 +25,7 @@
 
 - 不提供生产/pre 自动部署，不修改 `main` 或其他仓库，不升级 CI 基础设施。
 - 不改变业务鉴权接口、分布式协议、存储 schema 或失败恢复语义；不引入零停机、自动接管或自动数据回滚承诺。
-- 不在每次发布时创建数据库服务、清空测试数据、执行业务 bootstrap/recover、业务 storage migrate，或用本机服务替代目标环境；Kubernetes runtime Secret、pull Secret、coordination-only schema migration、snapshot、namespace 和 PVC 的幂等创建属于部署准备。
+- 不在每次发布时创建数据库服务、清空测试数据、执行故障 recover、破坏性数据修复，或用本机服务替代目标环境；Kubernetes runtime Secret、pull Secret、coordination-only schema migration、显式 storage bootstrap、snapshot、namespace 和 PVC 的幂等创建属于部署准备。
 - amd64 是此次已确认测试集群的交付平台；本 change 不撤销现有 GitHub Actions 的多架构能力，也不声称 Woodpecker 已验证 arm64。
 
 ## Decisions
@@ -94,17 +94,18 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 
 目标为 `~/.kube/test-config` 对应的 test 集群；所有工具命令显式指定 kubeconfig/context，不改变本机默认上下文。namespace 为 `lightrag-test`，应用 release/deployment 为 `lightrag`。
 
-使用 Kustomize 测试 overlay：两副本、`WORKERS=1`、PGKV/PGDocStatus/PGVector/HugeGraph、稳定且一致的 deployment ID/workspace、两条共同 RWX 路径、非 root UID/GID 1000，禁用 Service links。HugeGraph 连接池按整个两副本部署预算配置，测试起点为每 Pod 1 个连接。Kubernetes 执行方式参考 haier 的 `deploy-test.sh`/`deploy.sh`/`status.sh`：从全局 `kubeconfig_test` 注入 kubeconfig、脚本化前置检查、运行 coordination schema migration Job、应用受审 manifest、等待 rollout，并在步骤结尾输出 Deployment/Pod/Service 状态；LightRAG 不创建公网 Ingress，也不在发布脚本里执行业务 bootstrap/recover。
+使用 Kustomize 测试 overlay：两副本、`WORKERS=1`、PGKV/PGDocStatus/PGVector/HugeGraph、稳定且一致的 deployment ID/workspace、两条共同 RWX 路径、非 root UID/GID 1000，禁用 Service links。HugeGraph 连接池按整个两副本部署预算配置，测试起点为每 Pod 1 个连接。Kubernetes 执行方式参考 haier 的 `deploy-test.sh`/`deploy.sh`/`status.sh`：从全局 `kubeconfig_test` 注入 kubeconfig、脚本化前置检查、运行 coordination schema migration Job、运行 storage bootstrap Job、应用受审 manifest、等待 rollout，并在步骤结尾输出 Deployment/Pod/Service 状态；LightRAG 不创建公网 Ingress，也不在发布脚本里执行故障 recover。
 
 首次接入由流水线执行 Kubernetes 侧幂等准备，不要求人工预先创建 namespace、运行 Secret、pull Secret、profile ConfigMap 或 PVC：
 
 1. Woodpecker 优先引用已有 global `kubeconfig_test` 注入为 `LIGHTRAG_TEST_KUBECONFIG`，若该凭据权限越界再改为专用 LightRAG kubeconfig，而非复制 ai-center 的集群管理员 kubeconfig。部署脚本用该 kubeconfig 创建/更新 `lightrag-test` namespace 和命名空间内资源。
 2. 本仓库 `.secrets/test.secrets` 是 test 连接值来源；其中百炼、PostgreSQL 和 HugeGraph 条目同步为 `LFunTech/LightRAG` repo secrets，workflow 只通过 `from_secret` 注入 `deploy-test`。全局 `DOCKER_USERNAME`/`DOCKER_PASSWORD` 继续用于 registry 与 pull Secret，缺失或空值立即失败且不打印明文。
 3. `deploy-test.sh` 参考 haier 的 `ensure_namespace` / `apply_runtime_secret` / `apply_registry_secret` 模式，用 `kubectl create ... --dry-run=client -o yaml | kubectl apply -f -` 创建/更新 `lightrag-registry-pull`、`lightrag-runtime` 和 `lightrag-test-environment`。`lightrag-runtime` 包含 API key、由 PG 连接字段生成的 `LIGHTRAG_COORDINATION_DSN`、百炼/OpenAI-compatible host/key、DashScope workspace header、PG 连接字段、HugeGraph REST/Gremlin/graphspace/graph/Basic 凭据及认证方式元数据；Deployment 只保留非敏感 profile 常量，连接字段全部来自 Secret。Kubernetes namespace 固定为 `lightrag-test`，应用 `WORKSPACE`、`POSTGRES_WORKSPACE` 和 `LIGHTRAG_DEPLOYMENT_ID` 固定为合法标识 `lightrag_test`，避免启动时清洗后与 PG workspace 不一致。
-4. 在新副本启动前，`deploy-test.sh` 使用已验证 release image 创建 `lightrag-coordination-migrate` Job，并通过 `lightrag-runtime` 注入同一个 `.secrets/test.secrets` 派生的 PG DSN 执行 `python -m lightrag.distributed migrate`。该 migration 只初始化/验证 `lightrag_coordination` schema，是分布式写入运行前置；它不执行业务 storage bootstrap、recover 或数据修复。
-5. Kustomize overlay 创建 ServiceAccount/RBAC、ClusterIP Service、NetworkPolicy 和两个 `syno-nfs` RWX PVC；发布脚本在 rollout 前等待 PVC Bound，并在验收阶段通过双 Pod 行为验证共享存储和分布式后端。数据库底层存储按其自身要求选择，不把应用 RWX 文件卷充当数据库持久化方案。
-6. 使用经授权的 test 基础设施中 LightRAG 专属 PG/pgvector 数据库、协调库/权限及 HugeGraph 数据域，不共享其他应用的数据。普通 tag 部署可让 HugeGraphStorage 补齐自己的兼容 schema，但不会创建 HugeGraph 服务、清空图、执行数据修复、recover 或 rollback。
-7. 配置内部访问控制：Service 为 ClusterIP，不创建公网入口；DNS、数据库、HugeGraph 端口和模型 HTTPS 出站分别放行。不能宣称 ClusterIP 本身提供访问控制，也不能把 HTTPS 任意出站称为域名级白名单。对可创建 Pod/Job 的发布身份，不能声称 namespace 内的 Secret 对该身份不可读：其命名空间级权限边界必须在接入文档中明示。
+4. 在新副本启动前，`deploy-test.sh` 使用已验证 release image 创建 `lightrag-coordination-migrate` Job，并通过 `lightrag-runtime` 注入同一个 `.secrets/test.secrets` 派生的 PG DSN 执行 `python -m lightrag.distributed migrate`。该 migration 只初始化/验证 `lightrag_coordination` schema，是分布式写入运行前置。
+5. 随后创建 `lightrag-storage-bootstrap` Job，使用同一个 release image、runtime Secret 和与 Deployment 一致的非敏感 profile env 执行 `python -m lightrag.distributed bootstrap --actor woodpecker --confirm-writers-stopped --confirm-inflight-finished`。该步骤在旧 Pod 已停止、Service 已暂停的显式维护窗口内准备 PG/vector/status 表、vector extension、索引与 HugeGraph schema；失败保留现场，不触发 recover。
+6. Kustomize overlay 创建 ServiceAccount/RBAC、ClusterIP Service、NetworkPolicy 和两个 `syno-nfs` RWX PVC；发布脚本在 rollout 前等待 PVC Bound，并在验收阶段通过双 Pod 行为验证共享存储和分布式后端。数据库底层存储按其自身要求选择，不把应用 RWX 文件卷充当数据库持久化方案。
+7. 使用经授权的 test 基础设施中 LightRAG 专属 PG/pgvector 数据库、协调库/权限及 HugeGraph 数据域，不共享其他应用的数据。普通 tag 部署可让 HugeGraphStorage 补齐自己的兼容 schema，但不会创建 HugeGraph 服务、清空图、执行故障 recover 或 rollback。
+8. 配置内部访问控制：Service 为 ClusterIP，不创建公网入口；DNS、数据库、HugeGraph 端口和模型 HTTPS 出站分别放行。不能宣称 ClusterIP 本身提供访问控制，也不能把 HTTPS 任意出站称为域名级白名单。对可创建 Pod/Job 的发布身份，不能声称 namespace 内的 Secret 对该身份不可读：其命名空间级权限边界必须在接入文档中明示。
 
 CI 会取得部署所需模型/数据库明文以生成 Kubernetes Secret，但仅限 `deploy-test` 步骤；源码归档、镜像构建和镜像校验步骤不接收这些运行时 secret。
 

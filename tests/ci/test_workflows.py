@@ -353,6 +353,7 @@ def test_deploy_test_script_bootstraps_namespace_secrets_migration_and_snapshot_
     assert "apply_registry_pull_secret()" in script
     assert "apply_runtime_secret()" in script
     assert "migrate_coordination_schema()" in script
+    assert "bootstrap_storage_profile()" in script
     assert "apply_environment_snapshot()" in script
     assert "make_coordination_dsn()" in script
     assert "--from-literal=LIGHTRAG_COORDINATION_DSN=\"$LIGHTRAG_COORDINATION_DSN\"" in script
@@ -362,6 +363,13 @@ def test_deploy_test_script_bootstraps_namespace_secrets_migration_and_snapshot_
     assert "kind: Job" in script
     assert "name: lightrag-coordination-migrate" in script
     assert "python -m lightrag.distributed migrate" in script
+    assert "name: lightrag-storage-bootstrap" in script
+    assert "python -m lightrag.distributed bootstrap" in script
+    assert "--confirm-writers-stopped --confirm-inflight-finished" in script
+    assert "LIGHTRAG_DISTRIBUTED_WRITES" in script
+    assert "LIGHTRAG_GRAPH_STORAGE" in script
+    assert "activeDeadlineSeconds: 900" in script
+    assert "--timeout=600s" in script
     assert "envFrom:" in script
     assert "secretRef:" in script
     assert "name: lightrag-runtime" in script
