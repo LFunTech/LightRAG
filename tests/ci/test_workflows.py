@@ -26,6 +26,8 @@ def test_release_source_workflow_runs_static_validation_and_uploads_source_once(
     assert workflow["steps"]["upload-source"]["depends_on"] == ["validate-release"]
     assert workflow["steps"]["upload-source"]["image"] == CI_TOOLS_IMAGE
     upload_text = "\n".join(workflow["steps"]["upload-source"]["commands"])
+    assert ". scripts/ci/source-artifact.sh" in upload_text
+    assert 'resolve_storage_endpoint "$STORAGE_ENDPOINT"' in upload_text
     assert "mc alias set deploy" in upload_text
     assert SOURCE_ARTIFACT_PREFIX in upload_text
     assert "source.tar.gz" in upload_text
@@ -66,6 +68,8 @@ def test_downstream_workflows_skip_clone_and_download_source_from_minio():
         assert download["environment"]["STORAGE_ACCESS_KEY"]["from_secret"] == "cos_storage_secret_id"
         assert download["environment"]["STORAGE_SECRET_KEY"]["from_secret"] == "cos_storage_secret_key"
         command_text = "\n".join(download["commands"])
+        assert ". scripts/ci/source-artifact.sh" in command_text
+        assert 'resolve_storage_endpoint "$STORAGE_ENDPOINT"' in command_text
         assert "mc cp" in command_text
         assert SOURCE_ARTIFACT_PREFIX in command_text
         assert "sha256sum -c source.tar.gz.sha256" in command_text

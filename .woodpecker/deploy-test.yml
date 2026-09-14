@@ -23,13 +23,12 @@ steps:
         : "${STORAGE_BUCKET:?STORAGE_BUCKET is required}"
         : "${STORAGE_ACCESS_KEY:?STORAGE_ACCESS_KEY is required}"
         : "${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY is required}"
-        STORAGE_HOST="${STORAGE_ENDPOINT#https://}"
-        STORAGE_HOST="${STORAGE_HOST#http://}"
-        STORAGE_HOST="${STORAGE_HOST%%/}"
+        . scripts/ci/source-artifact.sh
+        STORAGE_ENDPOINT_ROOT="$(resolve_storage_endpoint "$STORAGE_ENDPOINT")"
         ARTIFACT_PREFIX="lightrag/ci-source/$CI_COMMIT_SHA/$CI_PIPELINE_NUMBER"
         rm -rf /tmp/lightrag-source
         mkdir -p /tmp/lightrag-source
-        mc alias set deploy "https://$STORAGE_HOST" "$STORAGE_ACCESS_KEY" "$STORAGE_SECRET_KEY"
+        mc alias set deploy "$STORAGE_ENDPOINT_ROOT" "$STORAGE_ACCESS_KEY" "$STORAGE_SECRET_KEY"
         mc cp "deploy/$STORAGE_BUCKET/$ARTIFACT_PREFIX/source.tar.gz" /tmp/lightrag-source/source.tar.gz
         mc cp "deploy/$STORAGE_BUCKET/$ARTIFACT_PREFIX/source.tar.gz.sha256" /tmp/lightrag-source/source.tar.gz.sha256
         mc cp "deploy/$STORAGE_BUCKET/$ARTIFACT_PREFIX/source-record.json" /tmp/lightrag-source/source-record.json
