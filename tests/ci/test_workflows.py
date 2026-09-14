@@ -59,6 +59,7 @@ def test_backend_quality_entry_records_junit_and_skips_external_integration():
     assert "DOCX_SMART_HEADING=false" in text
     assert "lightrag-download-cache --spacy-install" not in text
     assert "ensure_faiss_importable" in text
+    assert "timeout 30s" in text
     assert "for version in 1.13.0 1.12.0 1.11.0" in text
     assert "faiss-cpu==$version" in text
     assert 'PYTHON="$ROOT/.venv/bin/python" ./scripts/test.sh' in text

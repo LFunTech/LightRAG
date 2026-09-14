@@ -13,7 +13,7 @@ uv sync --extra api --extra test --extra offline-storage --extra offline-llm
 export FAISS_OPT_LEVEL="${FAISS_OPT_LEVEL:-generic}"
 
 faiss_smoke() {
-  "$ROOT/.venv/bin/python" - <<'PY'
+  timeout 30s "$ROOT/.venv/bin/python" - <<'PY'
 import faiss
 print(f"faiss import ok: {getattr(faiss, '__version__', 'unknown')}")
 PY
