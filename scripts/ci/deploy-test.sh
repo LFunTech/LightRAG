@@ -45,6 +45,45 @@ show_kubectl_status() {
   fi
 }
 
+show_job_failure_context() {
+  job="$1"
+  component="$2"
+  label="$3"
+  reason="$4"
+
+  echo "${label} ${reason}; recent non-secret logs follow:" >&2
+  kubectl -n "$NAMESPACE" logs "job/$job" --tail=120 >&2 || true
+  kubectl -n "$NAMESPACE" get pods \
+    -l "app.kubernetes.io/component=$component" \
+    -o wide >&2 || true
+}
+
+wait_for_job_terminal() {
+  job="$1"
+  timeout_seconds="$2"
+  component="$3"
+  label="$4"
+  deadline="$(($(date +%s) + timeout_seconds))"
+
+  while :; do
+    complete_status="$(kubectl -n "$NAMESPACE" get "job/$job" -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || true)"
+    failed_status="$(kubectl -n "$NAMESPACE" get "job/$job" -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || true)"
+    if [ "$complete_status" = "True" ]; then
+      echo "$job completed"
+      return 0
+    fi
+    if [ "$failed_status" = "True" ]; then
+      show_job_failure_context "$job" "$component" "$label" "failed"
+      return 1
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      show_job_failure_context "$job" "$component" "$label" "timed out after ${timeout_seconds}s"
+      return 1
+    fi
+    sleep 5
+  done
+}
+
 ensure_namespace() {
   kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 }
@@ -179,15 +218,7 @@ spec:
               drop: ["ALL"]
 YAML
 
-  if ! kubectl -n "$NAMESPACE" wait \
-    --for=condition=Complete \
-    job/lightrag-coordination-migrate \
-    --timeout=600s; then
-    echo "Coordination migration failed or timed out; recent non-secret logs follow:" >&2
-    kubectl -n "$NAMESPACE" logs job/lightrag-coordination-migrate --tail=120 >&2 || true
-    kubectl -n "$NAMESPACE" get pods \
-      -l app.kubernetes.io/component=coordination-migrate \
-      -o wide >&2 || true
+  if ! wait_for_job_terminal lightrag-coordination-migrate 600 coordination-migrate "Coordination migration"; then
     exit 1
   fi
 
@@ -288,15 +319,7 @@ spec:
               drop: ["ALL"]
 YAML
 
-  if ! kubectl -n "$NAMESPACE" wait \
-    --for=condition=Complete \
-    job/lightrag-storage-bootstrap \
-    --timeout=600s; then
-    echo "Storage bootstrap failed or timed out; recent non-secret logs follow:" >&2
-    kubectl -n "$NAMESPACE" logs job/lightrag-storage-bootstrap --tail=120 >&2 || true
-    kubectl -n "$NAMESPACE" get pods \
-      -l app.kubernetes.io/component=storage-bootstrap \
-      -o wide >&2 || true
+  if ! wait_for_job_terminal lightrag-storage-bootstrap 600 storage-bootstrap "Storage bootstrap"; then
     exit 1
   fi
 

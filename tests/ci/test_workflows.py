@@ -352,6 +352,7 @@ def test_deploy_test_script_bootstraps_namespace_secrets_migration_and_snapshot_
     assert "ensure_namespace()" in script
     assert "apply_registry_pull_secret()" in script
     assert "apply_runtime_secret()" in script
+    assert "wait_for_job_terminal()" in script
     assert "migrate_coordination_schema()" in script
     assert "bootstrap_storage_profile()" in script
     assert "apply_environment_snapshot()" in script
@@ -374,6 +375,18 @@ def test_deploy_test_script_bootstraps_namespace_secrets_migration_and_snapshot_
     assert "secretRef:" in script
     assert "name: lightrag-runtime" in script
     assert "create configmap lightrag-test-environment" in script
+
+
+def test_deploy_test_script_reports_failed_jobs_without_waiting_for_timeout():
+    script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
+    assert 'jsonpath=\'{.status.conditions[?(@.type=="Complete")].status}\'' in script
+    assert 'jsonpath=\'{.status.conditions[?(@.type=="Failed")].status}\'' in script
+    assert "completed" in script
+    assert "${label} ${reason}; recent non-secret logs follow" in script
+    assert '"failed"' in script
+    assert '"timed out after ${timeout_seconds}s"' in script
+    assert "wait_for_job_terminal lightrag-coordination-migrate 600" in script
+    assert "wait_for_job_terminal lightrag-storage-bootstrap 600" in script
 
 
 def test_deploy_test_script_uses_posix_shell_and_prints_kubernetes_status():
