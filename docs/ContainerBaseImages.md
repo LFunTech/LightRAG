@@ -40,6 +40,12 @@ Woodpecker/GitHub Actions 的现有 GHCR 登录不能替代内部 registry 的�
 本次不修改 registry 的匿名访问策略，也不把发布凭据发给不可信 PR；后续 CI
 接入须配置隔离的只读身份。私有 Dockerfile frontend 的拉取也需要这份读取权限。
 
+Woodpecker 构建步骤自身使用的 rootless BuildKit 工具镜像同样不能从 docker.io
+拉取；当前 test runner 为 amd64，因此该工具镜像按 `linux/amd64` 同步到内部
+`docker-hub.f123.pub/base/buildkit` 并固定 digest，记录在
+[`scripts/ci/tool-images.lock.json`](../scripts/ci/tool-images.lock.json)。这不是
+Dockerfile 输入，不改变上方基础镜像必须保留完整平台集的规则。
+
 基础镜像同步并不意味着完整离线构建：apt、Rust、PyPI、npm 和模型缓存下载
 仍需受控构建出站访问。运行时模型连接与本次基础镜像来源调整无关。
 

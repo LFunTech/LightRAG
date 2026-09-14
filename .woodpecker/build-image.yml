@@ -73,7 +73,7 @@ steps:
       STORAGE_SECRET_KEY:
         from_secret: cos_storage_secret_key
   build-image:
-    image: moby/buildkit:v0.24.0-rootless@sha256:912777d2903627ebe3a3fcf7be2380d64e1d45d4ee515f91bb2b14c0a869f41c
+    image: docker-hub.f123.pub/base/buildkit:v0.24.0-rootless-amd64-lightrag-ea4fedf4f72d@sha256:ea4fedf4f72d34133f43236149d961cdb6197735069711a3d3131c76a1ca314e
     privileged: false
     depends_on: [download-source]
     commands:

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "images": [
+    {
+      "name": "rootless-buildkit",
+      "source": "docker.io/moby/buildkit:v0.24.0-rootless",
+      "source_index_digest": "sha256:995077ff90af1afff56ff23018699d7511d122b2b111041f2011bd12afd5c0fe",
+      "platform": "linux/amd64",
+      "digest": "sha256:ea4fedf4f72d34133f43236149d961cdb6197735069711a3d3131c76a1ca314e",
+      "mirror": "docker-hub.f123.pub/base/buildkit:v0.24.0-rootless-amd64-lightrag-ea4fedf4f72d"
+    }
+  ]
+}

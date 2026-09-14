@@ -18,6 +18,7 @@ if [ -z "$PYTHON" ]; then
 fi
 "$PYTHON" -m py_compile scripts/ci/__init__.py scripts/ci/delivery.py scripts/ci/k8s_deploy.py
 "$PYTHON" -m json.tool scripts/ci/base-images.lock.json >/dev/null
+"$PYTHON" -m json.tool scripts/ci/tool-images.lock.json >/dev/null
 bash -n scripts/ci/delivery-check.sh
 bash -n scripts/ci/build-image.sh
 bash -n scripts/ci/deploy-test.sh

@@ -6,12 +6,35 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 WOODPECKER = ROOT / ".woodpecker"
 CI_TOOLS_IMAGE = "docker-hub.f123.pub/base/ci-tools:alpine-3.22.2"
+BUILDKIT_IMAGE = (
+    "docker-hub.f123.pub/base/buildkit:"
+    "v0.24.0-rootless-amd64-lightrag-ea4fedf4f72d"
+    "@sha256:ea4fedf4f72d34133f43236149d961cdb6197735069711a3d3131c76a1ca314e"
+)
 SOURCE_ARTIFACT_PREFIX = 'lightrag/ci-source/$CI_COMMIT_SHA/$CI_PIPELINE_NUMBER'
 
 
 def load(name):
     with (WOODPECKER / name).open() as fh:
         return yaml.safe_load(fh)
+
+
+def test_buildkit_tool_image_is_locked_and_internal():
+    lock = yaml.safe_load((ROOT / "scripts/ci/tool-images.lock.json").read_text())
+    buildkit = next(
+        item for item in lock["images"] if item["name"] == "rootless-buildkit"
+    )
+    assert buildkit["source"] == "docker.io/moby/buildkit:v0.24.0-rootless"
+    assert buildkit["source_index_digest"] == (
+        "sha256:995077ff90af1afff56ff23018699d7511d122b2b111041f2011bd12afd5c0fe"
+    )
+    assert buildkit["platform"] == "linux/amd64"
+    assert buildkit["digest"] == (
+        "sha256:ea4fedf4f72d34133f43236149d961cdb6197735069711a3d3131c76a1ca314e"
+    )
+    assert load("build-image.yml")["steps"]["build-image"]["image"] == (
+        f"{buildkit['mirror']}@{buildkit['digest']}"
+    )
 
 
 def test_release_source_workflow_runs_static_validation_and_uploads_source_once():
@@ -169,7 +192,7 @@ def test_tag_delivery_workflows_are_self_contained_not_static_only():
     deploy = load("deploy-test.yml")
 
     assert build["steps"]["build-image"].get("depends_on") == ["download-source"]
-    assert build["steps"]["build-image"]["image"].startswith("moby/buildkit:")
+    assert build["steps"]["build-image"]["image"] == BUILDKIT_IMAGE
     assert build["steps"]["build-image"]["commands"] == ["scripts/ci/build-image.sh"]
 
     assert pre["steps"]["verify-image"].get("depends_on") == ["download-source"]
