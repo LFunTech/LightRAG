@@ -76,6 +76,24 @@ steps:
     image: docker-hub.f123.pub/base/buildkit:v0.24.0-rootless-amd64-lightrag-ea4fedf4f72d@sha256:ea4fedf4f72d34133f43236149d961cdb6197735069711a3d3131c76a1ca314e
     privileged: false
     depends_on: [download-source]
+    backend_options:
+      kubernetes:
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          seccompProfile:
+            type: Unconfined
+          apparmorProfile:
+            type: Unconfined
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 2Gi
+            ephemeral-storage: 20Gi
+          limits:
+            cpu: 4000m
+            memory: 8Gi
+            ephemeral-storage: 40Gi
     commands:
       - scripts/ci/build-image.sh
     environment:

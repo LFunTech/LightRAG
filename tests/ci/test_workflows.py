@@ -37,6 +37,38 @@ def test_buildkit_tool_image_is_locked_and_internal():
     )
 
 
+def test_build_image_uses_rootless_kubernetes_security_context():
+    build = load("build-image.yml")
+    kubernetes = build["steps"]["build-image"]["backend_options"]["kubernetes"]
+    security_context = kubernetes["securityContext"]
+    assert security_context["runAsUser"] == 1000
+    assert security_context["runAsGroup"] == 1000
+    assert security_context["seccompProfile"] == {"type": "Unconfined"}
+    assert security_context["apparmorProfile"] == {"type": "Unconfined"}
+    assert build["steps"]["build-image"]["environment"]["BUILDKITD_FLAGS"] == (
+        "--oci-worker-no-process-sandbox"
+    )
+
+
+def test_build_image_declares_kubernetes_resource_budget():
+    build = load("build-image.yml")
+    resources = build["steps"]["build-image"]["backend_options"]["kubernetes"][
+        "resources"
+    ]
+    assert resources == {
+        "requests": {
+            "cpu": "1000m",
+            "memory": "2Gi",
+            "ephemeral-storage": "20Gi",
+        },
+        "limits": {
+            "cpu": "4000m",
+            "memory": "8Gi",
+            "ephemeral-storage": "40Gi",
+        },
+    }
+
+
 def test_release_source_workflow_runs_static_validation_and_uploads_source_once():
     workflow = load("validate-release.yml")
     assert "depends_on" not in workflow
