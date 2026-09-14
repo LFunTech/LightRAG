@@ -185,6 +185,9 @@ def test_build_image_script_streams_plain_buildkit_progress():
     assert "starting rootless BuildKit image build" in script
     assert "BUILDKIT_PROGRESS=plain" in script
     assert "--progress=plain" in script
+    assert 'METADATA_FILE="${METADATA_FILE:-/tmp/lightrag-build-metadata.json}"' in script
+    assert 'mkdir -p "$DOCKER_CONFIG_DIR" "$(dirname "$METADATA_FILE")"' in script
+    assert 'mkdir -p "$DOCKER_CONFIG_DIR" build/release' not in script
 
 
 def test_tag_delivery_workflows_are_self_contained_not_static_only():

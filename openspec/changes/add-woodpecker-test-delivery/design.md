@@ -60,6 +60,8 @@ tag 发布必须等待同一 commit 的交付静态校验成功，不借用旧�
 
 BuildKit 工具镜像也必须由内部 registry 提供，不能让 Kubernetes agent 从 docker.io 拉取。当前 test runner 为 `linux/amd64`，因此 rootless BuildKit 工具镜像按 amd64 同步到 `docker-hub.f123.pub/base/buildkit`，并由 `scripts/ci/tool-images.lock.json` 记录 source index、平台 manifest digest 和内部镜像引用；这不放宽 Dockerfile 基础镜像保留完整平台集的要求。
 
+rootless BuildKit step 不能假设前一下载步骤解包出来的源码 workspace 可写；构建脚本只读取该 workspace 作为 context，并将 BuildKit metadata 放到 `/tmp`，避免非 root 用户在 NFS workspace 中创建 `build/` 失败。
+
 #### 本机预同步基础镜像（用户单独授权）
 
 所有 Dockerfile 的外部镜像输入均只引用 `docker-hub.f123.pub/base/`。包括 Dockerfile frontend、每个外部 FROM，以及最终阶段提取 uv 二进制的外部 COPY；内部 build-stage 别名不改。当前共有六个独立来源：docker/dockerfile、oven/bun、uv Python builder、Python runtime、uv binary 和 pgvector/pgvector。

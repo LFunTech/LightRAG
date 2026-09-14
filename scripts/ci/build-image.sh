@@ -25,9 +25,9 @@ IMAGE="${REGISTRY%/}/${IMAGE_REPOSITORY}"
 CACHE_REF="${LIGHTRAG_IMAGE_CACHE_REF:-${IMAGE}:buildcache}"
 SOURCE_URL="https://github.com/${CI_REPO:-LFunTech/LightRAG}"
 DOCKER_CONFIG_DIR="${DOCKER_CONFIG:-${HOME:-/tmp}/.docker}"
-METADATA_FILE="build/release/build-metadata.json"
+METADATA_FILE="${METADATA_FILE:-/tmp/lightrag-build-metadata.json}"
 
-mkdir -p "$DOCKER_CONFIG_DIR" build/release
+mkdir -p "$DOCKER_CONFIG_DIR" "$(dirname "$METADATA_FILE")"
 cleanup() {
   rm -f "$DOCKER_CONFIG_DIR/config.json"
 }
