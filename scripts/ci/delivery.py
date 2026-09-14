@@ -11,12 +11,22 @@ import re
 import subprocess
 import tarfile
 import tempfile
+import urllib.error
+import urllib.request
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
 RELEASE_TAG_RE = re.compile(r"^v(?P<version>\d+\.\d+\.\d+)(?P<suffix>-test|-pre)?$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+IMAGE_ACCEPT = ", ".join(
+    [
+        "application/vnd.oci.image.index.v1+json",
+        "application/vnd.docker.distribution.manifest.list.v2+json",
+        "application/vnd.oci.image.manifest.v1+json",
+        "application/vnd.docker.distribution.manifest.v2+json",
+    ]
+)
 EXCLUDED_ARCHIVE_NAMES = {
     ".env",
     ".env.local",
@@ -171,13 +181,27 @@ def safe_extract_archive(archive: Path, destination: Path) -> None:
         tar.extractall(dest)
 
 
+@dataclass(frozen=True)
+class RegistryPayload:
+    data: dict[str, Any]
+    digest: str
+    media_type: str
+
+
 def validate_image_manifest(
-    manifest: dict[str, Any], *, expected_commit: str, expected_digest: str
+    manifest: dict[str, Any],
+    *,
+    expected_commit: str,
+    expected_digest: str,
+    config: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     if not DIGEST_RE.fullmatch(expected_digest):
         raise ImageValidationError(f"invalid digest: {expected_digest}")
+    labels = ((config or {}).get("config") or {}).get("Labels") or {}
     annotations = manifest.get("annotations") or {}
-    revision = annotations.get("org.opencontainers.image.revision")
+    revision = labels.get("org.opencontainers.image.revision") or annotations.get(
+        "org.opencontainers.image.revision"
+    )
     if revision != expected_commit:
         raise ImageValidationError("image revision does not match expected commit")
     media_type = manifest.get("mediaType", "")
@@ -205,6 +229,125 @@ def validate_image_manifest(
     if not has_amd64:
         raise ImageValidationError("image manifest does not contain linux/amd64")
     return {"digest": expected_digest, "revision": expected_commit, "platform": "linux/amd64"}
+
+
+def _split_registry_image(image: str) -> tuple[str, str]:
+    clean = image.removeprefix("https://").removeprefix("http://").strip("/")
+    if "/" not in clean:
+        raise ImageValidationError(f"image must include registry and repository: {image!r}")
+    registry, repository = clean.split("/", 1)
+    if not registry or not repository:
+        raise ImageValidationError(f"invalid image reference: {image!r}")
+    return registry, repository
+
+
+class RegistryClient:
+    """Small Docker Registry HTTP client used by release verification."""
+
+    def __init__(self, registry: str, username: str, password: str):
+        if not registry or not username or not password:
+            raise ImageValidationError("registry credentials must be non-empty")
+        self.registry = registry.removeprefix("https://").removeprefix("http://").strip("/")
+        token = base64.b64encode(f"{username}:{password}".encode()).decode()
+        self._auth_header = f"Basic {token}"
+
+    def _get_json(self, path: str, *, accept: str) -> RegistryPayload:
+        request = urllib.request.Request(
+            f"https://{self.registry}{path}",
+            headers={"Authorization": self._auth_header, "Accept": accept},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                body = response.read()
+                media_type = response.headers.get("Content-Type", "").split(";", 1)[0]
+                digest = response.headers.get("Docker-Content-Digest", "")
+        except urllib.error.HTTPError as exc:
+            raise ImageValidationError(
+                f"registry request failed with HTTP {exc.code}: {path}"
+            ) from exc
+        except urllib.error.URLError as exc:
+            raise ImageValidationError(f"registry request failed: {path}") from exc
+        if not digest:
+            digest = "sha256:" + hashlib.sha256(body).hexdigest()
+        if not DIGEST_RE.fullmatch(digest):
+            raise ImageValidationError("registry returned invalid content digest")
+        data = json.loads(body.decode())
+        if not isinstance(data, dict):
+            raise ImageValidationError("registry response is not a JSON object")
+        data.setdefault("mediaType", media_type)
+        return RegistryPayload(data=data, digest=digest, media_type=media_type)
+
+    def manifest(self, repository: str, reference: str) -> RegistryPayload:
+        return self._get_json(
+            f"/v2/{repository}/manifests/{reference}",
+            accept=IMAGE_ACCEPT,
+        )
+
+    def blob(self, repository: str, digest: str) -> RegistryPayload:
+        if not DIGEST_RE.fullmatch(digest):
+            raise ImageValidationError("invalid blob digest")
+        return self._get_json(
+            f"/v2/{repository}/blobs/{digest}",
+            accept="application/vnd.oci.image.config.v1+json, application/vnd.docker.container.image.v1+json",
+        )
+
+
+def resolve_image_identity(
+    *,
+    image: str,
+    tag: str,
+    expected_commit: str,
+    username: str,
+    password: str,
+    client: RegistryClient | None = None,
+) -> dict[str, str]:
+    """Resolve a tag to the verified linux/amd64 image digest."""
+
+    parse_release_tag(tag)
+    registry, repository = _split_registry_image(image)
+    client = client or RegistryClient(registry, username, password)
+    root = client.manifest(repository, tag)
+    media_type = root.data.get("mediaType", root.media_type)
+    deploy_manifest = root
+    index_digest = ""
+    if media_type.endswith("image.index.v1+json") or media_type.endswith(
+        "manifest.list.v2+json"
+    ):
+        index_digest = root.digest
+        descriptor = next(
+            (
+                manifest
+                for manifest in root.data.get("manifests", [])
+                if (manifest.get("platform") or {}).get("os") == "linux"
+                and (manifest.get("platform") or {}).get("architecture") == "amd64"
+            ),
+            None,
+        )
+        if not descriptor:
+            raise ImageValidationError("image index does not contain linux/amd64")
+        deploy_manifest = client.manifest(repository, descriptor["digest"])
+        if deploy_manifest.digest != descriptor["digest"]:
+            raise ImageValidationError("amd64 manifest digest changed during verification")
+
+    config_digest = (deploy_manifest.data.get("config") or {}).get("digest")
+    if not config_digest:
+        raise ImageValidationError("image manifest does not contain a config digest")
+    config = client.blob(repository, config_digest)
+    record = validate_image_manifest(
+        deploy_manifest.data,
+        config=config.data,
+        expected_commit=expected_commit,
+        expected_digest=deploy_manifest.digest,
+    )
+    return {
+        **record,
+        "image": image,
+        "tag": tag,
+        "image_ref": f"{image}@{record['digest']}",
+        "tag_ref": f"{image}:{tag}",
+        "config_digest": config.digest,
+        "index_digest": index_digest,
+    }
 
 
 class FileReleaseStateStore:
@@ -426,6 +569,15 @@ def main(argv: list[str] | None = None) -> int:
     validate_image.add_argument("--digest", required=True)
     validate_image.add_argument("--record-output", type=Path, required=True)
 
+    resolve_image = sub.add_parser("resolve-image")
+    resolve_image.add_argument("--tag", required=True)
+    resolve_image.add_argument("--commit", required=True)
+    resolve_image.add_argument("--image", default="docker-hub.f123.pub/lfun/lightrag")
+    resolve_image.add_argument("--username", default=os.getenv("REGISTRY_USERNAME"))
+    resolve_image.add_argument("--password", default=os.getenv("REGISTRY_PASSWORD"))
+    resolve_image.add_argument("--record-output", type=Path, required=True)
+    resolve_image.add_argument("--env-output", type=Path)
+
     args = parser.parse_args(argv)
     if args.cmd == "verify-source":
         ident = verify_release_source(
@@ -469,6 +621,33 @@ def main(argv: list[str] | None = None) -> int:
             expected_digest=args.digest,
         )
         args.record_output.write_text(json.dumps(record, sort_keys=True, indent=2) + "\n")
+        print(json.dumps(record, sort_keys=True))
+    elif args.cmd == "resolve-image":
+        if not args.username or not args.password:
+            raise ValueError("registry credentials must be provided")
+        record = resolve_image_identity(
+            image=args.image,
+            tag=args.tag,
+            expected_commit=args.commit,
+            username=args.username,
+            password=args.password,
+        )
+        args.record_output.parent.mkdir(parents=True, exist_ok=True)
+        args.record_output.write_text(
+            json.dumps(record, sort_keys=True, indent=2) + "\n"
+        )
+        if args.env_output:
+            args.env_output.parent.mkdir(parents=True, exist_ok=True)
+            args.env_output.write_text(
+                "\n".join(
+                    [
+                        f"LIGHTRAG_IMAGE_DIGEST={record['digest']}",
+                        f"LIGHTRAG_IMAGE_REF={record['image_ref']}",
+                        f"LIGHTRAG_IMAGE_TAG_REF={record['tag_ref']}",
+                    ]
+                )
+                + "\n"
+            )
         print(json.dumps(record, sort_keys=True))
     return 0
 

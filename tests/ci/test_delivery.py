@@ -1,6 +1,7 @@
 import hashlib
 import json
 import tarfile
+from pathlib import Path
 
 import pytest
 
@@ -95,22 +96,97 @@ def test_safe_extract_rejects_path_traversal_and_symlink_escape(tmp_path):
         delivery.safe_extract_archive(symlink_archive, tmp_path / "out2")
 
 
-def test_image_manifest_requires_amd64_and_revision():
+def test_image_manifest_requires_amd64_and_revision_from_config_labels():
     manifest = {
-        "mediaType": "application/vnd.oci.image.index.v1+json",
-        "manifests": [
-            {"digest": "sha256:" + "1" * 64, "platform": {"os": "linux", "architecture": "amd64"}},
-        ],
-        "annotations": {"org.opencontainers.image.revision": "abc"},
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "config": {"digest": "sha256:" + "1" * 64},
+    }
+    config = {
+        "config": {
+            "Labels": {
+                "org.opencontainers.image.revision": "abc",
+                "org.opencontainers.image.source": "https://github.com/minwang/LightRAG",
+            }
+        }
     }
     digest = "sha256:" + "a" * 64
-    record = delivery.validate_image_manifest(manifest, expected_commit="abc", expected_digest=digest)
+    record = delivery.validate_image_manifest(
+        manifest, config=config, expected_commit="abc", expected_digest=digest
+    )
     assert record["digest"] == digest
     assert record["platform"] == "linux/amd64"
 
-    manifest["annotations"]["org.opencontainers.image.revision"] = "def"
+    config["config"]["Labels"]["org.opencontainers.image.revision"] = "def"
     with pytest.raises(delivery.ImageValidationError, match="revision"):
-        delivery.validate_image_manifest(manifest, expected_commit="abc", expected_digest=digest)
+        delivery.validate_image_manifest(
+            manifest, config=config, expected_commit="abc", expected_digest=digest
+        )
+
+
+def test_dockerfile_defines_delivery_revision_labels():
+    dockerfile = Path("Dockerfile").read_text()
+    assert "ARG LIGHTRAG_IMAGE_REVISION" in dockerfile
+    assert "ARG LIGHTRAG_IMAGE_SOURCE" in dockerfile
+    assert "org.opencontainers.image.revision=$LIGHTRAG_IMAGE_REVISION" in dockerfile
+
+
+def test_resolve_image_identity_selects_amd64_manifest_and_config_revision():
+    index_digest = "sha256:" + "1" * 64
+    manifest_digest = "sha256:" + "2" * 64
+    config_digest = "sha256:" + "3" * 64
+
+    class FakeRegistryClient:
+        def manifest(self, repository, reference):
+            assert repository == "lfun/lightrag"
+            if reference == "v1.2.3-test":
+                return delivery.RegistryPayload(
+                    data={
+                        "mediaType": "application/vnd.oci.image.index.v1+json",
+                        "manifests": [
+                            {
+                                "digest": manifest_digest,
+                                "platform": {"os": "linux", "architecture": "amd64"},
+                            }
+                        ],
+                    },
+                    digest=index_digest,
+                    media_type="application/vnd.oci.image.index.v1+json",
+                )
+            if reference == manifest_digest:
+                return delivery.RegistryPayload(
+                    data={
+                        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                        "config": {"digest": config_digest},
+                    },
+                    digest=manifest_digest,
+                    media_type="application/vnd.oci.image.manifest.v1+json",
+                )
+            raise AssertionError(reference)
+
+        def blob(self, repository, digest):
+            assert repository == "lfun/lightrag"
+            assert digest == config_digest
+            return delivery.RegistryPayload(
+                data={
+                    "config": {
+                        "Labels": {"org.opencontainers.image.revision": "abc123"}
+                    }
+                },
+                digest=config_digest,
+                media_type="application/vnd.oci.image.config.v1+json",
+            )
+
+    record = delivery.resolve_image_identity(
+        image="docker-hub.f123.pub/lfun/lightrag",
+        tag="v1.2.3-test",
+        expected_commit="abc123",
+        username="user",
+        password="pass",
+        client=FakeRegistryClient(),
+    )
+    assert record["digest"] == manifest_digest
+    assert record["index_digest"] == index_digest
+    assert record["image_ref"] == f"docker-hub.f123.pub/lfun/lightrag@{manifest_digest}"
 
 
 def test_release_state_rejects_concurrent_and_older_release(tmp_path):

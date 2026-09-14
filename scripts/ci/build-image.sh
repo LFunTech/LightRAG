@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${CI_COMMIT_TAG:?CI_COMMIT_TAG is required}"
+: "${CI_COMMIT_SHA:?CI_COMMIT_SHA is required}"
+: "${REGISTRY_USERNAME:?REGISTRY_USERNAME is required}"
+: "${REGISTRY_PASSWORD:?REGISTRY_PASSWORD is required}"
+
+case "$CI_COMMIT_TAG" in
+  v[0-9]*.[0-9]*.[0-9]*|v[0-9]*.[0-9]*.[0-9]*-pre|v[0-9]*.[0-9]*.[0-9]*-test) ;;
+  *)
+    echo "unsupported release tag: $CI_COMMIT_TAG" >&2
+    exit 1
+    ;;
+esac
+
+REGISTRY="${REGISTRY:-docker-hub.f123.pub}"
+IMAGE_REPOSITORY="${LIGHTRAG_IMAGE_REPOSITORY:-lfun/lightrag}"
+IMAGE="${REGISTRY%/}/${IMAGE_REPOSITORY}"
+CACHE_REF="${LIGHTRAG_IMAGE_CACHE_REF:-${IMAGE}:buildcache}"
+SOURCE_URL="https://github.com/${CI_REPO:-minwang/LightRAG}"
+DOCKER_CONFIG_DIR="${DOCKER_CONFIG:-${HOME:-/tmp}/.docker}"
+METADATA_FILE="build/release/build-metadata.json"
+
+mkdir -p "$DOCKER_CONFIG_DIR" build/release
+cleanup() {
+  rm -f "$DOCKER_CONFIG_DIR/config.json"
+}
+trap cleanup EXIT INT TERM
+
+AUTH_TOKEN="$(printf '%s:%s' "$REGISTRY_USERNAME" "$REGISTRY_PASSWORD" | base64 | tr -d '\n')"
+printf '{"auths":{"%s":{"auth":"%s"}}}\n' "$REGISTRY" "$AUTH_TOKEN" > "$DOCKER_CONFIG_DIR/config.json"
+chmod 600 "$DOCKER_CONFIG_DIR/config.json"
+export DOCKER_CONFIG="$DOCKER_CONFIG_DIR"
+
+# Woodpecker agents may inject proxy values unsupported by registry clients in
+# minimal builder images. The private registry and mirrored base images are
+# reachable directly from the runner network.
+unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
+
+buildctl-daemonless.sh build \
+  --frontend dockerfile.v0 \
+  --local context=. \
+  --local dockerfile=. \
+  --opt filename=Dockerfile \
+  --opt platform=linux/amd64 \
+  --opt "build-arg:LIGHTRAG_IMAGE_SOURCE=$SOURCE_URL" \
+  --opt "build-arg:LIGHTRAG_IMAGE_REVISION=$CI_COMMIT_SHA" \
+  --opt "build-arg:LIGHTRAG_IMAGE_VERSION=$CI_COMMIT_TAG" \
+  --import-cache "type=registry,ref=$CACHE_REF" \
+  --export-cache "type=registry,ref=$CACHE_REF,mode=max" \
+  --metadata-file "$METADATA_FILE" \
+  --output "type=image,name=${IMAGE}:${CI_COMMIT_TAG},push=true"
+
+test -s "$METADATA_FILE"
+echo "image tag pushed: ${IMAGE}:${CI_COMMIT_TAG}"

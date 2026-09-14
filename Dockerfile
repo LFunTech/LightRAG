@@ -72,6 +72,14 @@ RUN mkdir -p /app/data/tiktoken \
 # and aligns the final Debian release with the builder (also bookworm).
 FROM docker-hub.f123.pub/base/python:3.12-slim-bookworm-lightrag-782412e85d0f@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254
 
+ARG LIGHTRAG_IMAGE_SOURCE="https://github.com/minwang/LightRAG"
+ARG LIGHTRAG_IMAGE_REVISION=""
+ARG LIGHTRAG_IMAGE_VERSION=""
+
+LABEL org.opencontainers.image.source=$LIGHTRAG_IMAGE_SOURCE \
+      org.opencontainers.image.revision=$LIGHTRAG_IMAGE_REVISION \
+      org.opencontainers.image.version=$LIGHTRAG_IMAGE_VERSION
+
 WORKDIR /app
 
 # Install uv for package management

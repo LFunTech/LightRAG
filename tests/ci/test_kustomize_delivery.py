@@ -11,9 +11,11 @@ RUNBOOK = ROOT / "docs/WoodpeckerTestDelivery.md"
 def test_deploy_workflow_uses_kubectl_apply_k_not_helm():
     text = DEPLOY_WORKFLOW.read_text()
     assert "helm" not in text.lower()
-    assert "python -m scripts.ci.k8s_deploy deploy-test" in text
-    script = (ROOT / "scripts/ci/k8s_deploy.py").read_text()
-    assert '"apply", "-k", str(overlay)' in script
+    assert "scripts/ci/deploy-test.sh" in text
+    script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
+    assert "kubectl apply -k" in script
+    assert 'wait --for=condition=Ready pod' in script
+    assert "imageID" in script
     workflow = yaml.safe_load(text)
     step = workflow["steps"]["deploy-test"]
     assert "lightrag_test_kubeconfig" in text

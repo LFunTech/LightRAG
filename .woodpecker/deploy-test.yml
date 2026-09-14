@@ -8,16 +8,22 @@ when:
 depends_on: [pre-deploy]
 
 steps:
-  deploy-test:
-    image: bitnami/kubectl:1.32.13@sha256:8c07b31040ea28f7ff6f1a93b623fa8d07d052ca16a23398ec38003b16172233
+  resolve-image:
+    image: docker-hub.f123.pub/base/uv:python3.12-bookworm-slim-lightrag-e5b65587bce7@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
     commands:
-      - test -n "$LIGHTRAG_TEST_KUBECONFIG"
-      - test -n "$LIGHTRAG_IMAGE_DIGEST"
-      - mkdir -p /tmp/kube && printf '%s' "$LIGHTRAG_TEST_KUBECONFIG" > /tmp/kube/config && chmod 600 /tmp/kube/config
-      - python -m scripts.ci.k8s_deploy deploy-test --kubeconfig /tmp/kube/config --digest "$LIGHTRAG_IMAGE_DIGEST"
-      - python -m scripts.ci.k8s_deploy accept-and-restore --kubeconfig /tmp/kube/config --digest "$LIGHTRAG_IMAGE_DIGEST" --report acceptance-report.json
+      - mkdir -p build/release
+      - python -m scripts.ci.delivery resolve-image --tag "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA" --image "docker-hub.f123.pub/lfun/lightrag" --record-output build/release/image-record.json --env-output build/release/image.env
+    environment:
+      REGISTRY_USERNAME:
+        from_secret: registry_username
+      REGISTRY_PASSWORD:
+        from_secret: registry_password
+  deploy-test:
+    image: docker-hub.f123.pub/base/ci-tools:alpine-3.22.2
+    depends_on: [resolve-image]
+    commands:
+      - test -s build/release/image.env
+      - . build/release/image.env && scripts/ci/deploy-test.sh
     environment:
       LIGHTRAG_TEST_KUBECONFIG:
         from_secret: lightrag_test_kubeconfig
-      LIGHTRAG_IMAGE_DIGEST:
-        from_secret: lightrag_test_image_digest

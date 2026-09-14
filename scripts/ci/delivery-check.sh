@@ -19,6 +19,8 @@ fi
 "$PYTHON" -m py_compile scripts/ci/__init__.py scripts/ci/delivery.py scripts/ci/k8s_deploy.py
 "$PYTHON" -m json.tool scripts/ci/base-images.lock.json >/dev/null
 bash -n scripts/ci/delivery-check.sh
+bash -n scripts/ci/build-image.sh
+bash -n scripts/ci/deploy-test.sh
 
 if command -v kubectl >/dev/null 2>&1; then
   kubectl kustomize k8s-deploy/lightrag-kustomize/overlays/test >/tmp/lightrag-test-kustomize-render.yaml

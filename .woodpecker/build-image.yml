@@ -12,8 +12,9 @@ steps:
     image: moby/buildkit:v0.24.0-rootless@sha256:912777d2903627ebe3a3fcf7be2380d64e1d45d4ee515f91bb2b14c0a869f41c
     privileged: false
     commands:
-      - python -m scripts.ci.delivery build-image --tag "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA"
+      - scripts/ci/build-image.sh
     environment:
+      BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
       REGISTRY_USERNAME:
         from_secret: registry_username
       REGISTRY_PASSWORD:

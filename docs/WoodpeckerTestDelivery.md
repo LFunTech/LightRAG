@@ -34,9 +34,14 @@ An operator must explicitly prepare the environment before expecting automatic `
 
 1. Push/PR to `master`: run delivery static checks only. The Woodpecker workflow does not call backend pytest, frontend Bun tests, frontend typecheck/lint/build scripts, or external integration tests. Keep those checks as local or separate-CI evidence and report them separately from Woodpecker delivery status.
 2. Protected tag `vX.Y.Z-test`: verify repository/tag/commit/master ancestry, archive source, build and verify `docker-hub.f123.pub/lfun/lightrag` image, then deploy by digest to `lightrag-test` with Kustomize and `kubectl apply -k`, keeping Service routing paused.
-3. Verify both Pods' `imageID`, health, authentication, distributed status and cross-Pod ingestion/query with a unique test document.
+   - BuildKit execution is `scripts/ci/build-image.sh` inside the rootless BuildKit image; it does not call Python from that image.
+   - Image verification is `python -m scripts.ci.delivery resolve-image`, which resolves the registry digest and checks the image config revision label against the release commit.
+   - Deployment is `scripts/ci/deploy-test.sh` inside the Kubernetes-capable CI tools image; it consumes `build/release/image.env` produced from the verified image record, not a hand-written digest secret.
+3. Verify both Pods' `imageID`, per-Pod health and authentication behavior, plus cross-Pod ingestion/query with a unique test document.
 4. Restore Service routing only after acceptance succeeds.
 5. Tags `vX.Y.Z-pre` and `vX.Y.Z` publish and verify images but do not deploy.
+
+A plain `master` push is not a deployment by design. To exercise the build and deploy chain, create a protected `vX.Y.Z-test` tag after the scoped registry, COS and kubeconfig secrets and the initialized `lightrag-test` namespace are in place.
 
 ## Failure and rollback
 

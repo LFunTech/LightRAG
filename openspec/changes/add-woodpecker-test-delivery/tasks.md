@@ -29,7 +29,7 @@
 - [ ] 4.1 使用已验证的 rootless BuildKit 构建现有完整 Dockerfile，设置 amd64、资源预算、独立 registry cache 及 source/revision 标签，不创建另一份生产 Dockerfile。
 - [ ] 4.2 安全生成与清理 registry 凭据，发布到 `docker-hub.f123.pub/lfun/lightrag`，实现既有版本冲突拒绝及来源一致的幂等重试。
 - [ ] 4.3 校验 manifest/index、平台、revision 和 digest，持久化发布记录，添加镜像身份不符和未知格式等拒绝路径测试。
-- [ ] 4.4 完成 build-image/pre-deploy 工作流，验证失败无后续副作用，并确认 pre/prod tag 不部署。
+- [x] 4.4 完成 build-image/pre-deploy 工作流，验证失败无后续副作用，并确认 pre/prod tag 不部署。
 
 ## 5. Chart 与测试部署配置
 
