@@ -22,11 +22,19 @@ Every repository Dockerfile MUST reference external image inputs only under dock
 
 ### Requirement: Release events are scoped to the fork and protected source
 
-The delivery system SHALL run non-publishing static delivery checks for master pushes and pull requests targeting master, without executing repository test suites in Woodpecker. It MUST publish only supported version tags whose resolved commit matches the event and belongs to the fork master history, without changing main. Only test-suffixed version tags SHALL automatically deploy to the confirmed test namespace.
+The delivery system SHALL run only for supported release tag events and MUST NOT trigger on master pushes or pull requests. The release-source workflow SHALL perform the only repository clone, run static delivery checks without executing repository test suites in Woodpecker, upload the source archive/checksum/record to the LightRAG MinIO/COS path, and require later workflows to download that package instead of cloning again. It MUST publish only supported version tags whose resolved commit matches the event and belongs to the fork master history, without changing main. Only test-suffixed version tags SHALL automatically deploy to the confirmed test namespace.
+
+#### Scenario: Plain master update
+- **WHEN** `master` receives a push or a pull request targets `master`
+- **THEN** no LightRAG Woodpecker workflow is selected and no release, registry, object-storage or deployment credential is exposed by Woodpecker
 
 #### Scenario: Test release from master
 - **WHEN** a protected `vX.Y.Z-test` tag resolves to the event commit in fork master history
-- **THEN** the release is eligible for quality checks, image publishing, and deployment to `lightrag-test` after every preceding gate succeeds
+- **THEN** the release is eligible for source upload, quality checks, image publishing, and deployment to `lightrag-test` after every preceding gate succeeds
+
+#### Scenario: Downstream release workflows consume uploaded source
+- **WHEN** build, image verification or test deployment workflows run after source validation
+- **THEN** they skip repository clone, download the source archive from the LightRAG MinIO/COS path, verify its checksum, extract it, and use that extracted source for their scripts and build context
 
 #### Scenario: Unsupported or unprovable source
 - **WHEN** a tag is invalid, moved, from an unapproved repository, or its master ancestry cannot be established
@@ -45,16 +53,16 @@ The delivery system MUST require static delivery-script checks, workflow validat
 - **THEN** publishing and deployment do not run and the failure is reported with the failing gate
 
 #### Scenario: Repository tests are not a Woodpecker gate
-- **WHEN** a master push, pull request or release tag runs through Woodpecker
+- **WHEN** a release tag runs through Woodpecker
 - **THEN** the workflow does not invoke repository test commands and the delivery report identifies local or separate-CI tests as outside the Woodpecker evidence set
 
 ### Requirement: Build and deployment credentials are separated
 
-The delivery system MUST keep runtime credentials, repository-local secret files and private data out of source artifacts, image layers and logs. Pull requests MUST NOT receive publishing or deployment credentials. Test deployment credentials SHALL be limited to the dedicated test namespace and MUST NOT authorize changes to other applications or production environments.
+The delivery system MUST keep runtime credentials, repository-local secret files and private data out of source artifacts, image layers and logs. Non-tag events MUST NOT receive publishing or deployment credentials because they do not select Woodpecker workflows for this repository. Test deployment credentials SHALL be limited to the dedicated test namespace and MUST NOT authorize changes to other applications or production environments.
 
-#### Scenario: Pull request validation
-- **WHEN** code from a pull request executes static delivery checks
-- **THEN** no COS publishing credential, registry push credential, runtime credential or deployment credential is made available to those steps
+#### Scenario: Non-tag validation
+- **WHEN** code is updated without a supported release tag event
+- **THEN** no LightRAG Woodpecker step runs and no COS publishing credential, registry push credential, runtime credential or deployment credential is made available by Woodpecker
 
 #### Scenario: Missing or malformed credential
 - **WHEN** a required release credential is missing or malformed

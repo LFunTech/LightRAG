@@ -16,12 +16,12 @@
 - [x] 2.1 隔离本地配置复现 API prefix 两个失败，核对 API-key-only 与账号模式合同；仅在证据充分时修正测试 fixture/精确断言，补全匿名、错误密钥、合法密钥和两种 prefix 模式覆盖。
 - [x] 2.2 保留可复用的本地后端检查入口，按 lock 安装依赖及必要系统库，运行完整非 integration 测试时保留统计和跳过原因；确认 Woodpecker 不调用该入口。
 - [x] 2.3 保留本地前端检查入口，从正确目录执行 frozen install、完整 Bun 测试、typecheck、lint、build；确认 Woodpecker 不调用该入口。
-- [x] 2.4 添加 master push/PR 和发布 tag 的交付静态工作流，确保 PR 不接收发布/部署凭据、不运行仓库测试套件，并验证静态依赖失败阻止后续发布。
+- [x] 2.4 添加 tag-only 交付静态工作流，确保 master push/PR 不触发 Woodpecker、不接收发布/部署凭据、不运行仓库测试套件，并验证静态依赖失败阻止后续发布。
 
 ## 3. 发布身份与源码归档
 
 - [x] 3.1 先添加身份校验回归测试，再实现仓库/tag/commit/master 来源校验，覆盖无效 tag、浅克隆、远端错误和移动 tag。
-- [ ] 3.2 实现 LightRAG 独立 COS 源码归档与发布记录，绑定 commit/pipeline 身份和校验和，不归档本地环境、秘密或业务数据。
+- [x] 3.2 实现 LightRAG 独立 COS 源码归档与发布记录，绑定 commit/pipeline 身份和校验和，不归档本地环境、秘密或业务数据。
 - [x] 3.3 实现消费者身份/校验和验证与安全解包，覆盖篡改、错误记录、路径穿越、符号链接逃逸和外部命令失败；补齐 validate 工作流。
 
 ## 4. 镜像构建与验证

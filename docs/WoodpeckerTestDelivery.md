@@ -5,14 +5,14 @@ This Kustomize runbook covers the LightRAG fork delivery path for protected `vX.
 ## Boundaries
 
 - `main` remains the upstream mirror and is not a release source.
-- `master` push and PR events run delivery static checks without release or deployment secrets; Woodpecker does not execute repository test suites.
-- Source archives, image records and deployment state use LightRAG-owned COS/registry paths only.
+- Woodpecker is tag-only for this repository; `master` pushes and PRs do not start LightRAG Woodpecker pipelines.
+- Source archives, image records and deployment state use LightRAG-owned COS/registry paths only. The release-source workflow performs the only clone, uploads the source package through MinIO/S3-compatible `mc`, and downstream workflows download that package instead of cloning again.
 - Initial environment preparation is **not part of every tag deployment**. Automatic deployment refuses missing schemas, runtime Secrets, PVCs, profile registration or unknown storage state.
 - Do not claim YAML lint, Kustomize render, or local test results as deployment success. Static validation, local/separate-CI testing, environment initialization and remote acceptance are separate evidence classes.
 
 ## Required CI onboarding
 
-1. Enable the repository in Woodpecker with protected tags matching `v*`, `v*-pre` and `v*-test`.
+1. Enable the repository in Woodpecker with protected tags matching `v*`, `v*-pre` and `v*-test`; do not enable `push` or `pull_request` workflows for this repository.
 2. Reuse existing Woodpecker global/organization secrets where their scope matches the LightRAG release boundary:
    - Organization COS secrets: `cos_storage_endpoint`, `cos_storage_bucket`, `cos_storage_secret_id`, `cos_storage_secret_key`.
    - Global registry secrets: `DOCKER_USERNAME`, `DOCKER_PASSWORD`.
@@ -32,8 +32,8 @@ An operator must explicitly prepare the environment before expecting automatic `
 
 ## Release flow
 
-1. Push/PR to `master`: run delivery static checks only. The Woodpecker workflow does not call backend pytest, frontend Bun tests, frontend typecheck/lint/build scripts, or external integration tests. Keep those checks as local or separate-CI evidence and report them separately from Woodpecker delivery status.
-2. Protected tag `vX.Y.Z-test`: verify repository/tag/commit/master ancestry, archive source, build and verify `docker-hub.f123.pub/lfun/lightrag` image, then deploy by digest to `lightrag-test` with Kustomize and `kubectl apply -k`, keeping Service routing paused.
+1. Push/PR to `master`: no LightRAG Woodpecker pipeline is selected. Keep backend pytest, frontend Bun tests, frontend typecheck/lint/build scripts and external integration tests as local or separate-CI evidence.
+2. Protected tag `vX.Y.Z-test`: the source workflow performs the only clone, runs delivery static checks, verifies repository/tag/commit/master ancestry, archives the cloned source, uploads the archive/checksum/record to the LightRAG COS path with `mc`, then downstream workflows download the archive from MinIO/COS to build and verify `docker-hub.f123.pub/lfun/lightrag` and deploy by digest to `lightrag-test` with Kustomize and `kubectl apply -k`, keeping Service routing paused.
    - BuildKit execution is `scripts/ci/build-image.sh` inside the rootless BuildKit image; it does not call Python from that image.
    - Image verification is `python -m scripts.ci.delivery resolve-image`, which resolves the registry digest and checks the image config revision label against the release commit.
    - Deployment is `scripts/ci/deploy-test.sh` inside the Kubernetes-capable CI tools image; it consumes `build/release/image.env` produced from the verified image record, not a hand-written digest secret.
@@ -41,7 +41,7 @@ An operator must explicitly prepare the environment before expecting automatic `
 4. Restore Service routing only after acceptance succeeds.
 5. Tags `vX.Y.Z-pre` and `vX.Y.Z` publish and verify images but do not deploy.
 
-A plain `master` push is not a deployment by design. To exercise the build and deploy chain, create a protected `vX.Y.Z-test` tag after the scoped registry, COS and kubeconfig secrets and the initialized `lightrag-test` namespace are in place.
+A plain `master` push does not start Woodpecker by design. To exercise the build and deploy chain, create a protected `vX.Y.Z-test` tag after the scoped registry, COS and kubeconfig secrets and the initialized `lightrag-test` namespace are in place.
 
 ## Failure and rollback
 

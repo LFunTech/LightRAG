@@ -6,10 +6,10 @@
 
 ## What Changes
 
-- 新增 `.woodpecker/` 工作流：交付静态校验、发布身份校验与源码归档、镜像构建发布、镜像校验、测试部署和部署验收；Woodpecker 不运行 pytest、Bun test 等仓库测试套件。保留现有 GitHub Actions。
-- `master` 的 push/PR 执行无发布凭据、无仓库测试套件的交付静态校验；符合规范且来自 `master` 历史的发布 tag 执行完整发布门禁。`main` 不修改、不作为 fork 发布来源。
+- 新增 tag-only `.woodpecker/` 工作流：交付静态校验、发布身份校验与源码归档、镜像构建发布、镜像校验、测试部署和部署验收；Woodpecker 不运行 pytest、Bun test 等仓库测试套件，也不响应 `master` push/PR。保留现有 GitHub Actions。
+- 符合规范且来自 `master` 历史的发布 tag 执行完整发布门禁；`master` 普通更新不触发 Woodpecker，`main` 不修改、不作为 fork 发布来源。
 - 沿用参考仓库的 `vX.Y.Z-test`、`vX.Y.Z-pre`、`vX.Y.Z` 约定。只有 `-test` 自动部署，pre/prod 仅发布并校验镜像。
-- 使用 rootless BuildKit 构建现有完整 Dockerfile，目标 `linux/amd64`、镜像仓库 `docker-hub.f123.pub/lfun/lightrag`。源码与发布记录使用独立 COS 路径，绑定 commit、pipeline 身份和校验和；部署使用已校验的镜像 digest。
+- 使用 rootless BuildKit 构建现有完整 Dockerfile，目标 `linux/amd64`、镜像仓库 `docker-hub.f123.pub/lfun/lightrag`。唯一源码工作流 clone 后将源码包、校验和与记录上传到独立 COS/MinIO 路径，后续工作流 `skip_clone` 并从该路径下载源码；源码与发布记录绑定 commit、pipeline 身份和校验和；部署使用已校验的镜像 digest。
 - 全部 Dockerfile 的外部基础镜像先由本机同步到 `docker-hub.f123.pub/base/`，验证完整多架构 manifest 与 digest 后再替换引用，包括外部 `COPY --from` 和 Dockerfile frontend。使用独立标签及 digest pin，不覆盖其他项目共享标签，不由流水线自动补镜像或回退公网镜像源。
 - 新增测试环境 Kustomize overlay 和命名空间级发布配套，复用现有分布式部署合同，运行两个 Pod、每 Pod 一个进程；使用 PG/pgvector、HugeGraph 和真实共享持久存储，不使用本机测试模型替身。
 - 自动发布只操作预置、已初始化且兼容的测试环境：串行发布、旧副本优雅退出、持久化状态检查、新副本启动及验收。首次初始化、模式迁移、故障恢复和回滚仍是显式维护操作，不加入发布自动补偿。

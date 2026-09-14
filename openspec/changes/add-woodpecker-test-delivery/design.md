@@ -31,24 +31,24 @@
 
 ### 1. 触发规则与工作流依赖
 
-新增不运行仓库测试套件的交付静态工作流，以及参考项目风格的 `validate`、`build-image`、`pre-deploy`、`deploy-test` 工作流。复杂行为放入可本地测试的 `scripts/ci/`，YAML 负责声明触发、依赖、资源和 Secret。
+新增不运行仓库测试套件的 tag-only 交付工作流。`validate-release` 是唯一允许默认 clone 的源码工作流，负责交付静态检查、发布身份校验、源码归档和上传；`build-image`、`pre-deploy`、`deploy-test` 全部 `skip_clone`，从 LightRAG 的 MinIO/COS 源码包路径下载并校验后再执行构建、镜像校验或部署。复杂行为放入可本地测试的 `scripts/ci/`，YAML 负责声明触发、依赖、资源和 Secret。
 
 | 事件 | 质量检查 | 源码归档/镜像发布 | 自动部署 |
 | --- | --- | --- | --- |
-| `master` push | 是（交付静态校验，不跑测试套件） | 否 | 否 |
-| 目标为 `master` 的 PR | 是（交付静态校验，不跑测试套件，无发布/部署 Secret） | 否 | 否 |
-| `vX.Y.Z-test` tag | 是 | 是 | `lightrag-test` |
-| `vX.Y.Z-pre` / `vX.Y.Z` tag | 是 | 是 | 否 |
+| `master` push | 否（不触发 Woodpecker） | 否 | 否 |
+| 目标为 `master` 的 PR | 否（不触发 Woodpecker） | 否 | 否 |
+| `vX.Y.Z-test` tag | 是（唯一 clone 后执行） | 是；后续 workflow 从 MinIO/COS 下载源码 | `lightrag-test` |
+| `vX.Y.Z-pre` / `vX.Y.Z` tag | 是（唯一 clone 后执行） | 是；后续 workflow 从 MinIO/COS 下载源码 | 否 |
 | 其他分支/tag | 不发布；无效发布 tag 明确拒绝 | 否 | 否 |
 
 tag 事件不能依靠分支过滤证明来源。归档前核对仓库身份、tag 解析后的 commit、`CI_COMMIT_SHA` 和远端 `master` 历史；浅克隆或网络故障导致无法证明时失败。重试同样校验 tag 未移动。保护发布标签和配置文件属于 forge/CI 接入前置条件；仓库管理员或持有任意发布 Secret 的恶意维护者不在本流水线的隔离承诺内。
 
-tag 发布必须等待同一 commit 的交付静态校验成功，不借用旧流水线结果。无效 tag、静态校验失败或任一依赖失败均不能上传可发布产物或部署。仓库测试套件不是 Woodpecker 发布门禁。
+tag 发布必须等待同一 commit 的交付静态校验成功，不借用旧流水线结果。无效 tag、静态校验失败或任一依赖失败均不能上传可发布产物或部署。仓库测试套件不是 Woodpecker 发布门禁。普通 `master` 更新不再提供“静态检查流水线”；相关验证保留为本地或外部 CI 证据。
 
 ### 2. 本地验证与流水线静态门禁
 
 - Woodpecker 交付流水线不运行仓库测试套件：不调用 `./scripts/test.sh`、pytest、`bun test`、前端 typecheck/lint/build 检查入口，也不为测试安装额外模型或依赖。此前后端/前端检查脚本保留为本地或外部 CI 可手动执行的验证入口，不能从 `.woodpecker/` 引用。
-- `quality` 工作流只执行无发布/部署 Secret 的交付静态校验：shell/Python 语法检查、基础镜像锁文件 JSON 校验，以及在工具可用时执行 Woodpecker lint、Kustomize render 和 OpenSpec strict validation。工具缺失时报告“未在该镜像内执行”，不伪装为测试通过。
+- `validate-release` 的 `delivery-static` 步骤先执行交付静态校验：shell/Python 语法检查、基础镜像锁文件 JSON 校验，以及在工具可用时执行 Woodpecker lint、Kustomize render 和 OpenSpec strict validation。工具缺失时报告“未在该镜像内执行”，不伪装为测试通过。该步骤只在 release tag 事件运行。
 - 发布 tag 仍必须经过同一 commit 的交付静态校验、源码身份校验、镜像构建/校验和部署前置检查；但仓库单元/集成测试失败不由 Woodpecker 直接判定，避免把交付流水线变成长时间、外部下载和 runner CPU 差异敏感的测试平台。
 - 本地实施验证仍要运行与改动相关的 pytest/Bun/OpenSpec/manifest 回归，并记录哪些检查未由 Woodpecker 执行。外部服务集成测试显式 opt-in，不将跳过它们写成已验证。发布后验收使用真实目标服务；本地测试模型 fixture 不进入应用镜像或测试环境运行配置。
 
@@ -75,7 +75,7 @@ tag 发布必须等待同一 commit 的交付静态校验成功，不借用旧�
 
 ### 4. 源码、镜像及发布记录
 
-COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record 命名空间，不能覆盖 ai-center 路径。归档仅包含已跟踪的受审源码；拒绝纳入 `.env`、`.secrets`、私钥、开发数据和构建凭据。生成 SHA-256 校验和及记录，包含 repo、tag、commit、pipeline 身份；消费者验证全部身份与校验和，拒绝路径穿越、符号链接逃逸和异常归档。
+COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record 命名空间，不能覆盖 ai-center 路径。归档仅由 `validate-release` 的唯一 clone 产出，包含受审源码；拒绝纳入 `.env`、`.secrets`、私钥、开发数据和构建凭据。生成 SHA-256 校验和及记录，包含 repo、tag、commit、pipeline 身份；下游 workflow 先从 MinIO/COS 下载源码包并校验 SHA-256，再解包使用。消费者验证全部身份与校验和，拒绝路径穿越、符号链接逃逸和异常归档。
 
 镜像仓库固定为 `docker-hub.f123.pub/lfun/lightrag`，不调用默认发布到上游的 `docker-build-push.sh`。镜像附带 commit/source/tag 标识，发布记录包含最终 digest、平台和源码包 hash。版本 tag 需不可变；遇到已经存在但来源不同的版本拒绝覆盖。相同版本重试复核已有 digest 和来源，不假定重复构建字节相同。
 

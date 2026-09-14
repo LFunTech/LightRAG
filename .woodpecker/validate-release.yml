@@ -1,20 +1,50 @@
 labels:
   platform: linux/amd64
 
+workspace:
+  base: /woodpecker
+  path: src
+
 when:
   event: [tag]
   ref: [refs/tags/v*, refs/tags/v*-pre, refs/tags/v*-test]
 
-depends_on: [quality]
-
 steps:
+  delivery-static:
+    image: docker-hub.f123.pub/base/uv:python3.12-bookworm-slim-lightrag-e5b65587bce7@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
+    commands:
+      - scripts/ci/delivery-check.sh
   validate-release:
     image: docker-hub.f123.pub/base/uv:python3.12-bookworm-slim-lightrag-e5b65587bce7@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
+    depends_on: [delivery-static]
     commands:
       - mkdir -p build/release
       - python -m scripts.ci.delivery verify-source --tag "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA" --repo "$CI_REPO" --allowed-repo "LFunTech/LightRAG" --pipeline-id "$CI_PIPELINE_NUMBER" > build/release/release-identity.json
       - python -m scripts.ci.delivery archive-source --repo . --output build/release/source.tar.gz --identity build/release/release-identity.json --record-output build/release/source-record.json
       - python -m scripts.ci.delivery verify-archive --archive build/release/source.tar.gz --record build/release/source-record.json --identity build/release/release-identity.json --extract-to build/release/extracted-source
+  upload-source:
+    image: docker-hub.f123.pub/base/ci-tools:alpine-3.22.2
+    depends_on: [validate-release]
+    commands:
+      - |
+        set -euo pipefail
+        : "${STORAGE_ENDPOINT:?STORAGE_ENDPOINT is required}"
+        : "${STORAGE_BUCKET:?STORAGE_BUCKET is required}"
+        : "${STORAGE_ACCESS_KEY:?STORAGE_ACCESS_KEY is required}"
+        : "${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY is required}"
+        STORAGE_HOST="${STORAGE_ENDPOINT#https://}"
+        STORAGE_HOST="${STORAGE_HOST#http://}"
+        STORAGE_HOST="${STORAGE_HOST%%/}"
+        ARTIFACT_PREFIX="lightrag/ci-source/$CI_COMMIT_SHA/$CI_PIPELINE_NUMBER"
+        test -s build/release/source.tar.gz
+        test -s build/release/source-record.json
+        (cd build/release && sha256sum source.tar.gz > source.tar.gz.sha256)
+        mc alias set deploy "https://$STORAGE_HOST" "$STORAGE_ACCESS_KEY" "$STORAGE_SECRET_KEY"
+        mc cp build/release/source.tar.gz "deploy/$STORAGE_BUCKET/$ARTIFACT_PREFIX/source.tar.gz"
+        mc cp build/release/source.tar.gz.sha256 "deploy/$STORAGE_BUCKET/$ARTIFACT_PREFIX/source.tar.gz.sha256"
+        mc cp build/release/source-record.json "deploy/$STORAGE_BUCKET/$ARTIFACT_PREFIX/source-record.json"
+        mc stat "deploy/$STORAGE_BUCKET/$ARTIFACT_PREFIX/source.tar.gz"
+        echo "source archive uploaded: $ARTIFACT_PREFIX"
     environment:
       STORAGE_ENDPOINT:
         from_secret: cos_storage_endpoint
