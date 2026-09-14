@@ -68,7 +68,8 @@ def test_downstream_workflows_skip_clone_and_download_source_from_minio():
         assert download["environment"]["STORAGE_ACCESS_KEY"]["from_secret"] == "cos_storage_secret_id"
         assert download["environment"]["STORAGE_SECRET_KEY"]["from_secret"] == "cos_storage_secret_key"
         command_text = "\n".join(download["commands"])
-        assert ". scripts/ci/source-artifact.sh" in command_text
+        assert ". scripts/ci/source-artifact.sh" not in command_text
+        assert "resolve_storage_endpoint() {" in command_text
         assert 'resolve_storage_endpoint "$STORAGE_ENDPOINT"' in command_text
         assert "mc cp" in command_text
         assert SOURCE_ARTIFACT_PREFIX in command_text
