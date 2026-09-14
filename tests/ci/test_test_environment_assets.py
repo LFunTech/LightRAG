@@ -47,4 +47,4 @@ def test_runbook_records_manual_initialization_and_remote_verification_boundary(
     assert "lightrag-test" in text
     assert "not part of every tag deployment" in text
     assert "Remote acceptance not yet run" in text
-    assert "Do not claim YAML lint or Kustomize render as deployment success" in text
+    assert "Do not claim YAML lint, Kustomize render, or local test results as deployment success" in text

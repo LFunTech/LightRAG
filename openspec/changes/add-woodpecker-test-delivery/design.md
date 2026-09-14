@@ -31,27 +31,26 @@
 
 ### 1. 触发规则与工作流依赖
 
-新增质量工作流和参考项目风格的 `validate`、`build-image`、`pre-deploy`、`deploy-test` 工作流，复杂行为放入可测试的 `scripts/ci/`，YAML 负责声明触发、依赖、资源和 Secret。
+新增不运行仓库测试套件的交付静态工作流，以及参考项目风格的 `validate`、`build-image`、`pre-deploy`、`deploy-test` 工作流。复杂行为放入可本地测试的 `scripts/ci/`，YAML 负责声明触发、依赖、资源和 Secret。
 
 | 事件 | 质量检查 | 源码归档/镜像发布 | 自动部署 |
 | --- | --- | --- | --- |
-| `master` push | 是 | 否 | 否 |
-| 目标为 `master` 的 PR | 是，无发布/部署 Secret | 否 | 否 |
+| `master` push | 是（交付静态校验，不跑测试套件） | 否 | 否 |
+| 目标为 `master` 的 PR | 是（交付静态校验，不跑测试套件，无发布/部署 Secret） | 否 | 否 |
 | `vX.Y.Z-test` tag | 是 | 是 | `lightrag-test` |
 | `vX.Y.Z-pre` / `vX.Y.Z` tag | 是 | 是 | 否 |
 | 其他分支/tag | 不发布；无效发布 tag 明确拒绝 | 否 | 否 |
 
 tag 事件不能依靠分支过滤证明来源。归档前核对仓库身份、tag 解析后的 commit、`CI_COMMIT_SHA` 和远端 `master` 历史；浅克隆或网络故障导致无法证明时失败。重试同样校验 tag 未移动。保护发布标签和配置文件属于 forge/CI 接入前置条件；仓库管理员或持有任意发布 Secret 的恶意维护者不在本流水线的隔离承诺内。
 
-tag 发布必须等待同一 commit 的质量检查成功，不借用旧流水线结果。无效 tag、测试失败或任一依赖失败均不能上传可发布产物或部署。
+tag 发布必须等待同一 commit 的交付静态校验成功，不借用旧流水线结果。无效 tag、静态校验失败或任一依赖失败均不能上传可发布产物或部署。仓库测试套件不是 Woodpecker 发布门禁。
 
-### 2. 质量门禁
+### 2. 本地验证与流水线静态门禁
 
-- Python 使用 `uv.lock` 固定的 API、offline-storage、offline-llm、pytest extras，执行完整非 integration 测试。安装必要系统库；CI 不动态下载 spaCy 模型，缺少模型时使用测试套件既有 skip 机制记录跳过原因，避免代理环境把质量门禁变成外部下载测试；对 `faiss-cpu` 先做导入探针，若 lock 版本在当前 runner CPU 上触发 SIGILL，则在项目声明范围内降级到可导入 wheel 后继续运行 Faiss 测试；pytest 前清理继承自 Woodpecker agent 的代理变量，避免离线测试依赖代理适配包；与开发者 `.env` 隔离，记录 pass/skip/fail 原因。
-- 前端在 `lightrag_webui/` 执行 frozen install、全部 Bun 测试、`tsc --noEmit`、lint、build，保留现有构建体积门禁。
-- 工作流 strict lint、CI 脚本测试、shell/Python 静态检查、Kustomize render 和分布式 manifest 回归测试均需运行。
-- 既有两个失败单独验证：若为测试配置/状态码合同错误，修正 fixture 和精确断言，同时保留匿名拒绝、错误密钥拒绝、合法密钥通过鉴权及两个 prefix 转发模式的回归覆盖；不将 `401` 简单放宽为“任意非 200”。若确需改变生产鉴权行为，停止该修复并单独评审，不混入 CI 改动。
-- 外部服务集成测试显式 opt-in，不将跳过它们写成已验证。发布后验收使用真实目标服务；本地测试模型 fixture 不进入应用镜像或测试环境运行配置。
+- Woodpecker 交付流水线不运行仓库测试套件：不调用 `./scripts/test.sh`、pytest、`bun test`、前端 typecheck/lint/build 检查入口，也不为测试安装额外模型或依赖。此前后端/前端检查脚本保留为本地或外部 CI 可手动执行的验证入口，不能从 `.woodpecker/` 引用。
+- `quality` 工作流只执行无发布/部署 Secret 的交付静态校验：shell/Python 语法检查、基础镜像锁文件 JSON 校验，以及在工具可用时执行 Woodpecker lint、Kustomize render 和 OpenSpec strict validation。工具缺失时报告“未在该镜像内执行”，不伪装为测试通过。
+- 发布 tag 仍必须经过同一 commit 的交付静态校验、源码身份校验、镜像构建/校验和部署前置检查；但仓库单元/集成测试失败不由 Woodpecker 直接判定，避免把交付流水线变成长时间、外部下载和 runner CPU 差异敏感的测试平台。
+- 本地实施验证仍要运行与改动相关的 pytest/Bun/OpenSpec/manifest 回归，并记录哪些检查未由 Woodpecker 执行。外部服务集成测试显式 opt-in，不将跳过它们写成已验证。发布后验收使用真实目标服务；本地测试模型 fixture 不进入应用镜像或测试环境运行配置。
 
 ### 3. 构建器选择与权限
 
@@ -116,11 +115,11 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 
 ### 7. 验证与交付证据
 
-- 脚本测试覆盖输入身份、tag/分支矩阵、缺失凭据、归档篡改/穿越、manifest/index、digest、旧发布覆盖、新旧并发发布、外部命令非零及超时；执行假后端测试证明失败时没有后续发布副作用。
-- Kustomize manifest 测试覆盖 digest replacement、RWX/非 root/双副本、禁止公开 Service 类型、运行 Secret 引用和默认暂停路由。既有 Helm chart 仍由原有 chart 回归测试覆盖，但不再作为 Woodpecker 测试部署入口。
+- 本地脚本测试覆盖输入身份、tag/分支矩阵、缺失凭据、归档篡改/穿越、manifest/index、digest、旧发布覆盖、新旧并发发布、外部命令非零及超时；这些测试不在 Woodpecker 流水线执行。
+- 本地 Kustomize manifest 测试覆盖 digest replacement、RWX/非 root/双副本、禁止公开 Service 类型、运行 Secret 引用和默认暂停路由。既有 Helm chart 仍由原有 chart 回归测试覆盖，但不再作为 Woodpecker 测试部署入口。
 - 首次环境验收包括 rootless 构建探针、实际 RWX 跨节点验证、显式 bootstrap 和 Secret/RBAC 边界验证；不能用本机 Kind 结果替代 test 集群结果。
 - 在获得发布触发授权并配置好凭据后，以受保护测试 tag 跑通远端流水线；记录 commit/tag/pipeline ID、各阶段结果、镜像 digest、两个 Pod 的 imageID 和测试文档/查询结果。再用兼容的新测试版本验证升级路径及至少一个不修改存储的拒绝发布场景。
-- 全量测试、前端检查、manifest 检查和远端验收分别报告。尚未取得 CI 凭据、测试资源或触发授权时，明确列为未完成项，不把 proposal/脚本完成等同于用户已可测试。
+- 本地测试、前端检查、manifest 检查和远端验收分别报告；其中本地测试和前端检查不由 Woodpecker 执行。尚未取得 CI 凭据、测试资源或触发授权时，明确列为未完成项，不把 proposal/脚本完成等同于用户已可测试。
 
 ## Risks / Trade-offs
 
@@ -131,7 +130,7 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 - **首次初始化需要人工维护，环境未就绪的首个 tag 会失败** → 文档明确“先构建镜像，再准备/初始化环境，再重试部署”；不把初始化权限塞入每次部署。
 - **同一提交重建不保证 digest 相同** → 已发布版本不可变，重试验证来源并复用已确认 artifact；漂移需新 tag，而非覆盖。
 - **共享 RWX 不保证共享文件正确性** → test 集群跨节点验证真实语义；PVC 声明只是一项检查。
-- **既有测试失败阻止发布** → 隔离复现并按现行合同修复，不跳过、不将失败改为允许失败。
+- **仓库测试不属于 Woodpecker 门禁** → 测试失败仍按本地/外部 CI 规则修复，但 Woodpecker 不运行 pytest/Bun test，也不把跳过或失败写成发布门禁结果。
 - **有意保留停止服务状态** → 明确显示发布失败阶段和恢复手册；可用性让位于不丢数据、不混写。
 
 ## Migration Plan

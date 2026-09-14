@@ -1,6 +1,6 @@
 ## Purpose
 
-为 LightRAG fork 提供可追溯的 Woodpecker 质量检查、可信源码与镜像交付，以及遵守 HugeGraph 分布式写入和显式维护合同的 Kubernetes 内网测试环境自动部署，防止错误分支发布、凭据泄漏、未验证产物上线和不安全混合版本写入。
+为 LightRAG fork 提供可追溯且不运行仓库测试套件的 Woodpecker 交付静态校验、可信源码与镜像交付，以及遵守 HugeGraph 分布式写入和显式维护合同的 Kubernetes 内网测试环境自动部署，防止错误分支发布、凭据泄漏、未验证产物上线和不安全混合版本写入。
 
 ## ADDED Requirements
 
@@ -22,7 +22,7 @@ Every repository Dockerfile MUST reference external image inputs only under dock
 
 ### Requirement: Release events are scoped to the fork and protected source
 
-The delivery system SHALL run non-publishing checks for master pushes and pull requests targeting master. It MUST publish only supported version tags whose resolved commit matches the event and belongs to the fork master history, without changing main. Only test-suffixed version tags SHALL automatically deploy to the confirmed test namespace.
+The delivery system SHALL run non-publishing static delivery checks for master pushes and pull requests targeting master, without executing repository test suites in Woodpecker. It MUST publish only supported version tags whose resolved commit matches the event and belongs to the fork master history, without changing main. Only test-suffixed version tags SHALL automatically deploy to the confirmed test namespace.
 
 #### Scenario: Test release from master
 - **WHEN** a protected `vX.Y.Z-test` tag resolves to the event commit in fork master history
@@ -36,24 +36,24 @@ The delivery system SHALL run non-publishing checks for master pushes and pull r
 - **WHEN** a valid `vX.Y.Z-pre` or `vX.Y.Z` tag passes quality and artifact validation
 - **THEN** the image is published and verified without deploying any environment
 
-### Requirement: Quality failures block all release side effects
+### Requirement: Static delivery failures block all release side effects
 
-The delivery system MUST require complete non-integration backend tests, complete frontend checks and build, delivery-script checks, workflow validation, and Kustomize manifest validation for the exact release commit. Known failures MUST NOT be bypassed through exclusions, unconditional success, or weakened authentication assertions.
+The delivery system MUST require static delivery-script checks, workflow validation, source identity validation, image validation, and Kustomize manifest validation for the exact release commit. Woodpecker MUST NOT execute repository test suites such as backend pytest, frontend Bun tests, frontend typecheck/lint/build check scripts, or external-service integration tests. Local or separate-CI test results MAY be recorded as separate evidence but MUST NOT be represented as Woodpecker gates.
 
-#### Scenario: Existing regression fails
-- **WHEN** any mandatory test, lint, type check, build or manifest check fails
+#### Scenario: Static delivery validation fails
+- **WHEN** any mandatory static delivery check, workflow validation, source identity check, image validation or manifest check fails
 - **THEN** publishing and deployment do not run and the failure is reported with the failing gate
 
-#### Scenario: External integration tests are not requested
-- **WHEN** the quality phase omits explicitly opt-in external-service tests
-- **THEN** the report identifies those tests as unverified and does not substitute unit tests for deployment acceptance
+#### Scenario: Repository tests are not a Woodpecker gate
+- **WHEN** a master push, pull request or release tag runs through Woodpecker
+- **THEN** the workflow does not invoke repository test commands and the delivery report identifies local or separate-CI tests as outside the Woodpecker evidence set
 
 ### Requirement: Build and deployment credentials are separated
 
 The delivery system MUST keep runtime credentials, repository-local secret files and private data out of source artifacts, image layers and logs. Pull requests MUST NOT receive publishing or deployment credentials. Test deployment credentials SHALL be limited to the dedicated test namespace and MUST NOT authorize changes to other applications or production environments.
 
 #### Scenario: Pull request validation
-- **WHEN** code from a pull request executes quality checks
+- **WHEN** code from a pull request executes static delivery checks
 - **THEN** no COS publishing credential, registry push credential, runtime credential or deployment credential is made available to those steps
 
 #### Scenario: Missing or malformed credential

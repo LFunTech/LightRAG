@@ -5,10 +5,10 @@ This Kustomize runbook covers the LightRAG fork delivery path for protected `vX.
 ## Boundaries
 
 - `main` remains the upstream mirror and is not a release source.
-- `master` push and PR events run quality checks without release or deployment secrets.
+- `master` push and PR events run delivery static checks without release or deployment secrets; Woodpecker does not execute repository test suites.
 - Source archives, image records and deployment state use LightRAG-owned COS/registry paths only.
 - Initial environment preparation is **not part of every tag deployment**. Automatic deployment refuses missing schemas, runtime Secrets, PVCs, profile registration or unknown storage state.
-- Do not claim YAML lint or Kustomize render as deployment success. Static validation, environment initialization and remote acceptance are separate evidence classes.
+- Do not claim YAML lint, Kustomize render, or local test results as deployment success. Static validation, local/separate-CI testing, environment initialization and remote acceptance are separate evidence classes.
 
 ## Required CI onboarding
 
@@ -32,7 +32,7 @@ An operator must explicitly prepare the environment before expecting automatic `
 
 ## Release flow
 
-1. Push/PR to `master`: run backend, frontend and delivery static checks. Backend CI installs required system libraries such as `libcairo2`, but does not dynamically download spaCy language models; smart-heading tests that require missing models use the test suite skip report instead of turning the quality gate into a proxy-dependent model download. It also probes the Faiss wheel before pytest; if the locked wheel traps on the current runner CPU, CI falls back to a compatible `faiss-cpu` wheel within the repository dependency range and still runs the Faiss tests. Before pytest starts, the script clears inherited proxy variables so offline tests do not depend on Woodpecker agent proxy adapters.
+1. Push/PR to `master`: run delivery static checks only. The Woodpecker workflow does not call backend pytest, frontend Bun tests, frontend typecheck/lint/build scripts, or external integration tests. Keep those checks as local or separate-CI evidence and report them separately from Woodpecker delivery status.
 2. Protected tag `vX.Y.Z-test`: verify repository/tag/commit/master ancestry, archive source, build and verify `docker-hub.f123.pub/lfun/lightrag` image, then deploy by digest to `lightrag-test` with Kustomize and `kubectl apply -k`, keeping Service routing paused.
 3. Verify both Pods' `imageID`, health, authentication, distributed status and cross-Pod ingestion/query with a unique test document.
 4. Restore Service routing only after acceptance succeeds.

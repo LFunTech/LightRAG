@@ -11,12 +11,12 @@
 - [ ] 1.2 核对 Woodpecker 仓库接入、受保护 tag、Secret 事件/镜像限制、COS/registry 权限及命名空间级部署凭据；只记录名称和验证结果。
 - [ ] 1.3 验证 rootless BuildKit 探针：非 root、所需安全上下文、cache/bind mount、amd64 构建和临时存储预算，固定工具镜像版本/digest；失败不自动提权。
 
-## 2. 质量门禁与回归基线
+## 2. 本地回归基线与流水线静态门禁
 
 - [x] 2.1 隔离本地配置复现 API prefix 两个失败，核对 API-key-only 与账号模式合同；仅在证据充分时修正测试 fixture/精确断言，补全匿名、错误密钥、合法密钥和两种 prefix 模式覆盖。
-- [ ] 2.2 建立可复用的后端检查入口，按 lock 安装依赖及必要系统库/模型，运行完整非 integration 测试并保留测试统计和跳过原因。
-- [x] 2.3 建立前端检查入口，从正确目录执行 frozen install、完整 Bun 测试、typecheck、lint、build；输出可定位的失败阶段。
-- [x] 2.4 添加 master push/PR 和发布 tag 的质量工作流，确保 PR 不接收发布/部署凭据，验证依赖失败阻止后续发布。
+- [x] 2.2 保留可复用的本地后端检查入口，按 lock 安装依赖及必要系统库，运行完整非 integration 测试时保留统计和跳过原因；确认 Woodpecker 不调用该入口。
+- [x] 2.3 保留本地前端检查入口，从正确目录执行 frozen install、完整 Bun 测试、typecheck、lint、build；确认 Woodpecker 不调用该入口。
+- [x] 2.4 添加 master push/PR 和发布 tag 的交付静态工作流，确保 PR 不接收发布/部署凭据、不运行仓库测试套件，并验证静态依赖失败阻止后续发布。
 
 ## 3. 发布身份与源码归档
 
@@ -49,8 +49,8 @@
 
 ## 7. 验证与真实接入
 
-- [ ] 7.1 运行 Woodpecker strict lint、脚本测试/静态检查、Kustomize render 和相关 manifest 回归；保存命令、版本及结果。
-- [ ] 7.2 运行完整非 integration 后端测试和完整前端检查，确认发布门禁无绕过；分项记录 pass/skip/fail。
+- [ ] 7.1 运行 Woodpecker strict lint、交付脚本本地测试/静态检查、Kustomize render 和相关 manifest 回归；保存命令、版本及结果。
+- [ ] 7.2 本地运行完整非 integration 后端测试和完整前端检查，分项记录 pass/skip/fail；确认这些测试结果不被写成 Woodpecker 门禁。
 - [ ] 7.3 在批准的 test 集群创建独立测试资源、完成跨节点 RWX 实测和显式初始化；记录目标与证据，不修改本机/Kind 服务或其他应用资源。
 - [ ] 7.4 在获得触发授权后用测试 tag 跑通真实 Woodpecker 构建、镜像验证和初次双 Pod 部署，保存 pipeline/tag/commit/digest、imageID 及业务验收结果。
 - [ ] 7.5 通过后续兼容测试版本验证自动升级，以及至少一个不破坏存储的拒绝发布场景，确认旧流量不会在验收前恢复。
