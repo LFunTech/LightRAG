@@ -22,6 +22,8 @@ fi
 bash -n scripts/ci/delivery-check.sh
 bash -n scripts/ci/build-image.sh
 bash -n scripts/ci/deploy-test.sh
+sh -n scripts/ci/build-image.sh
+sh -n scripts/ci/deploy-test.sh
 
 if command -v kubectl >/dev/null 2>&1; then
   kubectl kustomize k8s-deploy/lightrag-kustomize/overlays/test >/tmp/lightrag-test-kustomize-render.yaml
@@ -29,7 +31,7 @@ else
   echo "kubectl not available; skipping Kustomize render in this image" >&2
 fi
 if command -v woodpecker-cli >/dev/null 2>&1; then
-  woodpecker-cli lint .woodpecker/*.yml
+  woodpecker-cli lint --strict .woodpecker/*.yml
 else
   echo "woodpecker-cli not available; skipping Woodpecker lint in this image" >&2
 fi

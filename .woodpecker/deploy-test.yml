@@ -6,8 +6,10 @@ workspace:
   path: src
 
 when:
-  event: [tag]
-  ref: [refs/tags/v*-test]
+  - event: tag
+    evaluate: 'CI_COMMIT_TAG matches "^v[0-9]+[.][0-9]+[.][0-9]+-test$"'
+  - event: tag
+    ref: refs/tags/v*-test
 
 depends_on: [pre-deploy]
 
@@ -15,7 +17,7 @@ skip_clone: true
 
 steps:
   download-source:
-    image: docker-hub.f123.pub/base/ci-tools:alpine-3.22.2
+    image: docker-hub.f123.pub/base/ci-tools:alpine-3.22.4
     commands:
       - |
         set -euo pipefail
@@ -84,11 +86,11 @@ steps:
       DOCKER_PASSWORD:
         from_secret: DOCKER_PASSWORD
   deploy-test:
-    image: docker-hub.f123.pub/base/ci-tools:alpine-3.22.2
+    image: docker-hub.f123.pub/base/ci-tools:alpine-3.22.4
     depends_on: [resolve-image]
     commands:
       - test -s build/release/image.env
-      - . build/release/image.env && scripts/ci/deploy-test.sh
+      - . build/release/image.env && sh scripts/ci/deploy-test.sh
     environment:
       LIGHTRAG_TEST_KUBECONFIG:
         from_secret: kubeconfig_test

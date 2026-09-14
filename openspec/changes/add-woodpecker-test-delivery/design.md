@@ -2,7 +2,7 @@
 
 动机与范围见 [proposal.md](proposal.md)。以下为 2026-09-14 的只读检查结果，不代表部署验收：
 
-- `../ai-center/.woodpecker/` 使用 tag 校验、COS 源码归档、Kaniko 构建、镜像 manifest 校验和 `-test` 自动部署；其业务 Secret、Ingress、单副本及启动迁移不能移植。
+- `../haier-demo/.woodpecker/system-deploy.yml` 是当前可用的本机对照：它使用单 commit 自定义 clone、tag-only list-form `when`、内部 CI 工具镜像、镜像发布后 manifest 校验，以及脚本化 Kubernetes apply/status 输出。LightRAG 必须复用这些已验证的流水线组织模式；其业务 Secret、Ingress、单副本、Kaniko 构建器和启动迁移不能直接移植。目标 Woodpecker strict lint 未将 haier 的自定义 clone 镜像列入 clone allowlist，所以 LightRAG 将同一段单 commit/no-tags clone 脚本作为 `skip_clone: true` 后的第一个普通步骤执行，而不是使用顶层 `clone:`。
 - 本仓库 `Dockerfile` 使用 cache/bind `RUN --mount` 和多阶段前端构建，需要兼容这些语义的构建器。现有 GitHub Actions 不调整。
 - test 集群为 Kubernetes `v1.32.13+rke2r1`、amd64 节点；Woodpecker server/agent 均为 `v3.18.1`，agent 使用 Kubernetes backend、`woodpecker-pipelines` namespace 和 `syno-nfs` RWX workspace。
 - `lightrag-test` namespace 尚不存在。发现 `syno-nfs` StorageClass 不等于证明应用共享文件语义；必须跨节点验证。
@@ -31,7 +31,7 @@
 
 ### 1. 触发规则与工作流依赖
 
-新增不运行仓库测试套件的 tag-only 交付工作流。`validate-release` 是唯一允许默认 clone 的源码工作流，负责交付静态检查、发布身份校验、源码归档和上传；`build-image`、`pre-deploy`、`deploy-test` 全部 `skip_clone`，从 LightRAG 的 MinIO/COS 源码包路径下载并校验后再执行构建、镜像校验或部署。复杂行为放入可本地测试的 `scripts/ci/`，YAML 负责声明触发、依赖、资源和 Secret。
+新增不运行仓库测试套件的 tag-only 交付工作流。`validate-release` 是唯一源码 clone 工作流，按 `../haier-demo` 的单 commit 自定义 clone 模式只拉取 `CI_COMMIT_SHA`，不克隆 LFS/submodule/全量 tag；发布校验再只获取当前 release tag 与 `master` 历史证明来源。为同时满足 strict lint，所有 workflow 均声明 `skip_clone: true`，只有 `validate-release` 的第一个普通步骤执行这段 clone 脚本。该 workflow 负责交付静态检查、发布身份校验、源码归档和上传；`build-image`、`pre-deploy`、`deploy-test` 从 LightRAG 的 MinIO/COS 源码包路径下载并校验后再执行构建、镜像校验或部署。复杂行为放入可本地测试的 `scripts/ci/`，YAML 负责声明触发、依赖、资源和 Secret。
 
 | 事件 | 质量检查 | 源码归档/镜像发布 | 自动部署 |
 | --- | --- | --- | --- |
@@ -54,7 +54,7 @@ tag 发布必须等待同一 commit 的交付静态校验成功，不借用旧�
 
 ### 3. 构建器选择与权限
 
-推荐 **rootless BuildKit**，直接构建现有 Dockerfile。固定工具版本和可验证镜像 digest，使用 amd64 原生构建与独立 registry cache；BuildKit 状态置于单次构建的本地临时目录，不放在共享 NFS workspace 上。构建输入仍来自校验后的源码包。
+推荐 **rootless BuildKit**，直接构建现有 Dockerfile。固定工具版本和可验证镜像 digest，使用 amd64 原生构建与独立 registry cache；BuildKit 状态置于单次构建的本地临时目录，不放在共享 NFS workspace 上。构建输入仍来自校验后的源码包。这里参考 haier 的 registry auth、cache 和镜像发布/校验组织方式，但不照搬 Kaniko：LightRAG 现有 Dockerfile 使用 Dockerfile frontend 的 cache/bind `RUN --mount` 语义，改用 Kaniko 需要另建或改造生产 Dockerfile，会引入构建路径漂移。
 
 构建入口必须向 stdout/stderr 输出可持续刷新的非敏感进度：脚本在调用 BuildKit 前打印 tag、commit、cache ref 和 metadata 文件位置，并强制 `BUILDKIT_PROGRESS=plain` / `--progress=plain`，避免 Woodpecker 只能看到一个长时间运行但无上下文的步骤。不得打印 registry 密码、COS 密钥或完整运行 Secret。
 
@@ -70,7 +70,7 @@ rootless BuildKit step 不能假设前一下载步骤解包出来的源码 works
 
 `scripts/ci/base-images.lock.json` 记录源、目标、digest 和平台，[操作文档](../../../docs/ContainerBaseImages.md)记录本机同步、校验与更新方式；本次实际结果见[验证记录](base-images-verification.md)。后续更新必须重走“先推送验证、后修改引用”，CI 不自动从公网补齐缺失镜像，也不能用 build args 绕过基础镜像来源要求。已验证 registry 拒绝匿名读取，既有 CI 和开发环境需要专用读取权限，GHCR 登录不能替代它；发布写权限不授予 PR。该改动仅收敛镜像来源，apt、Rust、PyPI、npm 和模型下载仍有构建出站依赖。
 
-实施前先以最小构建验证 Kubernetes step 的非 root UID、user namespace、seccomp/AppArmor 配置及 cache/bind mount 支持，再构建完整镜像。rootless 不等于不需要安全配置：仅构建步骤允许必要的 unconfined profile / no-process-sandbox 设置，不能全局放宽 agent 或挂载宿主 Docker socket。步骤须设置 CPU、内存和临时磁盘预算，构建失败不自动改为 privileged。
+实施前先以最小构建验证 Kubernetes step 的非 root UID、user namespace、seccomp/AppArmor 配置及 cache/bind mount 支持，再构建完整镜像。rootless 不等于不需要安全配置：仅构建步骤允许必要的 `hostUsers: false`、unconfined profile / no-process-sandbox 设置，不能全局放宽 agent 或挂载宿主 Docker socket。步骤须设置 CPU、内存和临时磁盘预算，构建失败不自动改为 privileged。`v1.5.21-test` 证明当前失败发生在 BuildKit daemon 启动前，日志为 `failed to share mount point: /: permission denied`；后续验证必须先确认 Woodpecker 生成的 Pod user namespace 与 AppArmor/Seccomp 配置实际生效，再宣称 rootless 构建可用。
 
 备选方案：
 
@@ -93,7 +93,7 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 
 目标为 `~/.kube/test-config` 对应的 test 集群；所有工具命令显式指定 kubeconfig/context，不改变本机默认上下文。namespace 为 `lightrag-test`，应用 release/deployment 为 `lightrag`。
 
-使用 Kustomize 测试 overlay：两副本、`WORKERS=1`、PGKV/PGDocStatus/PGVector/HugeGraph、稳定且一致的 deployment ID/workspace、两条共同 RWX 路径、非 root UID/GID 1000，禁用 Service links。HugeGraph 连接池按整个两副本部署预算配置，测试起点为每 Pod 1 个连接。
+使用 Kustomize 测试 overlay：两副本、`WORKERS=1`、PGKV/PGDocStatus/PGVector/HugeGraph、稳定且一致的 deployment ID/workspace、两条共同 RWX 路径、非 root UID/GID 1000，禁用 Service links。HugeGraph 连接池按整个两副本部署预算配置，测试起点为每 Pod 1 个连接。Kubernetes 执行方式参考 haier 的 `deploy-test.sh`/`deploy.sh`/`status.sh`：从全局 `kubeconfig_test` 注入 kubeconfig、脚本化前置检查、应用受审 manifest、等待 rollout，并在步骤结尾输出 Deployment/Pod/Service 状态；LightRAG 不创建公网 Ingress，也不在发布脚本里执行 bootstrap/migrate。
 
 首次接入是单独的显式环境准备，不属于每个 tag 自动部署：
 

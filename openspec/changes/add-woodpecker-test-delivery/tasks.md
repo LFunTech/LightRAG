@@ -9,6 +9,7 @@
 
 - [x] 1.1 取得本 proposal/design/spec 的实施批准，记录 test 集群、`lightrag-test` namespace 和首次初始化维护边界。
 - [ ] 1.2 核对 Woodpecker 仓库接入、受保护 tag、Secret 事件/镜像限制、COS/registry 权限及命名空间级部署凭据；只记录名称和验证结果。
+  - 2026-09-14 只读核对：Woodpecker `LFunTech/LightRAG` 已启用，默认分支 `master`，仓库为 public；global secrets 存在 `DOCKER_USERNAME`、`DOCKER_PASSWORD`、`kubeconfig_test`（tag 事件可用），organization secrets 存在 `cos_storage_endpoint`、`cos_storage_bucket`、`cos_storage_secret_id`、`cos_storage_secret_key`（tag 事件可用），repo-local secrets 为空。GitHub rulesets 当前为空，`lightrag-test` namespace 当前不存在，因此受保护 tag 与命名空间级部署资源仍待管理员显式完成。
 - [ ] 1.3 验证 rootless BuildKit 探针：非 root、所需安全上下文、cache/bind mount、amd64 构建和临时存储预算，固定工具镜像版本/digest；失败不自动提权。
 
 ## 2. 本地回归基线与流水线静态门禁
@@ -49,7 +50,8 @@
 
 ## 7. 验证与真实接入
 
-- [ ] 7.1 运行 Woodpecker strict lint、交付脚本本地测试/静态检查、Kustomize render 和相关 manifest 回归；保存命令、版本及结果。
+- [x] 7.1 运行 Woodpecker strict lint、交付脚本本地测试/静态检查、Kustomize render 和相关 manifest 回归；保存命令、版本及结果。
+  - 2026-09-14 本地验证：`./scripts/test.sh tests/ci` → 59 passed；`uv run ruff check scripts/ci/delivery.py tests/ci/test_workflows.py tests/ci/test_delivery.py tests/ci/test_source_artifact_script.py` → pass；`WOODPECKER_SERVER=https://woodpecker.f123.pub woodpecker-cli lint --strict .woodpecker/*.yml` → 4 个 workflow valid；`scripts/ci/delivery-check.sh` → pass，包含 shell/Python/JSON、Kustomize render、strict Woodpecker lint 和 OpenSpec strict validation；`openspec validate add-woodpecker-test-delivery --strict` → valid；`git diff --check` → pass。版本：woodpecker-cli 3.14.1、OpenSpec 1.9.0、kubectl client v1.36.1 / kustomize v5.8.1、uv Python 3.12.11、ruff 0.15.12。
 - [ ] 7.2 本地运行完整非 integration 后端测试和完整前端检查，分项记录 pass/skip/fail；确认这些测试结果不被写成 Woodpecker 门禁。
 - [ ] 7.3 在批准的 test 集群创建独立测试资源、完成跨节点 RWX 实测和显式初始化；记录目标与证据，不修改本机/Kind 服务或其他应用资源。
 - [ ] 7.4 在获得触发授权后用测试 tag 跑通真实 Woodpecker 构建、镜像验证和初次双 Pod 部署，保存 pipeline/tag/commit/digest、imageID 及业务验收结果。

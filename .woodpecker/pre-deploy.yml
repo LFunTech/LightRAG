@@ -6,8 +6,10 @@ workspace:
   path: src
 
 when:
-  event: [tag]
-  ref: [refs/tags/v*, refs/tags/v*-pre, refs/tags/v*-test]
+  - event: tag
+    evaluate: 'CI_COMMIT_TAG matches "^v[0-9]+[.][0-9]+[.][0-9]+(-pre|-test)?$"'
+  - event: tag
+    ref: refs/tags/v*
 
 depends_on: [build-image]
 
@@ -15,7 +17,7 @@ skip_clone: true
 
 steps:
   download-source:
-    image: docker-hub.f123.pub/base/ci-tools:alpine-3.22.2
+    image: docker-hub.f123.pub/base/ci-tools:alpine-3.22.4
     commands:
       - |
         set -euo pipefail

@@ -49,6 +49,18 @@ echo "image tag: ${IMAGE}:${CI_COMMIT_TAG}"
 echo "commit: ${CI_COMMIT_SHA}"
 echo "cache ref: ${CACHE_REF}"
 echo "metadata file: ${METADATA_FILE}"
+echo "buildkit runtime: uid=$(id -u) gid=$(id -g) kernel=$(uname -r)"
+if [ -r /proc/self/attr/current ]; then
+  echo "apparmor profile: $(cat /proc/self/attr/current || true)"
+fi
+if [ -r /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+  echo "apparmor_restrict_unprivileged_userns=$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns)"
+else
+  echo "apparmor_restrict_unprivileged_userns=unavailable"
+fi
+if [ -r /proc/sys/user/max_user_namespaces ]; then
+  echo "max_user_namespaces=$(cat /proc/sys/user/max_user_namespaces)"
+fi
 
 buildctl-daemonless.sh build \
   --progress=plain \

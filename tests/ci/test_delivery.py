@@ -23,7 +23,14 @@ def test_release_source_requires_expected_repo_commit_and_master_ancestry(tmp_pa
         calls.append(args)
         if args == [
             "fetch",
-            "--tags",
+            "--no-tags",
+            "origin",
+            "+refs/tags/v1.2.3-test:refs/tags/v1.2.3-test",
+        ]:
+            return ""
+        if args == [
+            "fetch",
+            "--no-tags",
             "--unshallow",
             "origin",
             "+refs/heads/master:refs/remotes/origin/master",
@@ -45,9 +52,16 @@ def test_release_source_requires_expected_repo_commit_and_master_ancestry(tmp_pa
     assert identity.commit == "abc123"
     assert identity.deploy_environment == "test"
     assert all("--depth=0" not in call for call in calls)
+    assert all("--tags" not in call for call in calls if call and call[0] == "fetch")
     assert [
         "fetch",
-        "--tags",
+        "--no-tags",
+        "origin",
+        "+refs/tags/v1.2.3-test:refs/tags/v1.2.3-test",
+    ] in calls
+    assert [
+        "fetch",
+        "--no-tags",
         "--unshallow",
         "origin",
         "+refs/heads/master:refs/remotes/origin/master",

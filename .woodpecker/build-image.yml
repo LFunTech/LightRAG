@@ -6,8 +6,10 @@ workspace:
   path: src
 
 when:
-  event: [tag]
-  ref: [refs/tags/v*, refs/tags/v*-pre, refs/tags/v*-test]
+  - event: tag
+    evaluate: 'CI_COMMIT_TAG matches "^v[0-9]+[.][0-9]+[.][0-9]+(-pre|-test)?$"'
+  - event: tag
+    ref: refs/tags/v*
 
 depends_on: [validate-release]
 
@@ -15,7 +17,7 @@ skip_clone: true
 
 steps:
   download-source:
-    image: docker-hub.f123.pub/base/ci-tools:alpine-3.22.2
+    image: docker-hub.f123.pub/base/ci-tools:alpine-3.22.4
     commands:
       - |
         set -euo pipefail
@@ -78,7 +80,9 @@ steps:
     depends_on: [download-source]
     backend_options:
       kubernetes:
+        hostUsers: false
         securityContext:
+          runAsNonRoot: true
           runAsUser: 1000
           runAsGroup: 1000
           seccompProfile:

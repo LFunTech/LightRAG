@@ -1,5 +1,8 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env sh
+set -eu
+if (set -o pipefail) 2>/dev/null; then
+  set -o pipefail
+fi
 
 : "${CI_COMMIT_TAG:?CI_COMMIT_TAG is required}"
 : "${CI_COMMIT_SHA:?CI_COMMIT_SHA is required}"
@@ -21,6 +24,16 @@ LABEL_SELECTOR="app.kubernetes.io/name=lightrag,app.kubernetes.io/instance=light
 KUBECONFIG_FILE="${KUBECONFIG_FILE:-/tmp/lightrag-test-kubeconfig}"
 ROUTE_PAUSE_PATCH='{"spec":{"selector":{"lightrag.openai.com/routing-paused":"true"}}}'
 ROUTE_RESTORE_PATCH='{"spec":{"selector":{"app.kubernetes.io/name":"lightrag","app.kubernetes.io/instance":"lightrag"}}}'
+
+show_kubectl_status() {
+  label="$1"
+  shift
+
+  echo "${label}:"
+  if ! "$@"; then
+    echo "Unable to read ${label}; keeping deployment command status unchanged." >&2
+  fi
+}
 
 mkdir -p "$(dirname "$KUBECONFIG_FILE")" build/release
 cleanup() {
@@ -231,6 +244,13 @@ if [ -z "$ENDPOINTS" ]; then
   echo "service $SERVICE has no endpoints after routing restore" >&2
   exit 1
 fi
+
+show_kubectl_status "Deployment status" \
+  kubectl -n "$NAMESPACE" get deployment "$DEPLOYMENT" -o wide
+show_kubectl_status "Pod status" \
+  kubectl -n "$NAMESPACE" get pods -l "$LABEL_SELECTOR" -o wide
+show_kubectl_status "Service status" \
+  kubectl -n "$NAMESPACE" get service "$SERVICE" -o wide
 
 cat > build/release/deployment-result.json <<JSON
 {"tag":"$CI_COMMIT_TAG","commit":"$CI_COMMIT_SHA","digest":"$LIGHTRAG_IMAGE_DIGEST","pods":2,"service_endpoints":"present"}

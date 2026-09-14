@@ -103,9 +103,14 @@ def _run_git(args: list[str], cwd: Path | None = None) -> str:
 def _fetch_master_history(git: Callable[[list[str]], str]) -> None:
     refspec = "+refs/heads/master:refs/remotes/origin/master"
     try:
-        git(["fetch", "--tags", "--unshallow", "origin", refspec])
+        git(["fetch", "--no-tags", "--unshallow", "origin", refspec])
     except subprocess.CalledProcessError:
-        git(["fetch", "--tags", "origin", refspec])
+        git(["fetch", "--no-tags", "origin", refspec])
+
+
+def _fetch_release_tag(git: Callable[[list[str]], str], tag: str) -> None:
+    refspec = f"+refs/tags/{tag}:refs/tags/{tag}"
+    git(["fetch", "--no-tags", "origin", refspec])
 
 
 def _open_url(request: urllib.request.Request, *, timeout: int = 30):
@@ -172,6 +177,7 @@ def verify_release_source(
         raise ReleaseIdentityError(f"repository {repo!r} is not allowed")
     git = git or _run_git
     try:
+        _fetch_release_tag(git, tag)
         _fetch_master_history(git)
         tag_commit = git(["rev-parse", f"{tag}^{{commit}}"]).strip()
         if tag_commit != event_commit:
