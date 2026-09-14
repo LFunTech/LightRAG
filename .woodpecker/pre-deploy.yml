@@ -19,20 +19,20 @@ steps:
     commands:
       - |
         set -euo pipefail
-        : "${STORAGE_ENDPOINT:?STORAGE_ENDPOINT is required}"
-        : "${STORAGE_BUCKET:?STORAGE_BUCKET is required}"
-        : "${STORAGE_ACCESS_KEY:?STORAGE_ACCESS_KEY is required}"
-        : "${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY is required}"
+        : "$${STORAGE_ENDPOINT:?STORAGE_ENDPOINT is required}"
+        : "$${STORAGE_BUCKET:?STORAGE_BUCKET is required}"
+        : "$${STORAGE_ACCESS_KEY:?STORAGE_ACCESS_KEY is required}"
+        : "$${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY is required}"
         resolve_storage_endpoint() {
-          endpoint="${1:-}"
+          endpoint="$${1:-}"
           case "$endpoint" in
             http://*)
               scheme="http"
-              rest="${endpoint#http://}"
+              rest="$${endpoint#http://}"
               ;;
             https://*)
               scheme="https"
-              rest="${endpoint#https://}"
+              rest="$${endpoint#https://}"
               ;;
             *)
               scheme="https"
@@ -40,9 +40,9 @@ steps:
               ;;
           esac
 
-          host="${rest%%/*}"
-          host="${host%%\?*}"
-          host="${host%%#*}"
+          host="$${rest%%/*}"
+          host="$${host%%\?*}"
+          host="$${host%%#*}"
           if [ -z "$host" ]; then
             echo "storage endpoint host is empty" >&2
             return 64

@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import yaml
@@ -40,6 +41,21 @@ def test_release_source_workflow_runs_static_validation_and_uploads_source_once(
         "OPENAI_API_KEY",
     ):
         assert forbidden not in text
+
+
+def test_source_artifact_bootstrap_escapes_shell_parameter_expansion():
+    for name in (
+        "validate-release.yml",
+        "build-image.yml",
+        "pre-deploy.yml",
+        "deploy-test.yml",
+    ):
+        workflow = load(name)
+        steps = workflow["steps"]
+        step_names = ["upload-source"] if name == "validate-release.yml" else ["download-source"]
+        for step_name in step_names:
+            command_text = "\n".join(steps[step_name]["commands"])
+            assert not re.search(r"(?<!\$)\$\{", command_text), (name, step_name)
 
 
 def test_woodpecker_workflows_are_not_triggered_by_master_updates():

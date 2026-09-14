@@ -28,10 +28,10 @@ steps:
     commands:
       - |
         set -euo pipefail
-        : "${STORAGE_ENDPOINT:?STORAGE_ENDPOINT is required}"
-        : "${STORAGE_BUCKET:?STORAGE_BUCKET is required}"
-        : "${STORAGE_ACCESS_KEY:?STORAGE_ACCESS_KEY is required}"
-        : "${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY is required}"
+        : "$${STORAGE_ENDPOINT:?STORAGE_ENDPOINT is required}"
+        : "$${STORAGE_BUCKET:?STORAGE_BUCKET is required}"
+        : "$${STORAGE_ACCESS_KEY:?STORAGE_ACCESS_KEY is required}"
+        : "$${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY is required}"
         . scripts/ci/source-artifact.sh
         STORAGE_ENDPOINT_ROOT="$(resolve_storage_endpoint "$STORAGE_ENDPOINT")"
         ARTIFACT_PREFIX="lightrag/ci-source/$CI_COMMIT_SHA/$CI_PIPELINE_NUMBER"
