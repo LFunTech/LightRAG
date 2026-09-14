@@ -103,3 +103,27 @@ def test_maintenance_requires_actual_operator_confirmations(tmp_path):
     result = render(tmp_path, values)
     assert result.returncode != 0
     assert "writersStopped/inflightFinished" in result.stderr
+
+
+@pytest.mark.parametrize("mode", ["default", "stateful", "distributed"])
+def test_pod_templates_disable_service_links_that_shadow_dotenv(tmp_path, mode):
+    """A postgres Service must not inject a tcp:// POSTGRES_PORT over .env."""
+    values = {}
+    if mode == "stateful":
+        values = {"workload": {"kind": "StatefulSet"}}
+    elif mode == "distributed":
+        values = profile()
+        values["replicaCount"] = 0
+        values["maintenance"].update(
+            enabled=True, writersStopped=True, inflightFinished=True
+        )
+    result = render(tmp_path, values)
+    assert result.returncode == 0, result.stderr
+    workloads = [
+        doc
+        for doc in yaml.safe_load_all(result.stdout)
+        if doc["kind"] in {"Deployment", "StatefulSet", "Job"}
+    ]
+    assert len(workloads) == (2 if mode == "distributed" else 1)
+    for workload in workloads:
+        assert workload["spec"]["template"]["spec"].get("enableServiceLinks") is False

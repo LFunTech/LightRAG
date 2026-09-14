@@ -162,7 +162,7 @@ PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh \
 
 结果分别 **1642 passed、108 skipped，49.94 秒**；**205 passed，38.84 秒**。范围重叠，不相加冒称独立测试总数。全仓 Ruff、全部 41 个变更 Python 文件格式、分支 diff-check 和 OpenSpec strict 再次通过。日志为 `/tmp/lightrag-distributed-root-finalfix-{mirror,real}.log`。此窄修复后未再次运行无关全量；前述全量里程碑是修复前版本且保留两项已知基线失败，不声称最终树全量全绿。最终限定复审覆盖 `f9f67dd3c..eff5915b8`，FR-I1、FR-I2、FR-M1、T4-M1 全部 ADDRESSED，无新增问题、无遗留项，spec/quality Approved。整分支审查提出的阻断项均已解除，4.4 完成；不意味着已在集群发布或全量测试无基线失败。修复原始报告保存在 [final-fix-report.md](final-fix-report.md)。
 
-## 最终验收矩阵
+## 原功能分支验收矩阵（集群验收见后续记录）
 
 | 合同 | 已有证据 | 状态 |
 |---|---|---|
@@ -185,8 +185,67 @@ PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh \
 4. 分布式取消区域使用原持锁 Task，不以 shield 子任务借用父锁；维持任务所有权避免自等待。代价是取消后可能保留更多 tracking 残留，需要按持久化精确目标审计，默认 local 行为不变。
 5. 分布式 PGKV 在 SQL 中原子合并共享 chunk 的 `llm_cache_list`，不让旧快照覆盖已确认归属。代价是保留额外失效引用到 chunk 删除；此方向无害，优先保证不丢 attribution，默认 local 替换语义不变。
 
-## 交付状态
+## 原功能分支交付状态（后续验收见下节）
 
 方案 A 的 16 项任务均已实现并记录对应验证；默认 local 行为保留，推荐 distributed profile 支持同 workspace 的不同资源并行写入、同资源互斥及显式审计恢复。未要求自动 HA、实际 Kubernetes 发布、向量收费模型重建或替换现有本地测试服务，本次也未执行它们。真实集群 RWX、网络/Secret、镜像以及运维停写/静止确认仍须按部署 runbook 验收。
 
 本次只交付当前目录功能分支 `feat/distributed-workspace-writes`，不合并主分支、不创建 PR、不归档 OpenSpec。已有测试服务配置与密钥不提交。临时 SDD 账本/评审 package 清理前，裁定、发现、修复、验收数字和限制已保存在本 change 与 Git 历史中；历史命令引用的临时环境文件不作为仓库运行依赖。
+
+## 后续真实 Kubernetes 验收：2026-09-14
+
+本节更新此前“尚未执行 Kubernetes 验收”的交付状态；此前数字和裁定属于各历史里程碑，保留不改写。用户已要求集成到 `master`，`main` 恢复并保持 upstream 基线 `af6089f4e3781a092ec0a6f0d631e2135b650b2a`。本轮在 `master` 的 `b2962397458484cfbba05dac4701c7a687374815` 应用源码上执行，生产 Python 代码未再修改，仅修正 chart 与补充测试/文档。
+
+### 环境与可复跑工具
+
+- 专用 Kind 集群 `lightrag-concurrency`，Kubernetes v1.35.0，一个 control-plane、两个 worker；namespace `lightrag-concurrency-test`。所有 kubectl/Helm 均显式指定独立 kubeconfig/context，未修改全局 kubeconfig 或其他集群。
+- 未修改仓库 Dockerfile，完整构建 API、WebUI、锁定依赖、tiktoken 与 spaCy 离线资源。镜像 `lightrag:b29623974-k8s-verify`，ID `sha256:71c74419edea640ac03f837f89a38f4b5e16014963e7f7943bc6be5b17a69085`。
+- PostgreSQL/pgvector（`pgvector/pgvector:pg17`）、HugeGraph 1.7.0 都是真实服务，独立于已有本机业务图；随机测试凭据通过 Kubernetes Secret 注入，未进入 Git。只读检查确认 HugeGraph 实际 core 为 1.7.0。
+- 最终 workspace `local_debug_k8s_20260914_complete`，deployment ID `local_debug_kind_20260914`。模型仅使用确定性 fixture，不调用百炼、不消耗模型额度；图请求由测试代理原样转发。
+- `tests/distributed/kubernetes/{prepare.py,gateway.py,verify.py,README.md}` 提供生成、部署和验收流程。生成器拒绝仓库内凭据路径/非空目录，不覆盖已有凭据或目录权限。验收器拒绝非专用 context/namespace；不同运行有独立事件前缀。
+
+### 最终七组实测结果：全部通过
+
+原始脱敏证据：[kubernetes-acceptance-2026-09-14.json](kubernetes-acceptance-2026-09-14.json)。实际 runner 退出码 0；不是两个共享 Manager 的对象或仅本机子进程测试。
+
+| 检查 | 实际结果 |
+|---|---|
+| 两个节点、实际源码、共享文件 | 两个不同 Pod UID / IP，分别位于 `worker` / `worker2`；容器内 control.py SHA-256 与源码一致；A 写文件 B 可读，B 对同文件独占创建被拒绝 |
+| 文档领取、写请求重叠、维护排他 | 同时有 2 个 document claim；clear 在约 30.011 秒有界等待后返回 typed 409；两侧真实 HugeGraph POST 均 201，区间重叠 **2,390,083 ns（2.390083 ms）**，不计人工 barrier 等待 |
+| 同实体/关系并发贡献 | Atlas/Borealis 关系保留两个不同 source，weight ≥ 2；tracking、两份 full_entities/full_relations 锚点与真实 PGVector 记录均存在 |
+| 相同文本/文件名竞争 | 初次两个 HTTP 均接受，实际只抽取一次；保留 1 条指向主文档的 FAILED duplicate 审计记录；重复提交均 409，没有额外抽取 |
+| 全局暂停/恢复 | A 请求暂停后 B 可见；暂停期间新 enqueue 与 peer polling 不启动提取；B 显式重试请求恢复待处理文档 |
+| FAILED 人工一次重试 | 注入模型 400 后主文档 FAILED；普通轮询不改变失败版本、不增加提取次数；显式请求后恰好多一次提取并收敛 |
+| 正常 Pod 替换 | 删除空闲应用 Pod，Deployment 创建新 UID；7 篇主文档仍全部 PROCESSED，duplicate 审计仍有效 |
+
+最终控制状态：`paused=false`、`fenced=false`、`active_operations=0`、`claimed_documents=0`、`pending_retries=0`。最终 scope 的 **203 条物理 mutation 全部 ACK，pending=0**。两个应用 Pod 均 Ready，无容器重启。
+
+### 测试中发现的问题与未隐藏的失败尝试
+
+1. **实际 chart 缺陷：Service 环境变量碰撞。** 默认 Service-link 将 `POSTGRES_PORT=tcp://<ClusterIP>:5432` 注入 Pod，覆盖挂载 `.env` 的数字端口。首次 bootstrap 因此失败。新增真实 Helm 渲染回归先 **3 failed**（默认 Deployment、StatefulSet、分布式应用/Job），再在共享 Pod 模板设置 `enableServiceLinks: false` 后通过；显式 DNS 与 Secret 仍生效。没有通过改名测试 Service 掩盖缺陷。
+2. **保留恢复屏障和配置指纹。** 初次失败没有物理 mutation/业务 sessions/图请求；确认 writer 已停止后执行真实 recover CLI，generation 1→2、旧 operation 与 recovery audit 保留。修正端口后旧 manifest 被正确拒绝，因此另建隔离测试 workspace，没有重写旧 manifest。
+3. **测试代理 gzip 缺陷。** HugeGraph 在 `Accept-Encoding: identity` 时仍返回 gzip，代理最初漏传 Content-Encoding，导致只读迁移检查解析失败。直接与代理响应字节对比确认根因；增加回归先 **1 failed** 再通过，保持响应 payload 与 Content-Encoding。该次 22 条 schema/初始化写已全部 ACK、主文档和图 scope 为空，停止 writer、确认 sessions/请求已结束后显式审计恢复；没有删除协调历史。
+4. **真实后端容量限制。** 小型 HugeGraph 容器日志显示 batch 写并发预算为 3。首轮四路并发图请求中三路 201、一路 400，LightRAG 保留不确定状态并 fence，而非盲重试或伪成功。失败 scope `local_debug_k8s_20260914_verified` 至今保留 **2 条 pending**、已提交图贡献与锚点，所有该 scope writer 已停止；没有自动 recover 或删除现场。最终验收配置为每 Pod `HUGEGRAPH_MAX_CONNECTIONS=1`，仍有两个 Pod 的两路真实并行，全部检查通过。不能把默认每 Pod 10 条连接当成集群级限流或吞吐承诺。
+5. **验收断言修正，而非生产语义修改。** 同文件名竞争允许两个 preflight 都通过，后台只处理一次并留 duplicate FAILED 审计行；runner 改为验证该行的 ID、原文档引用、FAILED 状态、零 chunks，不将它误算为主文档失败。人工重试 HTTP 接受是异步的，runner 只允许等待原 FAILED 版本，新的失败版本仍立即报错。未改写 duplicate/retry 生产路径以迎合测试。
+6. **Docker VM 磁盘限制。** 初期完整镜像构建/导入因 VM 磁盘满失败。按用户授权仅执行未使用 builder cache prune；未执行 Docker image/container/volume/system prune，未删除其他项目资源。重新完整构建与镜像导入后验收成功。
+
+### 最新质量验证
+
+```bash
+PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh tests --test-workers 4
+PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh tests/setup tests/distributed/kubernetes --test-workers 4
+```
+
+- 最新全量：**8826 passed、366 skipped、2 failed，159.40 秒**。失败仍只有 `tests/api/test_path_prefixes.py::TestWhitelistUnderApiPrefix::test_destructive_route_requires_auth_under_a_colliding_prefix[verbatim]` 与 `[strip]`：既有 401/403 断言差异，均拒绝未授权访问，未在此任务中改写。全量并非全绿。
+- 最后生成器权限 guard 红绿后，setup + Kubernetes 工具定向：**372 passed，32.72 秒**；Kubernetes 脚本最后的 duplicate/异步 FAILED 断言由上述完整真实七组运行再次验证。
+- 本日原生 PG/HugeGraph + distributed/API/Helm 集成：**405 passed，47.23 秒**；它与本次 Kubernetes 测试不是同一套证据。
+- 最终静态检查：全仓 Ruff、6 个新增/修改 Python 文件格式、默认与分布式 Helm lint、OpenSpec strict 与 diff-check 全部通过。
+- 前端：`bun install --frozen-lockfile`、`bun test` **635 pass、0 fail**，`bunx tsc --noEmit` 通过；`bun run lint` 0 error，仅已有 `ThemeProvider.tsx:59:10` warning。镜像 WebUI 构建也通过。
+
+### 范围与保留状态
+
+当前是**本机 Kind 跨节点 Pod 功能验收**，不是生产 NFS/云 RWX、独立物理机、节点强杀、网络分区、数据库重启、自动 HA 或性能压测。两个 Kind worker 使用同一 Mac 的共享挂载；HugeGraph fixture 未挂数据 PVC，不能据此声称图服务 Pod 重建安全。前述进程 SIGKILL/ACK-loss 测试继续作为故障合同证据，但不冒称此次执行了 Pod 强杀。
+
+测试 cluster、Secret、PG 数据、最终两个应用 Pod 和失败 scope 现场保留供检查。端口转发已由 runner 关闭，Service 全部 ClusterIP，没有 Ingress 或公网入口；不修改原有本机 9621 服务、`.env` 或 `.secrets/test.secrets`。OpenSpec 仍不归档。最终 scope 可正常写入，但其他已记录的故障 scope 不应绕过其 fence。
+
+
+推送前检查发现远端 `master` 已前进至 `cc66aec0b7e51490910ab0d4d2f813e6eae88d01`（合入 49 个 upstream 提交，包含 core 变更）。本节测试证据明确对应上述 `b29623974` 应用源码与本轮 chart 修正，**不代表已验证新的远端代码**。未擅自覆盖、rebase 或合并远端；后续集成需经用户确认并重新验证。

@@ -91,6 +91,20 @@ must remain IO-free: pools/witnesses are initialized in each worker's lifespan,
 never in a pre-fork initialized rag. Independent-process acceptance is not a
 Gunicorn preload or Kubernetes scheduling test.
 
+The chart disables Kubernetes Service-link environment injection for application
+Pods and maintenance Jobs. Use explicitly configured DNS endpoints: a Service named
+`postgres` must not inject `POSTGRES_PORT=tcp://...` over the numeric `.env` value.
+This does not disable cluster DNS or explicit `envFrom` Secret values.
+
+Budget aggregate HugeGraph concurrency before increasing replicas. Each Pod has
+its own `HUGEGRAPH_MAX_CONNECTIONS` pool (default 10); this is not a cluster-wide
+rate limit. The server's batch-write thread budget can be smaller than the sum
+of client pools. For the two-Pod, small-CPU local acceptance fixture, use 1 per
+Pod while still proving two simultaneous graph requests. Size production pools
+and server resources together with headroom for other callers. A rejected or
+uncertain mutation is not blindly retried: inspect and follow audited recovery
+when the workspace fences. More replicas alone do not guarantee more throughput.
+
 ## Explicit bootstrap and rollout
 
 1. Back up PG business and coordination databases, HugeGraph, and shared files.
@@ -295,6 +309,16 @@ processes, independent Managers and pools, production parser/extractor/merge/
 purge, deterministic test-only models, overlapping real graph requests and
 post-commit ACK-loss/SIGKILL faults. It does not kill backend services.
 
-These tests **are not a kubectl multi-Pod test**. Cluster scheduling, RWX provider
-semantics, Secrets delivery, real egress policy, node failure, Gunicorn preload,
-and production load/capacity must be validated by the deployment operator.
+The process tests above are not Kubernetes tests. Separately,
+[`tests/distributed/kubernetes/README.md`](../tests/distributed/kubernetes/README.md)
+provides an opt-in real two-node/two-Pod Kind acceptance runner using this
+Dockerfile, chart, Secret delivery, real PG/pgvector and HugeGraph, and test-only
+models. It verifies request overlap, evidence retention, duplicate audit records,
+maintenance refusal, global pause/retry and graceful application Pod replacement.
+The 2026-09-14 run passed all seven groups; the OpenSpec change records the raw
+sanitized evidence and the failed attempts that preceded it.
+
+Kind workers share one physical host and its filesystem. Production RWX provider
+semantics, enforced egress policy, node failure, Gunicorn preload and production
+load/capacity still require operator acceptance. This is not automatic failover
+or a performance benchmark.

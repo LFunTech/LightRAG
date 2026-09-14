@@ -49,3 +49,10 @@ Ownership: `lightrag/pipeline.py`、`lightrag/distributed/pipeline.py`（可选�
 - [x] 4.4 独立最终代码审查，修复重要问题；逐条对照 spec 更新 tasks/verification，不把 foundation 或 mock 测试当完整多 Pod 交付。
 
 Ownership: docs/env/Helm、集成 tests、OpenSpec verification；不实际部署 Kubernetes，不改正在运行的本地测试配置，不自动清理既有业务 scope。编排环境验证若未执行必须明确标注，独立进程测试不能伪称 kubectl 多 Pod 测试。
+
+
+## 后续用户授权：真实 Kubernetes 验收（2026-09-14）
+
+用户后续明确要求完整测试与本机多 Pod 测试，并授权建立隔离 Kind 集群及清理未使用构建缓存；此授权仅替代 Task 4 原先“不实际部署 Kubernetes”的限制，不允许修改其他集群或现有业务服务。分支以用户更正为准：`master` 集成，`main` 保持 upstream。
+
+- [x] 4.5 实际构建当前源码镜像、执行 Helm bootstrap，部署不同 Kind worker 节点上的两个写 Pod；验证共享路径、真实 HTTP 写交叠、共同实体来源/权重/锚点/向量、重复审计、维护拒绝、全局暂停与 FAILED 人工重试、正常 Pod 替换；修复 Service-link 配置碰撞并补充回归，记录完整失败尝试、全量测试与容量限制，不宣称生产 RWX/节点故障/自动 HA 已验收。

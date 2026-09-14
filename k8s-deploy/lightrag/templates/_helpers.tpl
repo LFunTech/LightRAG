@@ -128,6 +128,8 @@ metadata:
   labels:
     {{- include "lightrag.selectorLabels" . | nindent 4 }}
 spec:
+  # Service discovery uses configured DNS; injected *_PORT URLs shadow .env.
+  enableServiceLinks: false
   {{- with .Values.podSecurityContext }}
   securityContext:
     {{- toYaml . | nindent 4 }}

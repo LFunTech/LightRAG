@@ -11,6 +11,10 @@
 - **WHEN** 分布式参与者使用文件 KV/向量、非共享路径声明或不同配置指纹
 - **THEN** 启动明确失败且没有业务存储变更
 
+#### Scenario: Kubernetes Service environment collision
+- **WHEN** Helm 部署的命名空间存在名为 `postgres` 等 Service
+- **THEN** 应用 Pod 与维护 Job 禁用隐式 Service-link 环境变量，显式 DNS/Secret 配置仍生效，数字端口不被 `tcp://...` 覆盖
+
 #### Scenario: Existing local deployment
 - **WHEN** 未启用分布式写入
 - **THEN** 现有单机初始化、API、锁和存储行为保持兼容

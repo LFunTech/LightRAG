@@ -1,0 +1,253 @@
+{
+  "run_id": "5a814725cd484e5aaf5c9e9f535e718a",
+  "pods": [
+    {
+      "name": "lightrag-5db6c597f-j87x6",
+      "uid": "5a50cfa6-3ceb-4e29-8bf6-21760981bfb5",
+      "node": "lightrag-concurrency-worker",
+      "ip": "10.244.1.16",
+      "image_id": "sha256:71c74419edea640ac03f837f89a38f4b5e16014963e7f7943bc6be5b17a69085"
+    },
+    {
+      "name": "lightrag-5db6c597f-shjll",
+      "uid": "baccc737-5e60-4d8f-aa94-65193828822c",
+      "node": "lightrag-concurrency-worker2",
+      "ip": "10.244.3.8",
+      "image_id": "sha256:71c74419edea640ac03f837f89a38f4b5e16014963e7f7943bc6be5b17a69085"
+    }
+  ],
+  "checks": [
+    "different nodes, exact source, coherent shared filesystem",
+    "two document claims, real graph HTTP overlap, clear rejected before admission",
+    "shared entity/relation source union, weight, tracking, both anchors and real vector",
+    "competing identical submissions execute extraction once; replay does not add evidence",
+    "global pause survives peer polling/enqueue; explicit retry resumes",
+    "FAILED does not automatically retry; explicit request converges",
+    "graceful Pod replacement retains all seven processed documents"
+  ],
+  "control_source_sha256": "32d533989334857e44db2cf94f4b2abd8a2335c9d744210bbd4bff5d130c0a57",
+  "duplicate_audits": [
+    {
+      "id": "dup-00303674500b8a1d56b78b9b8a1d4012",
+      "content_summary": "[DUPLICATE:filename] Original document: doc-58f55ead3f9a97e56ef69c5b808b0fc5",
+      "content_length": 50,
+      "status": "failed",
+      "created_at": "2026-09-14T00:43:23.000359+00:00",
+      "updated_at": "2026-09-14T00:43:23.000361+00:00",
+      "track_id": "insert_20260914_004322_e915589c",
+      "chunks_count": 0,
+      "error_msg": "File name already exists. Original doc_id: doc-58f55ead3f9a97e56ef69c5b808b0fc5, Status: analyzing",
+      "metadata": {
+        "is_duplicate": true,
+        "duplicate_kind": "filename",
+        "original_doc_id": "doc-58f55ead3f9a97e56ef69c5b808b0fc5",
+        "original_track_id": "insert_20260914_004322_a234c0d2"
+      },
+      "file_path": "duplicate-race.txt"
+    }
+  ],
+  "maintenance_refusal_seconds": 30.011,
+  "physical_http_overlap": {
+    "requests": [
+      {
+        "kind": "graph",
+        "method": "POST",
+        "path": "/graphspaces/DEFAULT/graphs/hugegraph/graph/vertices/batch",
+        "client": "10.244.3.8",
+        "case": "5a814725cd484e5aaf5c9e9f535e718a:independent",
+        "start_ns": 1789346599986397168,
+        "end_ns": 1789346599988787251,
+        "status": 201
+      },
+      {
+        "kind": "graph",
+        "method": "POST",
+        "path": "/graphspaces/DEFAULT/graphs/hugegraph/graph/vertices/batch",
+        "client": "10.244.1.16",
+        "case": "5a814725cd484e5aaf5c9e9f535e718a:independent",
+        "start_ns": 1789346599986315793,
+        "end_ns": 1789346599988889418,
+        "status": 201
+      }
+    ],
+    "overlap_ns": 2390083
+  },
+  "shared_evidence": {
+    "separator": "<SEP>",
+    "node": {
+      "entity_id": "Atlas",
+      "entity_type": "organization",
+      "description": "Atlas research company.",
+      "source_id": "doc-0114c754558e913d558d62fab57476e2-chunk-000<SEP>doc-156c797333a3f4474e40fe5c899495f0-chunk-000",
+      "file_path": "shared-a.txt<SEP>shared-b.txt",
+      "created_at": 1789346601,
+      "truncate": ""
+    },
+    "edge": {
+      "weight": 2.0,
+      "description": "Atlas cooperates with Borealis.",
+      "keywords": "cooperates",
+      "source_id": "doc-0114c754558e913d558d62fab57476e2-chunk-000<SEP>doc-156c797333a3f4474e40fe5c899495f0-chunk-000",
+      "file_path": "shared-a.txt<SEP>shared-b.txt",
+      "created_at": 1789346601,
+      "truncate": ""
+    },
+    "tracking": {
+      "id": "Atlas",
+      "chunk_ids": [
+        "doc-0114c754558e913d558d62fab57476e2-chunk-000",
+        "doc-156c797333a3f4474e40fe5c899495f0-chunk-000"
+      ],
+      "count": 2,
+      "create_time": 1789346601,
+      "update_time": 1789346601
+    },
+    "anchors": {
+      "doc-156c797333a3f4474e40fe5c899495f0": {
+        "id": "doc-156c797333a3f4474e40fe5c899495f0",
+        "entity_names": [
+          "Atlas",
+          "Borealis"
+        ],
+        "count": 2,
+        "create_time": 1789346601,
+        "update_time": 1789346601
+      },
+      "doc-0114c754558e913d558d62fab57476e2": {
+        "id": "doc-0114c754558e913d558d62fab57476e2",
+        "entity_names": [
+          "Atlas",
+          "Borealis"
+        ],
+        "count": 2,
+        "create_time": 1789346601,
+        "update_time": 1789346601
+      }
+    },
+    "relation_anchors": {
+      "doc-156c797333a3f4474e40fe5c899495f0": {
+        "id": "doc-156c797333a3f4474e40fe5c899495f0",
+        "relation_pairs": [
+          [
+            "Atlas",
+            "Borealis"
+          ]
+        ],
+        "count": 1,
+        "create_time": 1789346601,
+        "update_time": 1789346601
+      },
+      "doc-0114c754558e913d558d62fab57476e2": {
+        "id": "doc-0114c754558e913d558d62fab57476e2",
+        "relation_pairs": [
+          [
+            "Atlas",
+            "Borealis"
+          ]
+        ],
+        "count": 1,
+        "create_time": 1789346601,
+        "update_time": 1789346601
+      }
+    },
+    "vector": {
+      "id": "ent-a6567816e007283cf9781c35b95dd56f",
+      "workspace": "local_debug_k8s_20260914_complete",
+      "entity_name": "Atlas",
+      "content": "Atlas\nAtlas research company.",
+      "create_time": "2026-09-14 00:43:21",
+      "update_time": "2026-09-14 00:43:21",
+      "chunk_ids": [
+        "doc-0114c754558e913d558d62fab57476e2-chunk-000",
+        "doc-156c797333a3f4474e40fe5c899495f0-chunk-000"
+      ],
+      "file_path": "shared-a.txt<SEP>shared-b.txt",
+      "created_at": 1789346601
+    }
+  },
+  "duplicate_responses": [
+    200,
+    200
+  ],
+  "documents": [
+    {
+      "id": "doc-4cb2d17291afdc6a1d92b4ce806a12e8",
+      "file_path": "failed.txt",
+      "status": "processed"
+    },
+    {
+      "id": "doc-4090b88668470890c6e0645daf4d6ad0",
+      "file_path": "paused.txt",
+      "status": "processed"
+    },
+    {
+      "id": "doc-58f55ead3f9a97e56ef69c5b808b0fc5",
+      "file_path": "duplicate-race.txt",
+      "status": "processed"
+    },
+    {
+      "id": "doc-156c797333a3f4474e40fe5c899495f0",
+      "file_path": "shared-b.txt",
+      "status": "processed"
+    },
+    {
+      "id": "doc-0114c754558e913d558d62fab57476e2",
+      "file_path": "shared-a.txt",
+      "status": "processed"
+    },
+    {
+      "id": "doc-c74ea160eb4a577a3ab342f2131bcd34",
+      "file_path": "independent-b.txt",
+      "status": "processed"
+    },
+    {
+      "id": "doc-98490aec6ce4e4eb0e1036ad473c3cd3",
+      "file_path": "independent-a.txt",
+      "status": "processed"
+    }
+  ],
+  "final_control": {
+    "paused": false,
+    "cancel_epoch": 1,
+    "pending_retries": 0,
+    "active_operations": 0,
+    "claimed_documents": 0,
+    "fenced": false,
+    "generation": 1,
+    "recovery_required": false,
+    "orphaned_operations": false,
+    "polling_error": null,
+    "polling_active": true,
+    "discovery_stopped": false
+  },
+  "replacement_pods": [
+    {
+      "name": "lightrag-5db6c597f-7qb2z",
+      "uid": "5137aae0-f8fb-45e3-86f8-7bc1a0cc4610",
+      "node": "lightrag-concurrency-worker"
+    },
+    {
+      "name": "lightrag-5db6c597f-shjll",
+      "uid": "baccc737-5e60-4d8f-aa94-65193828822c",
+      "node": "lightrag-concurrency-worker2"
+    }
+  ],
+  "environment": {
+    "source_commit": "b2962397458484cfbba05dac4701c7a687374815",
+    "image": "lightrag:b29623974-k8s-verify",
+    "kubernetes": "v1.35.0",
+    "context": "kind-lightrag-concurrency",
+    "namespace": "lightrag-concurrency-test",
+    "workspace": "local_debug_k8s_20260914_complete",
+    "deployment_id": "local_debug_kind_20260914",
+    "hugegraph": "1.7.0",
+    "graph_connections_per_pod": 1,
+    "model_provider": "deterministic test-only fixture",
+    "filesystem": "two Kind workers bind-mount the same host directory",
+    "chart_helper_sha256": "9923a9d7a1741384d1d96684ff26586ede83159dfc67bfd088fd332b9b3d66e1"
+  },
+  "final_persistence": {
+    "acknowledged_mutations": 203,
+    "pending_mutations": 0
+  }
+}
