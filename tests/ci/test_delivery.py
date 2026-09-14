@@ -70,6 +70,67 @@ def test_release_source_rejects_moved_tag():
         )
 
 
+def test_release_source_falls_back_to_remote_verifier_when_git_is_unavailable():
+    calls = []
+
+    def missing_git(args):
+        raise FileNotFoundError("git")
+
+    def remote_verifier(*, repo, tag, commit):
+        calls.append((repo, tag, commit))
+
+    identity = delivery.verify_release_source(
+        tag="v1.2.3-test",
+        event_commit="abc123",
+        repo="LFunTech/LightRAG",
+        allowed_repo="LFunTech/LightRAG",
+        git=missing_git,
+        remote_verifier=remote_verifier,
+    )
+
+    assert identity.commit == "abc123"
+    assert calls == [("LFunTech/LightRAG", "v1.2.3-test", "abc123")]
+
+
+def test_github_source_verifier_accepts_lightweight_tag_on_master(monkeypatch):
+    responses = {
+        "https://api.github.com/repos/LFunTech/LightRAG/git/ref/tags/v1.2.3-test": {
+            "object": {"sha": "abc123", "type": "commit"}
+        },
+        "https://api.github.com/repos/LFunTech/LightRAG/compare/abc123...master": {
+            "status": "ahead"
+        },
+    }
+    requested = []
+
+    class FakeResponse:
+        headers = {}
+
+        def __init__(self, data):
+            self._data = json.dumps(data).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return self._data
+
+    def fake_urlopen(request, timeout):
+        requested.append(request.full_url)
+        return FakeResponse(responses[request.full_url])
+
+    monkeypatch.setattr(delivery.urllib.request, "urlopen", fake_urlopen)
+
+    delivery._verify_release_source_via_github(
+        repo="LFunTech/LightRAG", tag="v1.2.3-test", commit="abc123"
+    )
+
+    assert requested == list(responses)
+
+
 def test_source_archive_excludes_secret_and_untracked_files(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -84,6 +145,33 @@ def test_source_archive_excludes_secret_and_untracked_files(tmp_path):
         identity=delivery.ReleaseIdentity("minwang/LightRAG", "v1.2.3-test", "abc", "p1", "test"),
     )
     assert record["sha256"] == hashlib.sha256(out.read_bytes()).hexdigest()
+    with tarfile.open(out, "r:gz") as tar:
+        assert sorted(tar.getnames()) == ["app.py", "release-record.json"]
+
+
+def test_source_archive_can_use_clean_worktree_snapshot_without_git(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text("print('ok')\n")
+    (repo / ".env").write_text("SECRET=bad\n")
+    (repo / "build" / "release").mkdir(parents=True)
+    (repo / "build" / "release" / "generated.json").write_text("{}\n")
+    (repo / "rag_storage").mkdir()
+    (repo / "rag_storage" / "data.json").write_text("{}\n")
+
+    def missing_git(args, cwd=None):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(delivery, "_run_git", missing_git)
+    out = tmp_path / "source.tar.gz"
+    delivery.create_source_archive(
+        repo,
+        out,
+        identity=delivery.ReleaseIdentity(
+            "LFunTech/LightRAG", "v1.2.3-test", "abc", "p1", "test"
+        ),
+    )
+
     with tarfile.open(out, "r:gz") as tar:
         assert sorted(tar.getnames()) == ["app.py", "release-record.json"]
 

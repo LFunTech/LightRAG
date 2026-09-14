@@ -166,16 +166,10 @@ def test_validate_release_creates_source_archive_and_record_before_build():
     assert "source.tar.gz" in text
 
 
-def test_validate_release_installs_git_before_release_scripts():
+def test_validate_release_does_not_install_packages_in_ci():
     validate = load("validate-release.yml")
     commands = validate["steps"]["validate-release"]["commands"]
-    install_index = next(
-        i for i, command in enumerate(commands) if "apt-get install" in command and "git" in command
-    )
-    script_index = next(
-        i for i, command in enumerate(commands) if "python -m scripts.ci.delivery" in command
-    )
-    assert install_index < script_index
+    assert all("apt-get" not in command for command in commands)
 
 
 def test_workflows_pin_linux_amd64_runner_platform():

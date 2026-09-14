@@ -12,6 +12,7 @@ import subprocess
 import tarfile
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -41,7 +42,16 @@ EXCLUDED_ARCHIVE_PREFIXES = (
     ".git/",
     "node_modules/",
     "lightrag_webui/node_modules/",
+    "build/",
+    "dist/",
+    ".venv/",
+    "venv/",
+    ".pytest_cache/",
+    ".ruff_cache/",
+    ".mypy_cache/",
 )
+EXCLUDED_ARCHIVE_PARTS = {"__pycache__"}
+EXCLUDED_ARCHIVE_SUFFIXES = (".pyc", ".pyo")
 
 
 class ReleaseIdentityError(RuntimeError):
@@ -98,6 +108,50 @@ def _fetch_master_history(git: Callable[[list[str]], str]) -> None:
         git(["fetch", "--tags", "origin", refspec])
 
 
+def _github_json(repo: str, path: str) -> dict[str, Any]:
+    base_url = os.getenv("GITHUB_API_URL", "https://api.github.com").rstrip("/")
+    url = f"{base_url}/repos/{repo}/{path.lstrip('/')}"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "LightRAG-Woodpecker-delivery",
+    }
+    token = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            data = json.loads(response.read().decode())
+    except urllib.error.HTTPError as exc:
+        raise ReleaseIdentityError(
+            f"GitHub source verification failed with HTTP {exc.code}: {path}"
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise ReleaseIdentityError(f"GitHub source verification failed: {path}") from exc
+    if not isinstance(data, dict):
+        raise ReleaseIdentityError("GitHub source verification returned non-object JSON")
+    return data
+
+
+def _verify_release_source_via_github(*, repo: str, tag: str, commit: str) -> None:
+    encoded_tag = urllib.parse.quote(tag, safe="")
+    tag_ref = _github_json(repo, f"git/ref/tags/{encoded_tag}")
+    obj = tag_ref.get("object") or {}
+    tag_commit = obj.get("sha")
+    obj_type = obj.get("type")
+    if obj_type == "tag":
+        tag_obj = _github_json(repo, f"git/tags/{tag_commit}")
+        tag_commit = ((tag_obj.get("object") or {}).get("sha"))
+        obj_type = (tag_obj.get("object") or {}).get("type")
+    if obj_type != "commit" or tag_commit != commit:
+        raise ReleaseIdentityError("tag commit does not match event commit")
+
+    encoded_commit = urllib.parse.quote(commit, safe="")
+    compare = _github_json(repo, f"compare/{encoded_commit}...master")
+    if compare.get("status") not in {"ahead", "identical"}:
+        raise ReleaseIdentityError("cannot prove tag belongs to origin/master")
+
+
 def verify_release_source(
     *,
     tag: str,
@@ -105,6 +159,7 @@ def verify_release_source(
     repo: str,
     allowed_repo: str,
     git: Callable[[list[str]], str] | None = None,
+    remote_verifier: Callable[..., None] | None = None,
     pipeline_id: str | None = None,
 ) -> ReleaseIdentity:
     parsed = parse_release_tag(tag)
@@ -119,6 +174,9 @@ def verify_release_source(
                 f"tag commit {tag_commit} does not match event commit {event_commit}"
             )
         git(["merge-base", "--is-ancestor", tag_commit, "origin/master"])
+    except FileNotFoundError:
+        verifier = remote_verifier or _verify_release_source_via_github
+        verifier(repo=repo, tag=tag, commit=event_commit)
     except subprocess.CalledProcessError as exc:
         raise ReleaseIdentityError("cannot prove tag belongs to origin/master") from exc
     return ReleaseIdentity(
@@ -134,12 +192,34 @@ def _archive_allowed(name: str) -> bool:
     clean = name.replace("\\", "/").lstrip("/")
     if clean in EXCLUDED_ARCHIVE_NAMES or Path(clean).name in EXCLUDED_ARCHIVE_NAMES:
         return False
+    if Path(clean).suffix in EXCLUDED_ARCHIVE_SUFFIXES:
+        return False
+    if any(part in EXCLUDED_ARCHIVE_PARTS for part in Path(clean).parts):
+        return False
     return not any(clean.startswith(prefix) for prefix in EXCLUDED_ARCHIVE_PREFIXES)
 
 
 def _git_tracked_files(repo: Path) -> list[str]:
     out = _run_git(["ls-files", "-z"], cwd=repo)
     return [p for p in out.split("\0") if p]
+
+
+def _clean_worktree_files(repo: Path) -> list[str]:
+    files: list[str] = []
+    for path in repo.rglob("*"):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(repo).as_posix()
+        if _archive_allowed(rel):
+            files.append(rel)
+    return files
+
+
+def _source_archive_files(repo: Path) -> list[str]:
+    try:
+        return _git_tracked_files(repo)
+    except FileNotFoundError:
+        return _clean_worktree_files(repo)
 
 
 def create_source_archive(
@@ -150,7 +230,7 @@ def create_source_archive(
     identity: ReleaseIdentity,
 ) -> dict[str, Any]:
     repo = repo.resolve()
-    files = list(tracked_files) if tracked_files is not None else _git_tracked_files(repo)
+    files = list(tracked_files) if tracked_files is not None else _source_archive_files(repo)
     output.parent.mkdir(parents=True, exist_ok=True)
     record = {"schema_version": 1, **asdict(identity)}
     with tarfile.open(output, "w:gz") as tar:
