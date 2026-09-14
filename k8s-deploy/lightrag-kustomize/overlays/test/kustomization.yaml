@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lightrag-test
+resources:
+  - ../../base
+  - release-image.yaml
+  - deployer-rbac.yaml
+replacements:
+  - source:
+      kind: ConfigMap
+      name: lightrag-release-image
+      fieldPath: data.digest
+    targets:
+      - select:
+          kind: Deployment
+          name: lightrag
+        fieldPaths:
+          - spec.template.spec.containers.[name=lightrag].image
+        options:
+          delimiter: "@"
+          index: 1

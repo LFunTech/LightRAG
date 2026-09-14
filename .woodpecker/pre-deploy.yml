@@ -1,0 +1,21 @@
+labels:
+  platform: linux/amd64
+
+when:
+  event: [tag]
+  ref: [refs/tags/v*, refs/tags/v*-pre, refs/tags/v*-test]
+
+depends_on: [build-image]
+
+steps:
+  verify-image:
+    image: docker-hub.f123.pub/base/uv:python3.12-bookworm-slim-lightrag-e5b65587bce7@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
+    commands:
+      - python -m scripts.ci.delivery validate-image --manifest image-manifest.json --commit "$CI_COMMIT_SHA" --digest "$LIGHTRAG_IMAGE_DIGEST" --record-output image-record.json
+    environment:
+      REGISTRY_USERNAME:
+        from_secret: registry_username
+      REGISTRY_PASSWORD:
+        from_secret: registry_password
+      LIGHTRAG_IMAGE_DIGEST:
+        from_secret: lightrag_test_image_digest

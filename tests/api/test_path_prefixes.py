@@ -42,13 +42,14 @@ def _isolate_env(monkeypatch):
 
     The lightrag.api.config module loads .env at import time, which can leave
     bindings/hosts/keys in os.environ that mismatch what these tests assume.
-    Clear them, then set the minimal viable defaults (ollama bindings) so
-    create_app's binding validation passes without touching real services.
+    Clear them, then set minimal viable defaults that use already-installed
+    provider bindings, so create_app's binding validation passes without
+    touching real services or pipmaster's dynamic package installation.
     """
     for var in _ENV_VARS_TO_ISOLATE:
         monkeypatch.delenv(var, raising=False)
-    monkeypatch.setenv("LLM_BINDING", "ollama")
-    monkeypatch.setenv("EMBEDDING_BINDING", "ollama")
+    monkeypatch.setenv("LLM_BINDING", "openai")
+    monkeypatch.setenv("EMBEDDING_BINDING", "openai")
 
 
 @pytest.fixture
@@ -819,19 +820,35 @@ class TestWhitelistUnderApiPrefix:
         return self._args_with_prefix("/site01")
 
     @pytest.mark.parametrize("mode", ["verbatim", "strip"])
-    def test_destructive_route_requires_auth_under_a_colliding_prefix(
+    def test_destructive_route_requires_api_key_under_a_colliding_prefix(
         self, _colliding_prefix_args, _default_whitelist, mode
     ):
-        """DELETE /documents answered 200 unauthenticated before this fix, in
-        both forwarding modes."""
+        """DELETE /documents must not be whitelisted by an /api* mount prefix.
+
+        This fixture configures API-key-only auth with ``--key`` and no
+        accounts. The established contract for missing or wrong API keys is
+        403; account-mode bearer failures are the paths that return 401.
+        """
         with patch("lightrag.api.lightrag_server.LightRAG") as mock_rag:
             mock_rag.return_value = MagicMock()
             from lightrag.api.lightrag_server import create_app
 
-            client = TestClient(create_app(_colliding_prefix_args))
+            client = TestClient(
+                create_app(_colliding_prefix_args), raise_server_exceptions=False
+            )
             prefix = "" if mode == "strip" else "/api/v1"
 
-            assert client.delete(f"{prefix}/documents").status_code == 401
+            assert client.delete(f"{prefix}/documents").status_code == 403
+            assert (
+                client.delete(
+                    f"{prefix}/documents", headers={"X-API-Key": "wrong"}
+                ).status_code
+                == 403
+            )
+            accepted = client.delete(
+                f"{prefix}/documents", headers={"X-API-Key": "test-api-key"}
+            )
+            assert accepted.status_code not in (401, 403, 404, 405)
 
     @pytest.mark.parametrize("mode", ["verbatim", "strip"])
     def test_whitelisted_routes_stay_open_under_a_prefix(

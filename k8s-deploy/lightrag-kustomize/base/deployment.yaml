@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lightrag
+  labels:
+    app.kubernetes.io/name: lightrag
+    app.kubernetes.io/instance: lightrag
+spec:
+  replicas: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: lightrag
+      app.kubernetes.io/instance: lightrag
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lightrag
+        app.kubernetes.io/instance: lightrag
+    spec:
+      serviceAccountName: lightrag
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      terminationGracePeriodSeconds: 600
+      imagePullSecrets:
+        - name: lightrag-registry-pull
+      containers:
+        - name: lightrag
+          image: docker-hub.f123.pub/lfun/lightrag@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: http
+              containerPort: 9621
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          envFrom:
+            - secretRef:
+                name: lightrag-runtime
+          env:
+            - name: HOST
+              value: 0.0.0.0
+            - name: PORT
+              value: "9621"
+            - name: LIGHTRAG_DISTRIBUTED_WRITES
+              value: "true"
+            - name: LIGHTRAG_SHARED_STORAGE
+              value: "true"
+            - name: LIGHTRAG_DEPLOYMENT_ID
+              value: lightrag-test
+            - name: LIGHTRAG_COORDINATION_POOL_MODE
+              value: direct
+            - name: LIGHTRAG_DISTRIBUTED_POLL_INTERVAL
+              value: "1"
+            - name: WORKSPACE
+              value: lightrag-test
+            - name: POSTGRES_WORKSPACE
+              value: lightrag-test
+            - name: INPUT_DIR
+              value: /app/data/inputs
+            - name: WORKING_DIR
+              value: /app/data/rag_storage
+            - name: WORKERS
+              value: "1"
+            - name: LIGHTRAG_KV_STORAGE
+              value: PGKVStorage
+            - name: LIGHTRAG_DOC_STATUS_STORAGE
+              value: PGDocStatusStorage
+            - name: LIGHTRAG_VECTOR_STORAGE
+              value: PGVectorStorage
+            - name: LIGHTRAG_GRAPH_STORAGE
+              value: HugeGraphStorage
+            - name: POSTGRES_HOST
+              value: lightrag-test-postgres.database.svc.cluster.local
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DATABASE
+              value: lightrag_test
+            - name: POSTGRES_USER
+              value: lightrag_test
+            - name: HUGEGRAPH_URI
+              value: http://lightrag-test-hugegraph.database.svc.cluster.local:8080
+            - name: HUGEGRAPH_GRAPH
+              value: lightrag_test
+            - name: HUGEGRAPH_GRAPHSPACE
+              value: DEFAULT
+            - name: HUGEGRAPH_AUTO_CREATE_SCHEMA
+              value: "false"
+            - name: LLM_BINDING
+              value: openai
+            - name: LLM_MODEL
+              value: qwen-plus
+            - name: LLM_BINDING_HOST
+              value: https://dashscope.aliyuncs.com/compatible-mode/v1
+            - name: EMBEDDING_BINDING
+              value: openai
+            - name: EMBEDDING_MODEL
+              value: text-embedding-v4
+            - name: EMBEDDING_DIM
+              value: "1024"
+            - name: EMBEDDING_BINDING_HOST
+              value: https://dashscope.aliyuncs.com/compatible-mode/v1
+          volumeMounts:
+            - name: rag-storage
+              mountPath: /app/data/rag_storage
+            - name: inputs
+              mountPath: /app/data/inputs
+      volumes:
+        - name: rag-storage
+          persistentVolumeClaim:
+            claimName: lightrag-test-working-rwx
+        - name: inputs
+          persistentVolumeClaim:
+            claimName: lightrag-test-inputs-rwx

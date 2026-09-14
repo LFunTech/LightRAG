@@ -1,0 +1,220 @@
+import hashlib
+import json
+import tarfile
+
+import pytest
+
+from scripts.ci import delivery
+
+
+def test_release_identity_rejects_invalid_tags_and_prevents_deploy_for_pre():
+    with pytest.raises(ValueError, match="unsupported release tag"):
+        delivery.parse_release_tag("latest")
+    assert delivery.parse_release_tag("v1.2.3-test").deploy_environment == "test"
+    assert delivery.parse_release_tag("v1.2.3-pre").deploy_environment is None
+    assert delivery.parse_release_tag("v1.2.3").deploy_environment is None
+
+
+def test_release_source_requires_expected_repo_commit_and_master_ancestry(tmp_path):
+    calls = []
+
+    def fake_git(args):
+        calls.append(args)
+        if args == ["fetch", "--depth=0", "origin", "master", "--tags"]:
+            return ""
+        if args[:2] == ["rev-parse", "v1.2.3-test^{commit}"]:
+            return "abc123\n"
+        if args[:3] == ["merge-base", "--is-ancestor", "abc123"]:
+            return ""
+        raise AssertionError(args)
+
+    identity = delivery.verify_release_source(
+        tag="v1.2.3-test",
+        event_commit="abc123",
+        repo="minwang/LightRAG",
+        allowed_repo="minwang/LightRAG",
+        git=fake_git,
+    )
+    assert identity.commit == "abc123"
+    assert identity.deploy_environment == "test"
+    assert ["fetch", "--depth=0", "origin", "master", "--tags"] in calls
+
+
+def test_release_source_rejects_moved_tag():
+    def fake_git(args):
+        if args[:2] == ["rev-parse", "v1.2.3-test^{commit}"]:
+            return "def456\n"
+        return ""
+
+    with pytest.raises(delivery.ReleaseIdentityError, match="does not match event commit"):
+        delivery.verify_release_source(
+            tag="v1.2.3-test",
+            event_commit="abc123",
+            repo="minwang/LightRAG",
+            allowed_repo="minwang/LightRAG",
+            git=fake_git,
+        )
+
+
+def test_source_archive_excludes_secret_and_untracked_files(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text("print('ok')\n")
+    (repo / ".env").write_text("SECRET=bad\n")
+    (repo / "untracked.txt").write_text("ignore\n")
+    out = tmp_path / "source.tar.gz"
+    record = delivery.create_source_archive(
+        repo,
+        out,
+        tracked_files=["app.py", ".env", "missing.py"],
+        identity=delivery.ReleaseIdentity("minwang/LightRAG", "v1.2.3-test", "abc", "p1", "test"),
+    )
+    assert record["sha256"] == hashlib.sha256(out.read_bytes()).hexdigest()
+    with tarfile.open(out, "r:gz") as tar:
+        assert sorted(tar.getnames()) == ["app.py", "release-record.json"]
+
+
+def test_safe_extract_rejects_path_traversal_and_symlink_escape(tmp_path):
+    archive = tmp_path / "bad.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        payload = tmp_path / "payload"
+        payload.write_text("bad")
+        info = tar.gettarinfo(str(payload), arcname="../escape")
+        with payload.open("rb") as fh:
+            tar.addfile(info, fh)
+    with pytest.raises(delivery.ArchiveValidationError, match="unsafe archive path"):
+        delivery.safe_extract_archive(archive, tmp_path / "out")
+
+    symlink_archive = tmp_path / "bad-link.tar.gz"
+    with tarfile.open(symlink_archive, "w:gz") as tar:
+        info = tarfile.TarInfo("link")
+        info.type = tarfile.SYMTYPE
+        info.linkname = "/etc/passwd"
+        tar.addfile(info)
+    with pytest.raises(delivery.ArchiveValidationError, match="unsafe symlink"):
+        delivery.safe_extract_archive(symlink_archive, tmp_path / "out2")
+
+
+def test_image_manifest_requires_amd64_and_revision():
+    manifest = {
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "manifests": [
+            {"digest": "sha256:" + "1" * 64, "platform": {"os": "linux", "architecture": "amd64"}},
+        ],
+        "annotations": {"org.opencontainers.image.revision": "abc"},
+    }
+    digest = "sha256:" + "a" * 64
+    record = delivery.validate_image_manifest(manifest, expected_commit="abc", expected_digest=digest)
+    assert record["digest"] == digest
+    assert record["platform"] == "linux/amd64"
+
+    manifest["annotations"]["org.opencontainers.image.revision"] = "def"
+    with pytest.raises(delivery.ImageValidationError, match="revision"):
+        delivery.validate_image_manifest(manifest, expected_commit="abc", expected_digest=digest)
+
+
+def test_release_state_rejects_concurrent_and_older_release(tmp_path):
+    store = delivery.FileReleaseStateStore(tmp_path / "state.json")
+    first = delivery.ReleaseIdentity("minwang/LightRAG", "v1.2.4-test", "c2", "20", "test")
+    store.acquire("lightrag-test", first, "sha256:" + "2" * 64)
+    with pytest.raises(delivery.DeployStateError, match="already owned"):
+        store.acquire("lightrag-test", delivery.ReleaseIdentity("minwang/LightRAG", "v1.2.5-test", "c3", "21", "test"), "sha256:" + "3" * 64)
+    store.mark_success("lightrag-test", first.pipeline_id)
+    with pytest.raises(delivery.DeployStateError, match="older than successful"):
+        store.acquire("lightrag-test", delivery.ReleaseIdentity("minwang/LightRAG", "v1.2.3-test", "c1", "22", "test"), "sha256:" + "1" * 64)
+
+
+def test_registry_auth_file_is_0600_and_masks_secret(tmp_path):
+    path = delivery.write_registry_auth(tmp_path, "docker-hub.f123.pub", "user", "pass")
+    assert oct(path.stat().st_mode & 0o777) == "0o600"
+    assert "pass" not in delivery.mask_secret("before pass after", "pass")
+    assert json.loads(path.read_text())["auths"]["docker-hub.f123.pub"]["username"] == "user"
+
+def test_release_source_rejects_unprovable_master_ancestry():
+    def fake_git(args):
+        if args == ["fetch", "--depth=0", "origin", "master", "--tags"]:
+            raise delivery.subprocess.CalledProcessError(1, args)
+        return ""
+
+    with pytest.raises(delivery.ReleaseIdentityError, match="cannot prove"):
+        delivery.verify_release_source(
+            tag="v1.2.3-test",
+            event_commit="abc123",
+            repo="minwang/LightRAG",
+            allowed_repo="minwang/LightRAG",
+            git=fake_git,
+        )
+
+
+def test_environment_snapshot_requires_test_namespace_initialized_profile_and_no_pending_writes():
+    snapshot = {
+        "cluster": "test",
+        "namespace": "lightrag-test",
+        "initialized": True,
+        "profile": {
+            "replicas": 2,
+            "workers": 1,
+            "kv_storage": "PGKVStorage",
+            "doc_status_storage": "PGDocStatusStorage",
+            "vector_storage": "PGVectorStorage",
+            "graph_storage": "HugeGraphStorage",
+            "workspace": "lightrag-test",
+            "postgres_workspace": "lightrag-test",
+        },
+        "storage_state": {"fenced": False, "active_operations": 0, "pending_mutations": 0, "orphaned_claims": 0},
+    }
+    assert delivery.validate_test_environment_snapshot(snapshot)["namespace"] == "lightrag-test"
+    bad = dict(snapshot, namespace="default")
+    with pytest.raises(delivery.DeployStateError, match="namespace"):
+        delivery.validate_test_environment_snapshot(bad)
+    bad = dict(snapshot, initialized=False)
+    with pytest.raises(delivery.DeployStateError, match="initialized"):
+        delivery.validate_test_environment_snapshot(bad)
+    bad = dict(snapshot)
+    bad["storage_state"] = {"fenced": True, "active_operations": 0, "pending_mutations": 0, "orphaned_claims": 0}
+    with pytest.raises(delivery.DeployStateError, match="unsafe storage"):
+        delivery.validate_test_environment_snapshot(bad)
+
+
+def test_buildkit_command_uses_rootless_amd64_cache_revision_and_auth(tmp_path):
+    auth = delivery.write_registry_auth(tmp_path, "docker-hub.f123.pub", "user", "pass")
+    cmd = delivery.buildkit_command(
+        tag="v1.2.3-test",
+        commit="abc123",
+        auth_file=auth,
+        image="docker-hub.f123.pub/lfun/lightrag",
+        cache_ref="docker-hub.f123.pub/lfun/lightrag:buildcache",
+    )
+    joined = " ".join(cmd)
+    assert cmd[:2] == ["buildctl-daemonless.sh", "build"]
+    assert "platform=linux/amd64" in joined
+    assert "org.opencontainers.image.revision=abc123" in joined
+    assert "docker-hub.f123.pub/lfun/lightrag:v1.2.3-test" in joined
+    assert str(auth) in joined
+    assert "buildcache" in joined
+
+
+def test_release_record_rejects_conflicting_version_but_accepts_same_source(tmp_path):
+    store = delivery.FileReleaseRecordStore(tmp_path / "records")
+    identity = delivery.ReleaseIdentity("minwang/LightRAG", "v1.2.3-test", "abc", "p1", "test")
+    record = store.publish(identity, source_sha256="0" * 64, image_digest="sha256:" + "a" * 64)
+    assert record["commit"] == "abc"
+    assert store.publish(identity, source_sha256="0" * 64, image_digest="sha256:" + "a" * 64) == record
+    with pytest.raises(delivery.ReleaseIdentityError, match="conflicting"):
+        store.publish(identity, source_sha256="1" * 64, image_digest="sha256:" + "b" * 64)
+
+
+def test_validate_archive_record_checks_checksum_and_identity(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text("ok")
+    identity = delivery.ReleaseIdentity("minwang/LightRAG", "v1.2.3-test", "abc", "p1", "test")
+    archive = tmp_path / "src.tgz"
+    record = delivery.create_source_archive(repo, archive, tracked_files=["app.py"], identity=identity)
+    delivery.validate_source_archive_record(archive, record, expected=identity)
+    bad = dict(record, commit="def")
+    with pytest.raises(delivery.ArchiveValidationError, match="identity"):
+        delivery.validate_source_archive_record(archive, bad, expected=identity)
+    bad = dict(record, sha256="0" * 64)
+    with pytest.raises(delivery.ArchiveValidationError, match="checksum"):
+        delivery.validate_source_archive_record(archive, bad, expected=identity)

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: lightrag
+  labels:
+    app.kubernetes.io/name: lightrag
+    app.kubernetes.io/instance: lightrag
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 9621
+      targetPort: http
+  selector:
+    lightrag.openai.com/routing-paused: "true"

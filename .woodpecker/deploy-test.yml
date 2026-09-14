@@ -1,0 +1,23 @@
+labels:
+  platform: linux/amd64
+
+when:
+  event: [tag]
+  ref: [refs/tags/v*-test]
+
+depends_on: [pre-deploy]
+
+steps:
+  deploy-test:
+    image: bitnami/kubectl:1.32.13@sha256:8c07b31040ea28f7ff6f1a93b623fa8d07d052ca16a23398ec38003b16172233
+    commands:
+      - test -n "$LIGHTRAG_TEST_KUBECONFIG"
+      - test -n "$LIGHTRAG_IMAGE_DIGEST"
+      - mkdir -p /tmp/kube && printf '%s' "$LIGHTRAG_TEST_KUBECONFIG" > /tmp/kube/config && chmod 600 /tmp/kube/config
+      - python -m scripts.ci.k8s_deploy deploy-test --kubeconfig /tmp/kube/config --digest "$LIGHTRAG_IMAGE_DIGEST"
+      - python -m scripts.ci.k8s_deploy accept-and-restore --kubeconfig /tmp/kube/config --digest "$LIGHTRAG_IMAGE_DIGEST" --report acceptance-report.json
+    environment:
+      LIGHTRAG_TEST_KUBECONFIG:
+        from_secret: lightrag_test_kubeconfig
+      LIGHTRAG_IMAGE_DIGEST:
+        from_secret: lightrag_test_image_digest

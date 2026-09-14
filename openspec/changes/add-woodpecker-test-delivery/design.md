@@ -6,7 +6,7 @@
 - 本仓库 `Dockerfile` 使用 cache/bind `RUN --mount` 和多阶段前端构建，需要兼容这些语义的构建器。现有 GitHub Actions 不调整。
 - test 集群为 Kubernetes `v1.32.13+rke2r1`、amd64 节点；Woodpecker server/agent 均为 `v3.18.1`，agent 使用 Kubernetes backend、`woodpecker-pipelines` namespace 和 `syno-nfs` RWX workspace。
 - `lightrag-test` namespace 尚不存在。发现 `syno-nfs` StorageClass 不等于证明应用共享文件语义；必须跨节点验证。
-- 已有分布式 chart 提供两个 Pod、共享持久卷、非 root、显式 bootstrap Job；普通启动只校验存储。其镜像引用目前使用 repository/tag，需要兼容地补充 digest。
+- 新增 Kustomize 环境 overlay 提供两个 Pod、共享持久卷、非 root、显式运行 Secret 引用和默认暂停路由；普通启动只校验存储。其镜像引用通过 Kustomize replacement 注入已验证 digest。
 - 定向重跑两个已有 API prefix 测试，仍为 `2 failed, 32 deselected`：API-key-only 配置未携带凭据时实际 403，断言期待 401。当前鉴权代码明确区分 API key 的 403 和账号登录的 401；实施时应在干净配置下进一步验证测试合同，不能先标记跳过。
 
 参考合同：[分布式部署](../../../docs/DistributedDeployment.md)、[运行时合同](../../../docs/design/DistributedRuntimeContract.md)、[pipeline 合同](../../../docs/design/DistributedPipelineContract.md)。
@@ -49,7 +49,7 @@ tag 发布必须等待同一 commit 的质量检查成功，不借用旧流水�
 
 - Python 使用 `uv.lock` 固定的 API、offline-storage、offline-llm、pytest extras，执行完整非 integration 测试。安装必要系统库、固定的 spaCy 模型和构建缓存数据；与开发者 `.env` 隔离，记录 pass/skip/fail 原因。
 - 前端在 `lightrag_webui/` 执行 frozen install、全部 Bun 测试、`tsc --noEmit`、lint、build，保留现有构建体积门禁。
-- 工作流 strict lint、CI 脚本测试、shell/Python 静态检查、Helm lint/render 和分布式 chart 回归测试均需运行。
+- 工作流 strict lint、CI 脚本测试、shell/Python 静态检查、Kustomize render 和分布式 manifest 回归测试均需运行。
 - 既有两个失败单独验证：若为测试配置/状态码合同错误，修正 fixture 和精确断言，同时保留匿名拒绝、错误密钥拒绝、合法密钥通过鉴权及两个 prefix 转发模式的回归覆盖；不将 `401` 简单放宽为“任意非 200”。若确需改变生产鉴权行为，停止该修复并单独评审，不混入 CI 改动。
 - 外部服务集成测试显式 opt-in，不将跳过它们写成已验证。发布后验收使用真实目标服务；本地测试模型 fixture 不进入应用镜像或测试环境运行配置。
 
@@ -80,7 +80,7 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 
 镜像仓库固定为 `docker-hub.f123.pub/lfun/lightrag`，不调用默认发布到上游的 `docker-build-push.sh`。镜像附带 commit/source/tag 标识，发布记录包含最终 digest、平台和源码包 hash。版本 tag 需不可变；遇到已经存在但来源不同的版本拒绝覆盖。相同版本重试复核已有 digest 和来源，不假定重复构建字节相同。
 
-镜像校验不能仅测试 manifest 非空：解析受支持的 manifest/index、确认 amd64 镜像、revision 与预期 commit、记录 digest，并使部署只消费该 digest。chart 增加可选 `image.digest`；未设置时维持原 repository/tag 行为，设置时所有应用和维护镜像引用一致使用 digest，校验拒绝非法值。
+镜像校验不能仅测试 manifest 非空：解析受支持的 manifest/index、确认 amd64 镜像、revision 与预期 commit、记录 digest，并使部署只消费该 digest。Kustomize overlay 通过 `release-image` ConfigMap replacement 注入 `image` digest；部署脚本校验 digest 格式，manifest 回归测试保证应用镜像只使用不可变 digest。
 
 构建凭据在临时目录中生成合法 JSON、权限 0600，使用后清理；不使用会把密码写入日志的调试输出。COS/registry 权限仅覆盖 LightRAG 自己的路径和仓库。参考项目的 Secret 名称可在管理员授权下复用，但权限范围和事件过滤必须实际确认，不能假定全局 Secret 自动可用。
 
@@ -88,7 +88,7 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 
 目标为 `~/.kube/test-config` 对应的 test 集群；所有工具命令显式指定 kubeconfig/context，不改变本机默认上下文。namespace 为 `lightrag-test`，应用 release/deployment 为 `lightrag`。
 
-使用现有分布式 chart 的测试专用 values：两副本、`WORKERS=1`、PGKV/PGDocStatus/PGVector/HugeGraph、稳定且一致的 deployment ID/workspace、两条共同 RWX 路径、非 root UID/GID 1000，禁用 Service links。HugeGraph 连接池按整个两副本部署预算配置，测试起点为每 Pod 1 个连接。
+使用 Kustomize 测试 overlay：两副本、`WORKERS=1`、PGKV/PGDocStatus/PGVector/HugeGraph、稳定且一致的 deployment ID/workspace、两条共同 RWX 路径、非 root UID/GID 1000，禁用 Service links。HugeGraph 连接池按整个两副本部署预算配置，测试起点为每 Pod 1 个连接。
 
 首次接入是单独的显式环境准备，不属于每个 tag 自动部署：
 
@@ -103,13 +103,13 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 
 ### 6. 自动升级状态机
 
-采用允许停机的保守发布；不使用 `helm --atomic` 自动回滚，也不依赖 RollingUpdate 避免混写。chart 增加默认不改变现有行为的 Service 路由暂停参数，使整个 Helm 更新和验收期间流量保持关闭；不能只临时 patch Service，然后被 Helm 更新意外恢复。
+采用允许停机的保守发布；不使用自动回滚，也不依赖 RollingUpdate 避免混写。Kustomize base 默认使 Service selector 指向不存在的暂停标签，整个 `kubectl apply -k` 和验收期间流量保持关闭；恢复路由必须通过受审 manifest/patch 步骤完成，不能让后续 apply 意外恢复。
 
 1. **发布前检查**：校验 tag/commit/digest、目标集群/namespace 身份、Secret/PVC/profile、已批准的自动升级接入状态，以及只有该应用使用测试 workspace 的运维约束。数据模型、schema 或运行 profile 变化进入显式维护，不由普通 tag 自动处理。
 2. **串行化**：用 namespace 内的原子发布锁记录 pipeline/tag/digest；同时到达的发布拒绝竞争而不是互相覆盖。发布记录阻止较老 pipeline 覆盖已成功发布的新版本。中断留下的发布锁不能因 TTL 到期自动抢占；人工核对旧发布是否仍在运行后才能释放。此锁仅防部署脚本竞争，不替代应用持久化协调协议。
 3. **停止旧实例**：保存原镜像和发布标识，撤下 Service selector 的业务流量；将当前 Deployment 缩容至 0，等待优雅退出，不强删 Pod。独立 SDK/导入器/修复工具不得使用此专属 workspace，发现额外写入者则拒绝发布。600 秒退出预算是初始值，不是请求完成证明。
 4. **核验写入状态**：等待旧 Pod 消失之后，再通过受控检查 Job 检查协调状态及新镜像的存储/profile 兼容性。必须确认没有 fenced/orphaned/active operation、pending mutation、残留 claim/lock 或其他未完成状态；错误、无数据或超时不是“空闲”。不输出包含业务正文的完整 inspect 快照到公共构建日志。
-5. **启动新实例**：仅在正常优雅退出且持久化写入确认完整时，使用已校验的 digest 更新 Helm release、恢复两副本；普通 API 启动仍 verify-only。任何 schema 不兼容或不确定状态保留现场并失败，不能通过 bootstrap/recover 消除。
+5. **启动新实例**：仅在正常优雅退出且持久化写入确认完整时，使用已校验的 digest 通过 Kustomize overlay 更新 Deployment、恢复两副本；普通 API 启动仍 verify-only。任何 schema 不兼容或不确定状态保留现场并失败，不能通过 bootstrap/recover 消除。
 6. **验收并恢复路由**：在 Service 业务流量仍关闭时逐 Pod 校验实际 imageID、健康、鉴权、分布式状态与共享配置，并用唯一标识的测试文档验证双 Pod 入库和跨 Pod 查询；验收成功后恢复 Service selector，校验 ClusterIP 路径，再记录发布成功。测试文档可识别并保留，清理遵循既有 purge 合同，不在失败现场强行删除。
 
 如果旧实例被 SIGKILL、未知请求可能迟到提交、检查不确定或新版本验收失败，发布失败并保留原始证据，业务路由不恢复；不把“不再有 Pod”当作后端请求已结束。失败后自动启动旧版本同样不安全，因此只提供显式停止写入、检查兼容性与必要恢复后的人工回退步骤。
@@ -117,10 +117,10 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 ### 7. 验证与交付证据
 
 - 脚本测试覆盖输入身份、tag/分支矩阵、缺失凭据、归档篡改/穿越、manifest/index、digest、旧发布覆盖、新旧并发发布、外部命令非零及超时；执行假后端测试证明失败时没有后续发布副作用。
-- Helm 测试覆盖普通 local 模式不变、分布式 digest 引用一致、RWX/非 root/双副本、禁止公开 Service 类型、运行 Secret 引用和维护 Job 不自动开启。
+- Kustomize manifest 测试覆盖 digest replacement、RWX/非 root/双副本、禁止公开 Service 类型、运行 Secret 引用和默认暂停路由。既有 Helm chart 仍由原有 chart 回归测试覆盖，但不再作为 Woodpecker 测试部署入口。
 - 首次环境验收包括 rootless 构建探针、实际 RWX 跨节点验证、显式 bootstrap 和 Secret/RBAC 边界验证；不能用本机 Kind 结果替代 test 集群结果。
 - 在获得发布触发授权并配置好凭据后，以受保护测试 tag 跑通远端流水线；记录 commit/tag/pipeline ID、各阶段结果、镜像 digest、两个 Pod 的 imageID 和测试文档/查询结果。再用兼容的新测试版本验证升级路径及至少一个不修改存储的拒绝发布场景。
-- 全量测试、前端检查、chart 检查和远端验收分别报告。尚未取得 CI 凭据、测试资源或触发授权时，明确列为未完成项，不把 proposal/脚本完成等同于用户已可测试。
+- 全量测试、前端检查、manifest 检查和远端验收分别报告。尚未取得 CI 凭据、测试资源或触发授权时，明确列为未完成项，不把 proposal/脚本完成等同于用户已可测试。
 
 ## Risks / Trade-offs
 
@@ -136,7 +136,7 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 
 ## Migration Plan
 
-1. 评审本 proposal 后实现并验证工作流、脚本、chart 配套、测试和运行手册，不修改现有本地服务。
+1. 评审本 proposal 后实现并验证工作流、脚本、Kustomize 配套、测试和运行手册，不修改现有本地服务。
 2. 合并/提交到 fork `master` 并 push，保持 `main` 原始引用；不自动创建 release 或触发生产/pre 发布。
 3. 管理员接入 Woodpecker 仓库、受保护 tag 和按事件/镜像限制的 Secret；完成独立测试环境准备及显式初始化。
 4. 在授权后触发测试 tag，完成初次部署、兼容升级及拒绝路径验收，再宣布自动测试交付链路可用。

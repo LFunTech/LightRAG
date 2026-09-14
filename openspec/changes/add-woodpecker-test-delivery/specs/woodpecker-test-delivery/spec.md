@@ -38,10 +38,10 @@ The delivery system SHALL run non-publishing checks for master pushes and pull r
 
 ### Requirement: Quality failures block all release side effects
 
-The delivery system MUST require complete non-integration backend tests, complete frontend checks and build, delivery-script checks, workflow validation, and chart validation for the exact release commit. Known failures MUST NOT be bypassed through exclusions, unconditional success, or weakened authentication assertions.
+The delivery system MUST require complete non-integration backend tests, complete frontend checks and build, delivery-script checks, workflow validation, and Kustomize manifest validation for the exact release commit. Known failures MUST NOT be bypassed through exclusions, unconditional success, or weakened authentication assertions.
 
 #### Scenario: Existing regression fails
-- **WHEN** any mandatory test, lint, type check, build or chart check fails
+- **WHEN** any mandatory test, lint, type check, build or manifest check fails
 - **THEN** publishing and deployment do not run and the failure is reported with the failing gate
 
 #### Scenario: External integration tests are not requested

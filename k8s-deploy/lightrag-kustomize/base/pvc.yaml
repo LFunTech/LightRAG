@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lightrag-test-inputs-rwx
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lightrag-test-working-rwx
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests:
+      storage: 40Gi

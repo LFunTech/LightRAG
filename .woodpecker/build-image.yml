@@ -1,0 +1,20 @@
+labels:
+  platform: linux/amd64
+
+when:
+  event: [tag]
+  ref: [refs/tags/v*, refs/tags/v*-pre, refs/tags/v*-test]
+
+depends_on: [validate-release]
+
+steps:
+  build-image:
+    image: moby/buildkit:v0.24.0-rootless@sha256:912777d2903627ebe3a3fcf7be2380d64e1d45d4ee515f91bb2b14c0a869f41c
+    privileged: false
+    commands:
+      - python -m scripts.ci.delivery build-image --tag "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA"
+    environment:
+      REGISTRY_USERNAME:
+        from_secret: registry_username
+      REGISTRY_PASSWORD:
+        from_secret: registry_password
