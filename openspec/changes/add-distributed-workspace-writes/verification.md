@@ -249,3 +249,17 @@ PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh tests/setup tests
 
 
 推送前检查发现远端 `master` 已前进至 `cc66aec0b7e51490910ab0d4d2f813e6eae88d01`（合入 49 个 upstream 提交，包含 core 变更）。本节测试证据明确对应上述 `b29623974` 应用源码与本轮 chart 修正，**不代表已验证新的远端代码**。未擅自覆盖、rebase 或合并远端；后续集成需经用户确认并重新验证。
+
+
+## 用户确认后的远端集成与推送验证：2026-09-14
+
+用户在获知远端新增 49 个提交及需重新验证后，再次要求 `commit push`。已保留双方历史，将 `cc66aec0b7e51490910ab0d4d2f813e6eae88d01` 合并到本地 `master`，合并 commit 为 `67a807c06da2e6e7ee9e43cb2709bc8a581f3af6`，无冲突、无强推、无 rebase。此前独立验收提交 `37d19c582` 保留；`main` 不参与合并，仍为 `af6089f4e3781a092ec0a6f0d631e2135b650b2a`。
+
+合并后的应用源码及依赖与远端 `cc66aec0b` 一致（`git diff origin/master -- lightrag pyproject.toml uv.lock` 为空），本地额外生产改动仅为已验收的 Helm Service-link 修正。对合并树重新执行：
+
+- `PYTHON=/tmp/lightrag-distributed-test-python ./scripts/test.sh tests --test-workers 4`：**8973 passed、366 skipped、2 failed，162.68 秒**。两项仍是前述 path-prefix 未授权请求预期 401 / 实际 403 的既有断言；无新增失败，不宣称全绿。
+- 原生 PostgreSQL/HugeGraph 集成范围为 `tests/distributed tests/kg/hugegraph_impl tests/api/routes/test_distributed_controls.py tests/api/routes/test_distributed_scan_start.py tests/api/test_distributed_background_start.py tests/setup/test_distributed_chart.py --run-integration`：**415 passed，67.38 秒**。
+- 全仓 Ruff、cached diff-check、OpenSpec strict 通过；依赖与前端没有本轮变更，不重复运行 Bun。
+- 独立限定合并审查无 Critical/Important：pending/ACK/fence、来源原子合并、写前 anchors、实体 keyed lock、分布式向量即时提交及 FAILED 人工 retry 合同均保留。两条非阻断测试改进建议留存：当前源码校验范围是 `control.py`，不是完整镜像源码 manifest；anchors/vector 当前运行断言为非空，可进一步加强预期内容比较。原始证据中已经保留具体行内容，未把这两项建议宣称为已实施。
+
+本轮未重建或滚动更新 Kind 镜像。此前七组真实 Pod 证据仍对应 `b29623974` 应用源码；新合并树的证据是上述全量和真实后端/独立进程集成，不混淆为新版 Kubernetes 镜像已经重验。日志位于本机 `/tmp/lightrag-master-merge-{full,real}-20260914.log`。现有测试集群和失败 scope 的保留状态不变。
