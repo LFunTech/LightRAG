@@ -32,7 +32,7 @@ An operator must explicitly prepare the environment before expecting automatic `
 
 ## Release flow
 
-1. Push/PR to `master`: run backend, frontend and delivery static checks.
+1. Push/PR to `master`: run backend, frontend and delivery static checks. Backend CI installs required system libraries such as `libcairo2`, but does not dynamically download spaCy language models; smart-heading tests that require missing models use the test suite skip report instead of turning the quality gate into a proxy-dependent model download.
 2. Protected tag `vX.Y.Z-test`: verify repository/tag/commit/master ancestry, archive source, build and verify `docker-hub.f123.pub/lfun/lightrag` image, then deploy by digest to `lightrag-test` with Kustomize and `kubectl apply -k`, keeping Service routing paused.
 3. Verify both Pods' `imageID`, health, authentication, distributed status and cross-Pod ingestion/query with a unique test document.
 4. Restore Service routing only after acceptance succeeds.
