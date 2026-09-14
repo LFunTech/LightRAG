@@ -562,35 +562,6 @@ class FileReleaseRecordStore:
         return record
 
 
-def buildkit_command(
-    *, tag: str, commit: str, auth_file: Path, image: str, cache_ref: str
-) -> list[str]:
-    parse_release_tag(tag)
-    if not auth_file.is_file():
-        raise FileNotFoundError(auth_file)
-    return [
-        "buildctl-daemonless.sh",
-        "build",
-        "--progress=plain",
-        "--frontend",
-        "dockerfile.v0",
-        "--local",
-        "context=.",
-        "--local",
-        "dockerfile=.",
-        "--opt",
-        "platform=linux/amd64",
-        "--opt",
-        f"label:org.opencontainers.image.source=https://github.com/{os.getenv('CI_REPO', 'LFunTech/LightRAG')}",
-        "--opt",
-        f"label:org.opencontainers.image.revision={commit}",
-        "--export-cache",
-        f"type=registry,ref={cache_ref},mode=max",
-        "--import-cache",
-        f"type=registry,ref={cache_ref}",
-        "--output",
-        f"type=image,name={image}:{tag},push=true,registry.config={auth_file}",
-    ]
 
 def validate_test_environment_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     """Validate pre-deploy facts collected from the test namespace.
@@ -654,18 +625,6 @@ def main(argv: list[str] | None = None) -> int:
     verify_archive.add_argument("--identity", type=Path, required=True)
     verify_archive.add_argument("--extract-to", type=Path, required=True)
 
-    build = sub.add_parser("build-image")
-    build.add_argument("--tag", required=True)
-    build.add_argument("--commit", required=True)
-    build.add_argument("--image", default="docker-hub.f123.pub/lfun/lightrag")
-    build.add_argument("--cache-ref", default="docker-hub.f123.pub/lfun/lightrag:buildcache")
-    build.add_argument("--registry", default="docker-hub.f123.pub")
-    build.add_argument(
-        "--username", default=os.getenv("REGISTRY_USERNAME") or os.getenv("DOCKER_USERNAME")
-    )
-    build.add_argument(
-        "--password", default=os.getenv("REGISTRY_PASSWORD") or os.getenv("DOCKER_PASSWORD")
-    )
 
     validate_image = sub.add_parser("validate-image")
     validate_image.add_argument("--manifest", type=Path, required=True)
@@ -707,21 +666,6 @@ def main(argv: list[str] | None = None) -> int:
         validate_source_archive_record(args.archive, record, expected=identity)
         safe_extract_archive(args.archive, args.extract_to)
         print(json.dumps({"verified": True, "extract_to": str(args.extract_to)}, sort_keys=True))
-    elif args.cmd == "build-image":
-        if not args.username or not args.password:
-            raise ValueError("registry credentials must be provided")
-        with tempfile.TemporaryDirectory() as tmp:
-            auth = write_registry_auth(Path(tmp), args.registry, args.username, args.password)
-            subprocess.run(
-                buildkit_command(
-                    tag=args.tag,
-                    commit=args.commit,
-                    auth_file=auth,
-                    image=args.image,
-                    cache_ref=args.cache_ref,
-                ),
-                check=True,
-            )
     elif args.cmd == "validate-image":
         record = validate_image_manifest(
             json.loads(args.manifest.read_text()),

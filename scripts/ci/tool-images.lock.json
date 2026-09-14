@@ -2,12 +2,13 @@
   "schema_version": 1,
   "images": [
     {
-      "name": "rootless-buildkit",
-      "source": "docker.io/moby/buildkit:v0.24.0-rootless",
-      "source_index_digest": "sha256:995077ff90af1afff56ff23018699d7511d122b2b111041f2011bd12afd5c0fe",
+      "name": "kaniko",
+      "source": "gcr.io/kaniko-project/executor:v1.14.0-debug",
+      "source_index_digest": "sha256:d1173d94ddd1092aaf88c929922efde0beee6b3ebfed53bbb86475128a41def9",
       "platform": "linux/amd64",
-      "digest": "sha256:ea4fedf4f72d34133f43236149d961cdb6197735069711a3d3131c76a1ca314e",
-      "mirror": "docker-hub.f123.pub/base/buildkit:v0.24.0-rootless-amd64-lightrag-ea4fedf4f72d"
+      "digest": "sha256:1b282be1c4467618e9122d2ae457ffa3776a7caa52d7539e329123283bc71f79",
+      "mirror": "docker-hub.f123.pub/devops/kaniko:v1.14.0-debug",
+      "mirror_index_digest": "sha256:660af157e453dfd327d5ded96a652d1e279cd3b0f3e68f047482f0510c288804"
     }
   ]
 }

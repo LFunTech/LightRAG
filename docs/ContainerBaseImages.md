@@ -1,8 +1,9 @@
 # 容器基础镜像的本机同步
 
 本 fork 的 `Dockerfile`、`Dockerfile.lite`、`Dockerfile.postgres` 只从
-`docker-hub.f123.pub/base/` 读取外部镜像，包括 Dockerfile frontend 和
-`COPY --from` 引用的 uv 二进制镜像。内部构建阶段的别名不属于外部镜像。
+`docker-hub.f123.pub/base/` 读取外部镜像，包括 `COPY --from` 引用的 uv
+二进制镜像。内部构建阶段的别名不属于外部镜像。Woodpecker 发布构建使用
+Kaniko，因此 Dockerfile 不保留 BuildKit parser frontend directive。
 
 完整来源、目标标签、index digest 和平台清单见
 [`scripts/ci/base-images.lock.json`](../scripts/ci/base-images.lock.json)。
@@ -12,7 +13,6 @@ Dockerfile 使用 `内部仓库:独立标签@sha256:完整摘要`，不能只固
 
 | 用途 | 原始来源 | 内部仓库 |
 | --- | --- | --- |
-| Dockerfile frontend | `docker.io/docker/dockerfile:1` | `docker-hub.f123.pub/base/dockerfile` |
 | 前端构建 | `docker.io/oven/bun:1` | `docker-hub.f123.pub/base/bun` |
 | Python/uv 构建环境 | `ghcr.io/astral-sh/uv:python3.12-bookworm-slim` | `docker-hub.f123.pub/base/uv` |
 | Python 运行环境 | `docker.io/library/python:3.12-slim-bookworm` | `docker-hub.f123.pub/base/python` |
@@ -38,11 +38,10 @@ docker login docker-hub.f123.pub
 不要把密码放在 Dockerfile、build args、命令行参数或镜像锁定清单中。
 Woodpecker/GitHub Actions 的现有 GHCR 登录不能替代内部 registry 的登录。
 本次不修改 registry 的匿名访问策略，也不把发布凭据发给不可信 PR；后续 CI
-接入须配置隔离的只读身份。私有 Dockerfile frontend 的拉取也需要这份读取权限。
-
-Woodpecker 构建步骤自身使用的 rootless BuildKit 工具镜像同样不能从 docker.io
-拉取；当前 test runner 为 amd64，因此该工具镜像按 `linux/amd64` 同步到内部
-`docker-hub.f123.pub/base/buildkit` 并固定 digest，记录在
+接入须配置隔离的只读身份。
+Woodpecker 构建步骤自身使用的 Kaniko 工具镜像同样不能从上游 registry
+拉取；当前 test runner 为 amd64，因此该工具镜像使用内部
+`docker-hub.f123.pub/devops/kaniko:v1.14.0-debug` 并固定 digest，记录在
 [`scripts/ci/tool-images.lock.json`](../scripts/ci/tool-images.lock.json)。这不是
 Dockerfile 输入，不改变上方基础镜像必须保留完整平台集的规则。
 

@@ -2,8 +2,8 @@
 
 动机与范围见 [proposal.md](proposal.md)。以下为 2026-09-14 的只读检查结果，不代表部署验收：
 
-- `../haier-demo/.woodpecker/system-deploy.yml` 是当前可用的本机对照：它使用单 commit 自定义 clone、tag-only list-form `when`、内部 CI 工具镜像、镜像发布后 manifest 校验，以及脚本化 Kubernetes apply/status 输出。LightRAG 必须复用这些已验证的流水线组织模式；其业务 Secret、Ingress、单副本、Kaniko 构建器和启动迁移不能直接移植。目标 Woodpecker strict lint 未将 haier 的自定义 clone 镜像列入 clone allowlist，所以 LightRAG 将同一段单 commit/no-tags clone 脚本作为 `skip_clone: true` 后的普通步骤执行，而不是使用顶层 `clone:`；该步骤把 Git worktree 放在容器本地 `/tmp`，避免 Kubernetes backend 的 NFS workspace 在 `git reset --hard` checkout 时长时间阻塞。
-- 本仓库 `Dockerfile` 使用 cache/bind `RUN --mount` 和多阶段前端构建，需要兼容这些语义的构建器。现有 GitHub Actions 不调整。
+- `../haier-demo/.woodpecker/system-deploy.yml` 是当前可用的本机对照：它使用单 commit 自定义 clone、tag-only list-form `when`、内部 CI 工具镜像、镜像发布后 manifest 校验，以及脚本化 Kubernetes apply/status 输出。LightRAG 必须复用这些已验证的流水线组织模式；其业务 Secret、Ingress、单副本和启动迁移不能直接移植。目标 Woodpecker strict lint 未将 haier 的自定义 clone 镜像列入 clone allowlist，所以 LightRAG 将同一段单 commit/no-tags clone 脚本作为 `skip_clone: true` 后的普通步骤执行，而不是使用顶层 `clone:`；该步骤把 Git worktree 放在容器本地 `/tmp`，避免 Kubernetes backend 的 NFS workspace 在 `git reset --hard` checkout 时长时间阻塞。
+- 本仓库原 `Dockerfile`/`Dockerfile.lite` 使用 BuildKit-only cache/bind `RUN --mount` 和 `$BUILDPLATFORM`。远端 #35 显示 rootless BuildKit 在 apt 阶段长时间无最终错误日志并以 exit 1 结束；为复用 haier-demo 可用模式，Woodpecker 构建改用内部 digest-pinned Kaniko，同时将 Dockerfile 改造为 Kaniko 可解析的多阶段构建。现有 GitHub Actions 不调整。
 - test 集群为 Kubernetes `v1.32.13+rke2r1`、amd64 节点；Woodpecker server/agent 均为 `v3.18.1`，agent 使用 Kubernetes backend、`woodpecker-pipelines` namespace 和 `syno-nfs` RWX workspace。
 - `lightrag-test` namespace 尚不存在。发现 `syno-nfs` StorageClass 不等于证明应用共享文件语义；必须跨节点验证。
 - 新增 Kustomize 环境 overlay 提供两个 Pod、共享持久卷、非 root、显式运行 Secret 引用和默认暂停路由；普通启动只校验存储。其镜像引用通过 Kustomize replacement 注入已验证 digest。
@@ -54,30 +54,30 @@ tag 发布必须等待同一 commit 的交付静态校验成功，不借用旧�
 
 ### 3. 构建器选择与权限
 
-推荐 **rootless BuildKit**，直接构建现有 Dockerfile。固定工具版本和可验证镜像 digest，使用 amd64 原生构建与独立 registry cache；BuildKit 状态置于单次构建的本地临时目录，不放在共享 NFS workspace 上。构建输入仍来自校验后的源码包。这里参考 haier 的 registry auth、cache、apt mirror 和镜像发布/校验组织方式，但不照搬 Kaniko：LightRAG 现有 Dockerfile 使用 Dockerfile frontend 的 cache/bind `RUN --mount` 语义，改用 Kaniko 需要另建或改造生产 Dockerfile，会引入构建路径漂移。三个 Dockerfile 的 apt 阶段默认使用 `http://mirrors.tuna.tsinghua.edu.cn/debian` 与 `http://mirrors.tuna.tsinghua.edu.cn/debian-security`，执行 `apt-get update` 前先改写 `/etc/apt/sources.list*` 并设置 apt retry/timeout，避免 Woodpecker 构建落回 Debian 默认源。
+采用 **Kaniko**，直接构建现有 Dockerfile。远端 #35 的 rootless BuildKit 运行中，Woodpecker step 日志停在 `#23` apt 下载中段，之后约 11 分钟以 exit 1 结束且没有最终错误行；该路径已经不满足“实时输出日志到 stdio”和可诊断性要求。haier-demo 的可用系统发布链路使用 Kaniko、registry auth、cache-repo、镜像发布后 manifest 校验和脚本化部署状态输出；LightRAG 改为复用这一构建模式，但不照搬它的业务 Secret、单副本部署或启动迁移。
 
-构建入口必须向 stdout/stderr 输出可持续刷新的非敏感进度：脚本在调用 BuildKit 前打印 tag、commit、cache ref 和 metadata 文件位置，并强制 `BUILDKIT_PROGRESS=plain` / `--progress=plain`，避免 Woodpecker 只能看到一个长时间运行但无上下文的步骤。不得打印 registry 密码、COS 密钥或完整运行 Secret。
+为避免分叉生产镜像路径，Dockerfile/Dockerfile.lite 被改造为 Kaniko 可解析：删除 BuildKit-only `RUN --mount=type=cache`、`RUN --mount=type=bind` 和 `$BUILDPLATFORM` 依赖；原本通过 bind mount 暴露的 spaCy wheel 目录改为从 builder stage `COPY --from=builder` 到最终阶段并在同一安装层删除。三个 Dockerfile 的 apt 阶段默认使用 `http://mirrors.tuna.tsinghua.edu.cn/debian` 与 `http://mirrors.tuna.tsinghua.edu.cn/debian-security`，执行 `apt-get update` 前先改写 `/etc/apt/sources.list*` 并设置 apt retry/timeout，避免 Woodpecker 构建落回 Debian 默认源。
 
-BuildKit 工具镜像也必须由内部 registry 提供，不能让 Kubernetes agent 从 docker.io 拉取。当前 test runner 为 `linux/amd64`，因此 rootless BuildKit 工具镜像按 amd64 同步到 `docker-hub.f123.pub/base/buildkit`，并由 `scripts/ci/tool-images.lock.json` 记录 source index、平台 manifest digest 和内部镜像引用；这不放宽 Dockerfile 基础镜像保留完整平台集的要求。
+构建入口必须向 stdout/stderr 输出可持续刷新的非敏感进度：脚本在调用 Kaniko 前打印 tag、commit、context dir、cache repo、digest 文件位置和 Kaniko 版本；Kaniko 的 Dockerfile command 输出直接进入 step 日志，避免 Woodpecker 只能看到一个长时间运行但无上下文的步骤。不得打印 registry 密码、COS 密钥或完整运行 Secret。
 
-rootless BuildKit step 不能假设前一下载步骤解包出来的源码 workspace 可写；构建脚本只读取该 workspace 作为 context，并将 BuildKit metadata 放到 `/tmp`，避免非 root 用户在 NFS workspace 中创建 `build/` 失败。
+Kaniko 工具镜像也必须由内部 registry 提供，不能让 Kubernetes agent 从上游 registry 拉取。当前 test runner 为 `linux/amd64`，因此工具镜像固定为 `docker-hub.f123.pub/devops/kaniko:v1.14.0-debug@sha256:1b282be1c4467618e9122d2ae457ffa3776a7caa52d7539e329123283bc71f79`，并由 `scripts/ci/tool-images.lock.json` 记录 source index、mirror index、平台 manifest 和内部镜像引用；这不放宽 Dockerfile 基础镜像保留完整平台集的要求。step 继续声明 CPU、内存和临时磁盘预算，构建失败不自动改为 privileged 或挂载宿主 Docker socket。
 
 #### 本机预同步基础镜像（用户单独授权）
 
-所有 Dockerfile 的外部镜像输入均只引用 `docker-hub.f123.pub/base/`。包括 Dockerfile frontend、每个外部 FROM，以及最终阶段提取 uv 二进制的外部 COPY；内部 build-stage 别名不改。当前共有六个独立来源：docker/dockerfile、oven/bun、uv Python builder、Python runtime、uv binary 和 pgvector/pgvector。
+所有 Dockerfile 的外部镜像输入均只引用 `docker-hub.f123.pub/base/`。包括每个外部 FROM，以及最终阶段提取 uv 二进制的外部 COPY；内部 build-stage 别名不改。Kaniko 构建路径不需要 Dockerfile frontend parser directive，因此当前共有五个独立 Dockerfile 来源：oven/bun、uv Python builder、Python runtime、uv binary 和 pgvector/pgvector。
 
 在本机使用 registry-to-registry 工具先解析并固定源 manifest/index digest，再按该 digest 同步完整内容和多架构子 manifest，校验目标 digest 后才修改 Dockerfile。不使用普通本机 `docker pull/tag/push` 缩减为单个 arm64 平台，不通过 Kubernetes 或 Woodpecker 执行同步。目标标签形如 `<upstream-tag>-lightrag-<digest-prefix>`，避免覆盖其他应用的公共标签；Dockerfile 还固定完整 digest。
 
 `scripts/ci/base-images.lock.json` 记录源、目标、digest 和平台，[操作文档](../../../docs/ContainerBaseImages.md)记录本机同步、校验与更新方式；本次实际结果见[验证记录](base-images-verification.md)。后续更新必须重走“先推送验证、后修改引用”，CI 不自动从公网补齐缺失镜像，也不能用 build args 绕过基础镜像来源要求。已验证 registry 拒绝匿名读取，既有 CI 和开发环境需要专用读取权限，GHCR 登录不能替代它；发布写权限不授予 PR。该改动收敛的是镜像来源；后续流水线排查又将 Dockerfile 默认 apt、Bun/npm 与 rustup bootstrap 源分别收敛到清华/npmmirror 镜像，PyPI 源收敛到 f123 内部镜像，并避免 `curl | sh` 吞掉 rustup 下载失败。因为 `uv sync --frozen` 会按 `uv.lock` 内的 distribution URL 下载，`uv.lock` 也必须使用 f123 mirror 的 registry 与 artifact URL，不能仅依赖 Dockerfile 的 `UV_DEFAULT_INDEX` / `PIP_INDEX_URL`。模型下载、未镜像的上游服务和 Dockerfile.postgres 的 AGE 源码仍不是离线化承诺。
 
-实施前先以最小构建验证 Kubernetes step 的非 root UID、user namespace、seccomp/AppArmor 配置及 cache/bind mount 支持，再构建完整镜像。rootless 不等于不需要安全配置：仅构建步骤允许必要的 `hostUsers: false`、unconfined profile / no-process-sandbox 设置，不能全局放宽 agent 或挂载宿主 Docker socket。步骤须设置 CPU、内存和临时磁盘预算，构建失败不自动改为 privileged。`v1.5.21-test` 证明当前失败发生在 BuildKit daemon 启动前，日志为 `failed to share mount point: /: permission denied`；后续验证必须先确认 Woodpecker 生成的 Pod user namespace 与 AppArmor/Seccomp 配置实际生效，再宣称 rootless 构建可用。
+实施前先以最小构建验证 Kaniko 工具镜像可拉取、registry auth 文件可用、amd64 构建参数和 registry cache 配置正确，再构建完整镜像。步骤须设置 CPU、内存和临时磁盘预算，构建失败不自动改为 privileged、不全局放宽 agent，也不挂载宿主 Docker socket。`v1.5.21-test` 和 #35 记录保留为 BuildKit 方案被淘汰的证据。
 
 备选方案：
 
-- **保留 Kaniko，另写或改造 Dockerfile**：与现有缓存和离线模型 bind mount 语义存在差异，增加两个生产构建路径漂移风险，不采用。
-- **Docker-in-Docker/buildx**：兼容性好，但在现有 Kubernetes backend 中增加 daemon、证书、存储与特权边界，不作为默认方案。rootless 无法运行时报告实际限制，再评审，而非静默退回此方案。
+- **rootless BuildKit**：最初用于保留 BuildKit cache/bind mount 语义，但远端 #35 出现长时间无最终错误日志后 exit 1，诊断性不足，不再作为 Woodpecker 默认方案。
+- **Docker-in-Docker/buildx**：兼容性好，但在现有 Kubernetes backend 中增加 daemon、证书、存储与特权边界，不作为默认方案。Kaniko 无法运行时报告实际限制，再评审，而非静默退回此方案。
 
-资料：[Woodpecker Kubernetes backend](https://woodpecker-ci.org/docs/administration/configuration/backends/kubernetes)、[BuildKit rootless 限制](https://github.com/moby/buildkit/blob/master/docs/rootless.md)。
+资料：[Woodpecker Kubernetes backend](https://woodpecker-ci.org/docs/administration/configuration/backends/kubernetes)、[Kaniko executor flags](https://github.com/GoogleContainerTools/kaniko)。
 
 ### 4. 源码、镜像及发布记录
 
@@ -123,14 +123,14 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 
 - 本地脚本测试覆盖输入身份、tag/分支矩阵、缺失凭据、归档篡改/穿越、manifest/index、digest、旧发布覆盖、新旧并发发布、外部命令非零及超时；这些测试不在 Woodpecker 流水线执行。
 - 本地 Kustomize manifest 测试覆盖 digest replacement、RWX/非 root/双副本、禁止公开 Service 类型、运行 Secret 引用和默认暂停路由。既有 Helm chart 仍由原有 chart 回归测试覆盖，但不再作为 Woodpecker 测试部署入口。
-- 首次环境验收包括 rootless 构建探针、实际 RWX 跨节点验证、显式 bootstrap 和 Secret/RBAC 边界验证；不能用本机 Kind 结果替代 test 集群结果。
-- `v1.5.23-test` / Woodpecker pipeline #31 证实源码包从 COS 下载并通过校验、rootless BuildKit 可启动且 apt 已改写到清华源；同次排查显示 Woodpecker 保存的 build 日志停在 `#23 ... Fetched 80.6 MB` 不是最终状态，Kubernetes 侧可见 apt 解包/安装继续执行。该运行暴露了 rootless dpkg 阶段较慢、旧 rustup `curl | sh` 会吞掉 DNS/下载失败，以及 `uv sync` 仍默认走公网 PyPI；这些构建源问题已改为显式镜像与 fail-fast，但完整远端成功仍需新 tag 验证。
+- 首次环境验收包括 Kaniko 构建探针、实际 RWX 跨节点验证、显式 bootstrap 和 Secret/RBAC 边界验证；不能用本机 Kind 结果替代 test 集群结果。
+- `v1.5.23-test` / Woodpecker pipeline #31 证实源码包从 COS 下载并通过校验、rootless BuildKit 可启动且 apt 已改写到清华源；同次排查显示 Woodpecker 保存的 build 日志停在 `#23 ... Fetched 80.6 MB` 不是最终状态，Kubernetes 侧可见 apt 解包/安装继续执行。该运行暴露了 rootless dpkg 阶段较慢、旧 rustup `curl | sh` 会吞掉 DNS/下载失败，以及 `uv sync` 仍默认走公网 PyPI；这些构建源问题已改为显式镜像与 fail-fast。`v1.5.27-test` / pipeline #35 进一步显示 BuildKit 日志停在 apt 下载中段并以 exit 1 结束，无最终错误行；Woodpecker 构建方案因此改为 haier-demo 风格 Kaniko，完整远端成功仍需新 tag 验证。
 - 在获得发布触发授权并配置好凭据后，以受保护测试 tag 跑通远端流水线；记录 commit/tag/pipeline ID、各阶段结果、镜像 digest、两个 Pod 的 imageID 和测试文档/查询结果。再用兼容的新测试版本验证升级路径及至少一个不修改存储的拒绝发布场景。
 - 本地测试、前端检查、manifest 检查和远端验收分别报告；其中本地测试和前端检查不由 Woodpecker 执行。尚未取得 CI 凭据、测试资源或触发授权时，明确列为未完成项，不把 proposal/脚本完成等同于用户已可测试。
 
 ## Risks / Trade-offs
 
-- **rootless 仍需容器运行时能力** → 先探针验证；失败不自动提权、不修改 agent 全局安全设置。
+- **Kaniko 兼容性依赖 Dockerfile 语法** → 以回归测试禁止 BuildKit-only `RUN --mount` 和 `$BUILDPLATFORM`；失败不自动提权、不修改 agent 全局安全设置。
 - **完整镜像较大，模型依赖下载耗时** → 固定工具/模型输入、使用 registry cache、设置磁盘和超时预算；不清理其他项目镜像或卷。
 - **默认基础镜像改为内部 registry** → 在本机验证目标内容及读取权限，记录现有 CI 的接入要求；不借此覆盖其他项目标签或删除旧镜像。
 - **跨存储不提供事务及自动 HA** → 只自动执行兼容升级和正常 drain；任何未确认状态保留并交由既有审计恢复路径。

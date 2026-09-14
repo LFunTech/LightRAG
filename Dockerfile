@@ -1,5 +1,3 @@
-# syntax=docker-hub.f123.pub/base/dockerfile:1-lightrag-ecfaec9ed6d8@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
-
 ARG APT_DEBIAN_MIRROR=http://mirrors.tuna.tsinghua.edu.cn/debian
 ARG APT_SECURITY_MIRROR=http://mirrors.tuna.tsinghua.edu.cn/debian-security
 ARG PYPI_INDEX_URL=https://mirror.f123.pub/repository/pypi/simple
@@ -8,10 +6,9 @@ ARG RUSTUP_DIST_SERVER=https://mirrors.tuna.tsinghua.edu.cn/rustup
 ARG RUSTUP_UPDATE_ROOT=https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup
 ARG RUSTUP_INIT_URL=https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup/dist/x86_64-unknown-linux-gnu/rustup-init
 
-# Frontend build stage
-# Build frontend assets on the native build platform to avoid
-# cross-architecture emulation issues during multi-platform builds.
-FROM --platform=$BUILDPLATFORM docker-hub.f123.pub/base/bun:1-lightrag-9114c058aeae@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895 AS frontend-builder
+# Frontend build stage. The Woodpecker path uses Kaniko on an amd64 runner,
+# so keep this stage free of BuildKit-only platform directives.
+FROM docker-hub.f123.pub/base/bun:1-lightrag-9114c058aeae@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895 AS frontend-builder
 
 ARG NPM_REGISTRY
 
@@ -23,8 +20,7 @@ WORKDIR /app
 COPY lightrag_webui/ ./lightrag_webui/
 
 # Build frontend assets for inclusion in the API package
-RUN --mount=type=cache,target=/root/.bun/install/cache \
-    cd lightrag_webui \
+RUN cd lightrag_webui \
     && bun install --frozen-lockfile --registry "$NPM_CONFIG_REGISTRY" \
     && bun run build
 
@@ -97,8 +93,7 @@ COPY setup.py .
 COPY uv.lock .
 
 # Install base, API, and offline extras without the project to improve caching
-RUN --mount=type=cache,target=/root/.local/share/uv \
-    uv sync --frozen --no-dev --extra api --extra offline --no-install-project --no-editable
+RUN uv sync --frozen --no-dev --extra api --extra offline --no-install-project --no-editable
 
 # Copy project sources after dependency layer
 COPY lightrag/ ./lightrag/
@@ -107,14 +102,13 @@ COPY lightrag/ ./lightrag/
 COPY --from=frontend-builder /app/lightrag/api/webui ./lightrag/api/webui
 
 # Sync project in non-editable mode and ensure pip is available for runtime installs
-RUN --mount=type=cache,target=/root/.local/share/uv \
-    uv sync --frozen --no-dev --extra api --extra offline --no-editable \
+RUN uv sync --frozen --no-dev --extra api --extra offline --no-editable \
     && /app/.venv/bin/python -m ensurepip --upgrade
 
 # Prepare offline cache directory, pre-populate tiktoken data, and download the
 # pinned spaCy model wheels for the docx smart_heading engine parameter.
 # Use uv run to execute commands from the virtual environment
-RUN mkdir -p /app/data/tiktoken \
+RUN mkdir -p /app/data/tiktoken /app/spacy_models \
     && uv run lightrag-download-cache --cache-dir /app/data/tiktoken --spacy-dir /app/spacy_models || status=$?; \
     if [ -n "${status:-}" ] && [ "$status" -ne 0 ] && [ "$status" -ne 2 ]; then exit "$status"; fi
 
@@ -158,14 +152,15 @@ ENV PATH=/app/.venv/bin:/root/.local/bin:$PATH
 # Install dependencies with uv sync (uses locked versions from uv.lock)
 # and ensure pip is available for runtime installs. The pinned spaCy model
 # wheels (docx smart_heading) MUST be installed after uv sync — sync is exact
-# and would remove packages that are not in the lock. The bind mount exposes
-# the wheels downloaded in the builder stage without adding an image layer.
-RUN --mount=type=cache,target=/root/.local/share/uv \
-    --mount=type=bind,from=builder,source=/app/spacy_models,target=/tmp/spacy_models \
-    uv sync --frozen --no-dev --extra api --extra offline --no-editable \
+# and would remove packages that are not in the lock. Kaniko cannot use
+# BuildKit bind mounts, so copy the wheels from the builder and delete them
+# in the same layer after installation.
+COPY --from=builder /app/spacy_models /tmp/spacy_models
+RUN uv sync --frozen --no-dev --extra api --extra offline --no-editable \
     && /app/.venv/bin/python -m ensurepip --upgrade \
     && /app/.venv/bin/python -m pip install --no-index --no-cache-dir \
-        --find-links=/tmp/spacy_models zh_core_web_sm en_core_web_sm
+        --find-links=/tmp/spacy_models zh_core_web_sm en_core_web_sm \
+    && rm -rf /tmp/spacy_models
 
 # Create persistent data directories AFTER package installation
 RUN mkdir -p /app/data/rag_storage /app/data/inputs /app/data/prompts /app/data/tiktoken

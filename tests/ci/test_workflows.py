@@ -6,10 +6,9 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 WOODPECKER = ROOT / ".woodpecker"
 CI_TOOLS_IMAGE = "docker-hub.f123.pub/base/ci-tools:alpine-3.22.4"
-BUILDKIT_IMAGE = (
-    "docker-hub.f123.pub/base/buildkit:"
-    "v0.24.0-rootless-amd64-lightrag-ea4fedf4f72d"
-    "@sha256:ea4fedf4f72d34133f43236149d961cdb6197735069711a3d3131c76a1ca314e"
+KANIKO_IMAGE = (
+    "docker-hub.f123.pub/devops/kaniko:v1.14.0-debug"
+    "@sha256:1b282be1c4467618e9122d2ae457ffa3776a7caa52d7539e329123283bc71f79"
 )
 SOURCE_ARTIFACT_PREFIX = 'lightrag/ci-source/$CI_COMMIT_SHA/$CI_PIPELINE_NUMBER'
 
@@ -19,37 +18,33 @@ def load(name):
         return yaml.safe_load(fh)
 
 
-def test_buildkit_tool_image_is_locked_and_internal():
+def test_kaniko_tool_image_is_locked_and_internal():
     lock = yaml.safe_load((ROOT / "scripts/ci/tool-images.lock.json").read_text())
-    buildkit = next(
-        item for item in lock["images"] if item["name"] == "rootless-buildkit"
+    kaniko = next(item for item in lock["images"] if item["name"] == "kaniko")
+    assert kaniko["source"] == "gcr.io/kaniko-project/executor:v1.14.0-debug"
+    assert kaniko["source_index_digest"] == (
+        "sha256:d1173d94ddd1092aaf88c929922efde0beee6b3ebfed53bbb86475128a41def9"
     )
-    assert buildkit["source"] == "docker.io/moby/buildkit:v0.24.0-rootless"
-    assert buildkit["source_index_digest"] == (
-        "sha256:995077ff90af1afff56ff23018699d7511d122b2b111041f2011bd12afd5c0fe"
+    assert kaniko["mirror_index_digest"] == (
+        "sha256:660af157e453dfd327d5ded96a652d1e279cd3b0f3e68f047482f0510c288804"
     )
-    assert buildkit["platform"] == "linux/amd64"
-    assert buildkit["digest"] == (
-        "sha256:ea4fedf4f72d34133f43236149d961cdb6197735069711a3d3131c76a1ca314e"
+    assert kaniko["platform"] == "linux/amd64"
+    assert kaniko["digest"] == (
+        "sha256:1b282be1c4467618e9122d2ae457ffa3776a7caa52d7539e329123283bc71f79"
     )
     assert load("build-image.yml")["steps"]["build-image"]["image"] == (
-        f"{buildkit['mirror']}@{buildkit['digest']}"
+        f"{kaniko['mirror']}@{kaniko['digest']}"
     )
 
 
-def test_build_image_uses_rootless_kubernetes_security_context():
+def test_build_image_uses_kaniko_kubernetes_resource_context():
     build = load("build-image.yml")
-    kubernetes = build["steps"]["build-image"]["backend_options"]["kubernetes"]
-    assert kubernetes["hostUsers"] is False
-    security_context = kubernetes["securityContext"]
-    assert security_context["runAsNonRoot"] is True
-    assert security_context["runAsUser"] == 1000
-    assert security_context["runAsGroup"] == 1000
-    assert security_context["seccompProfile"] == {"type": "Unconfined"}
-    assert security_context["apparmorProfile"] == {"type": "Unconfined"}
-    assert build["steps"]["build-image"]["environment"]["BUILDKITD_FLAGS"] == (
-        "--oci-worker-no-process-sandbox"
-    )
+    step = build["steps"]["build-image"]
+    kubernetes = step["backend_options"]["kubernetes"]
+    assert "hostUsers" not in kubernetes
+    assert "securityContext" not in kubernetes
+    assert "BUILDKITD_FLAGS" not in step["environment"]
+    assert step["privileged"] is False
 
 
 def test_build_image_declares_kubernetes_resource_budget():
@@ -69,6 +64,17 @@ def test_build_image_declares_kubernetes_resource_budget():
             "ephemeral-storage": "40Gi",
         },
     }
+
+
+def test_build_image_uses_haier_style_kaniko_builder_for_streamed_logs():
+    build = load("build-image.yml")
+    step = build["steps"]["build-image"]
+    assert step["image"] == KANIKO_IMAGE
+    assert step["environment"]["HOME"] == "/kaniko"
+    assert step["environment"]["REGISTRY"] == "docker-hub.f123.pub"
+    assert step["environment"]["LIGHTRAG_IMAGE_REPOSITORY"] == "lfun/lightrag"
+    assert step["environment"]["LIGHTRAG_IMAGE_CACHE_REPOSITORY"] == "lfun/cache-lightrag"
+    assert step["commands"] == ["sh scripts/ci/build-image.sh"]
 
 
 def test_release_source_workflow_runs_static_validation_and_uploads_source_once():
@@ -266,17 +272,21 @@ def test_release_workflows_delegate_complex_steps_to_tested_scripts():
     assert "sed -i" not in deploy
 
 
-def test_build_image_script_streams_plain_buildkit_progress():
+def test_build_image_script_streams_kaniko_logs_and_records_digest():
     script = (ROOT / "scripts/ci/build-image.sh").read_text()
     assert script.startswith("#!/usr/bin/env sh\n")
-    assert "starting rootless BuildKit image build" in script
-    assert "BUILDKIT_PROGRESS=plain" in script
-    assert "--progress=plain" in script
-    assert "buildkit runtime:" in script
-    assert "apparmor_restrict_unprivileged_userns" in script
-    assert 'METADATA_FILE="${METADATA_FILE:-/tmp/lightrag-build-metadata.json}"' in script
-    assert 'mkdir -p "$DOCKER_CONFIG_DIR" "$(dirname "$METADATA_FILE")"' in script
-    assert 'mkdir -p "$DOCKER_CONFIG_DIR" build/release' not in script
+    assert "starting Kaniko image build" in script
+    assert "KANIKO_EXECUTOR" in script
+    assert "/kaniko/executor" in script
+    assert '--context="dir://${CONTEXT_DIR}"' in script
+    assert "--dockerfile=Dockerfile" in script
+    assert "--cache=true" in script
+    assert "--cache-copy-layers" in script
+    assert '--cache-repo="${CACHE_REPO}"' in script
+    assert "--custom-platform=linux/amd64" in script
+    assert '--digest-file="${DIGEST_FILE}"' in script
+    assert "buildctl-daemonless.sh" not in script
+    assert "BUILDKIT_PROGRESS" not in script
 
 
 def test_tag_delivery_workflows_are_self_contained_not_static_only():
@@ -285,8 +295,8 @@ def test_tag_delivery_workflows_are_self_contained_not_static_only():
     deploy = load("deploy-test.yml")
 
     assert build["steps"]["build-image"].get("depends_on") == ["download-source"]
-    assert build["steps"]["build-image"]["image"] == BUILDKIT_IMAGE
-    assert build["steps"]["build-image"]["commands"] == ["scripts/ci/build-image.sh"]
+    assert build["steps"]["build-image"]["image"] == KANIKO_IMAGE
+    assert build["steps"]["build-image"]["commands"] == ["sh scripts/ci/build-image.sh"]
 
     assert pre["steps"]["verify-image"].get("depends_on") == ["download-source"]
     assert "resolve-image" in " ".join(pre["steps"]["verify-image"]["commands"])

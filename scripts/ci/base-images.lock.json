@@ -2,25 +2,6 @@
   "schema_version": 1,
   "images": [
     {
-      "source": "docker.io/docker/dockerfile:1",
-      "digest": "sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32",
-      "mirror": "docker-hub.f123.pub/base/dockerfile:1-lightrag-ecfaec9ed6d8",
-      "platforms": [
-        "linux/386",
-        "linux/amd64",
-        "linux/arm/v7",
-        "linux/arm64",
-        "linux/mips",
-        "linux/mips64",
-        "linux/mips64le",
-        "linux/mipsle",
-        "linux/ppc64le",
-        "linux/riscv64",
-        "linux/s390x"
-      ],
-      "manifest_count": 22
-    },
-    {
       "source": "docker.io/oven/bun:1",
       "digest": "sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895",
       "mirror": "docker-hub.f123.pub/base/bun:1-lightrag-9114c058aeae",

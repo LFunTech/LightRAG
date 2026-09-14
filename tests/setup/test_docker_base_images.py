@@ -137,3 +137,18 @@ def test_rustup_install_uses_tsinghua_mirror_and_cannot_swallow_download_errors(
         )
         assert "sh.rustup.rs" not in text, path.name
         assert "| sh" not in text, path.name
+
+
+def test_dockerfiles_are_kaniko_compatible_without_buildkit_run_mounts():
+    """Woodpecker builds with Kaniko, so Dockerfiles must avoid BuildKit-only syntax."""
+    for path in DOCKERFILES:
+        text = path.read_text()
+        assert "RUN --mount=" not in text, path.name
+        assert "$BUILDPLATFORM" not in text, path.name
+
+
+def test_dockerfiles_do_not_keep_unused_buildkit_parser_frontend():
+    """Kaniko ignores BuildKit parser directives, so do not retain unused image inputs."""
+    for path in DOCKERFILES:
+        text = path.read_text()
+        assert "# syntax=" not in text, path.name

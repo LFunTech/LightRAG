@@ -75,20 +75,11 @@ steps:
       STORAGE_SECRET_KEY:
         from_secret: cos_storage_secret_key
   build-image:
-    image: docker-hub.f123.pub/base/buildkit:v0.24.0-rootless-amd64-lightrag-ea4fedf4f72d@sha256:ea4fedf4f72d34133f43236149d961cdb6197735069711a3d3131c76a1ca314e
+    image: docker-hub.f123.pub/devops/kaniko:v1.14.0-debug@sha256:1b282be1c4467618e9122d2ae457ffa3776a7caa52d7539e329123283bc71f79
     privileged: false
     depends_on: [download-source]
     backend_options:
       kubernetes:
-        hostUsers: false
-        securityContext:
-          runAsNonRoot: true
-          runAsUser: 1000
-          runAsGroup: 1000
-          seccompProfile:
-            type: Unconfined
-          apparmorProfile:
-            type: Unconfined
         resources:
           requests:
             cpu: 1000m
@@ -99,9 +90,12 @@ steps:
             memory: 8Gi
             ephemeral-storage: 40Gi
     commands:
-      - scripts/ci/build-image.sh
+      - sh scripts/ci/build-image.sh
     environment:
-      BUILDKITD_FLAGS: --oci-worker-no-process-sandbox
+      HOME: /kaniko
+      REGISTRY: docker-hub.f123.pub
+      LIGHTRAG_IMAGE_REPOSITORY: lfun/lightrag
+      LIGHTRAG_IMAGE_CACHE_REPOSITORY: lfun/cache-lightrag
       DOCKER_USERNAME:
         from_secret: DOCKER_USERNAME
       DOCKER_PASSWORD:

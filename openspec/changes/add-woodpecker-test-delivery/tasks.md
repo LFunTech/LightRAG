@@ -1,6 +1,6 @@
 ## 0. 本机基础镜像同步（用户单独授权，其余实施仍待批准）
 
-- [x] 0.1 盘点三个 Dockerfile 的全部外部 FROM、COPY 和 frontend，固定六个源 index digest 与多架构清单。
+- [x] 0.1 盘点三个 Dockerfile 的全部外部 FROM/COPY 输入，固定源 index digest 与多架构清单；后续 Kaniko 切换移除了不再使用的 Dockerfile frontend parser directive。
 - [x] 0.2 从本机同步完整基础镜像到 `docker-hub.f123.pub/base/` 独立标签，核对 index、子 manifest 及 blob 可读性，不覆盖共享标签。
 - [x] 0.3 仅在目标验证成功后，将三个 Dockerfile 改为内部 digest-pinned 引用，生成对应镜像锁定清单。
 - [x] 0.4 验证内部镜像读取与 Dockerfile 构建检查，运行镜像来源回归测试，完成操作文档与验证记录；本切片遵循用户要求提交推送到 master。
@@ -10,7 +10,7 @@
 - [x] 1.1 取得本 proposal/design/spec 的实施批准，记录 test 集群、`lightrag-test` namespace 和首次初始化维护边界。
 - [ ] 1.2 核对 Woodpecker 仓库接入、受保护 tag、Secret 事件/镜像限制、COS/registry 权限及命名空间级部署凭据；只记录名称和验证结果。
   - 2026-09-14 只读核对：Woodpecker `LFunTech/LightRAG` 已启用，默认分支 `master`，仓库为 public；global secrets 存在 `DOCKER_USERNAME`、`DOCKER_PASSWORD`、`kubeconfig_test`（tag 事件可用），organization secrets 存在 `cos_storage_endpoint`、`cos_storage_bucket`、`cos_storage_secret_id`、`cos_storage_secret_key`（tag 事件可用），repo-local secrets 为空。GitHub rulesets 当前为空，`lightrag-test` namespace 当前不存在，因此受保护 tag 与命名空间级部署资源仍待管理员显式完成。
-- [ ] 1.3 验证 rootless BuildKit 探针：非 root、所需安全上下文、cache/bind mount、amd64 构建和临时存储预算，固定工具镜像版本/digest；失败不自动提权。
+- [ ] 1.3 验证 Kaniko 构建探针：内部工具镜像 digest、registry auth、amd64 构建参数、cache-repo 和临时存储预算；失败不自动提权或挂载宿主 Docker socket。
 
 ## 2. 本地回归基线与流水线静态门禁
 
@@ -27,11 +27,12 @@
 
 ## 4. 镜像构建与验证
 
-- [ ] 4.1 使用已验证的 rootless BuildKit 构建现有完整 Dockerfile，设置 amd64、资源预算、独立 registry cache 及 source/revision 标签，不创建另一份生产 Dockerfile。
+- [ ] 4.1 使用已验证的 Kaniko 构建现有完整 Dockerfile，设置 amd64、资源预算、独立 registry cache 及 source/revision 标签；Dockerfile/Dockerfile.lite 不含 BuildKit-only 语法且不创建另一份生产 Dockerfile。
   - 2026-09-14 `v1.5.22-test` / pipeline #30 已进入完整 BuildKit 构建并实时输出日志，但旧 Dockerfile apt 阶段仍使用 `deb.debian.org`，构建下载速度过慢；已停止该过时流水线并按 haier-demo 模式将三个 Dockerfile 的 apt 默认源改为清华镜像。rootless 完整构建成功仍待新 tag 远端验证。
   - 2026-09-14 `v1.5.23-test` / pipeline #31 确认 `validate-release` 只 clone 一次、源码包上传到 COS 并由 `build-image` 下载校验；BuildKit rootless pod 成功启动且 apt 已命中清华源。排查时 Woodpecker build 日志停在 `#23 ... Fetched 80.6 MB in 45s`，但 Kubernetes 侧可见该层继续执行 apt 解包/配置并完成；真正问题是 rootless dpkg 阶段慢、旧 rustup 仍访问 `sh.rustup.rs` 且 `curl | sh` 会吞掉下载失败、后续 `uv sync` 仍默认走公网 PyPI。已停止该过时流水线，构建源修复后仍待新 tag 远端验证。
   - 2026-09-14 `v1.5.25-test` / pipeline #33 在 build 前的旧 `clone-source` 步骤超过十分钟未完成；Kubernetes 侧确认 `git reset --hard` 处于 `D` 状态，wait channel 为 `nfs_wait_bit_killable`，根因为在 Woodpecker NFS workspace 物化 Git worktree。已将 `validate-release` 改为单一 `release-source` 步骤，在容器本地 `/tmp/lightrag-release-source` 完成 clone、静态校验、归档、校验和上传，仍保持唯一 clone 与下游 MinIO/COS 下载模型；完整远端成功仍待新 tag 验证。
   - 2026-09-14 `v1.5.26-test` / pipeline #34 验证 `release-source` 在 `/tmp/lightrag-release-source` checkout 并上传源码包成功，`build-image` 随后进入 BuildKit 与清华 apt/rustup 阶段；继续排查发现 `uv sync --frozen` 仍通过 `uv.lock` 中的 `files.pythonhosted.org` artifact URL 连接 Fastly。已将 `uv.lock` 的 registry 与 artifact URL 改为 `https://mirror.f123.pub/repository/pypi/simple` / `https://mirror.f123.pub/repository/pypi/packages/` 并增加回归测试；完整远端成功仍待新 tag 验证。
+  - 2026-09-14 `v1.5.27-test` / pipeline #35 验证 `release-source` 仍在 `/tmp/lightrag-release-source` 完成唯一 clone 并上传源码包；`build-image` 下载源码后进入 rootless BuildKit，但日志停在 `#23` apt 下载中段，step 运行约 11 分 46 秒后 exit 1，Woodpecker 未保存最终错误行。按 haier-demo 可用流水线改为内部 digest-pinned Kaniko，移除 Dockerfile/Dockerfile.lite 的 `RUN --mount`/`$BUILDPLATFORM`，并删除未使用的 BuildKit delivery 入口；完整远端成功仍待新 tag 验证。
 - [ ] 4.2 安全生成与清理 registry 凭据，发布到 `docker-hub.f123.pub/lfun/lightrag`，实现既有版本冲突拒绝及来源一致的幂等重试。
 - [ ] 4.3 校验 manifest/index、平台、revision 和 digest，持久化发布记录，添加镜像身份不符和未知格式等拒绝路径测试。
 - [x] 4.4 完成 build-image/pre-deploy 工作流，验证失败无后续副作用，并确认 pre/prod tag 不部署。
@@ -59,6 +60,7 @@
   - 2026-09-14 构建源修复验证：Dockerfile package source 回归覆盖 PyPI、Bun/npm 与 rustup 镜像要求；uv/pip 默认源改为 `https://mirror.f123.pub/repository/pypi/simple`，防止回退到公网 PyPI、`sh.rustup.rs` 或 `curl | sh`。
   - 2026-09-14 clone/NFS 修复验证：新增 workflow 回归确保 `validate-release` 只有一个 `release-source` 步骤，clone worktree 使用容器本地 `/tmp/lightrag-release-source`，并且不会在 `/woodpecker/src` 执行 `git init`/`git reset`；`./scripts/test.sh tests/setup/test_docker_base_images.py tests/ci` → 68 passed；`uv run ruff check tests/ci/test_workflows.py`、`WOODPECKER_SERVER=https://woodpecker.f123.pub woodpecker-cli lint --strict .woodpecker/*.yml`、`scripts/ci/delivery-check.sh`、`openspec validate add-woodpecker-test-delivery --strict`、`git diff --check` 均通过。
   - 2026-09-14 uv.lock 镜像修复验证：新增回归测试先在公网 `uv.lock` 状态下失败，再改为 f123 mirror URL 后通过；`UV_DEFAULT_INDEX=https://mirror.f123.pub/repository/pypi/simple uv sync --frozen --dry-run --no-dev --extra api --extra offline --no-install-project --no-editable` 接受改写后的 lock；大 wheel 抽查显示目标镜像路径可返回，但 `pyarrow` mirror artifact 当前 GET 无响应，且该包来自 evaluation extra，不在当前 Docker `--extra api --extra offline` 安装集内。
+  - 2026-09-14 Kaniko 切换本地验证：先新增 RED 回归覆盖 build-image step 使用 haier-demo 风格 Kaniko、Dockerfile 禁止 BuildKit-only `RUN --mount`/`$BUILDPLATFORM`/parser directive、delivery 模块不保留未使用 BuildKit 入口；随后改为 `docker-hub.f123.pub/devops/kaniko:v1.14.0-debug@sha256:1b282be1c4467618e9122d2ae457ffa3776a7caa52d7539e329123283bc71f79`、Kaniko cache repo `lfun/cache-lightrag`，并让 `scripts/ci/build-image.sh` 输出 context/cache/digest 进度。`docker buildx imagetools inspect` 确认上游 source index 为 `sha256:d1173d94ddd1092aaf88c929922efde0beee6b3ebfed53bbb86475128a41def9`，内部 mirror index 为 `sha256:660af157e453dfd327d5ded96a652d1e279cd3b0f3e68f047482f0510c288804`，pinned amd64 manifest 为 `sha256:1b282be1c4467618e9122d2ae457ffa3776a7caa52d7539e329123283bc71f79`；在 Kaniko debug 镜像内用 fake executor 执行 `sh scripts/ci/build-image.sh`，验证参数、digest 文件和 stdout 输出。`./scripts/test.sh tests/ci/test_workflows.py tests/setup/test_docker_base_images.py tests/ci/test_delivery.py` → 54 passed。
 - [ ] 7.2 本地运行完整非 integration 后端测试和完整前端检查，分项记录 pass/skip/fail；确认这些测试结果不被写成 Woodpecker 门禁。
 - [ ] 7.3 在批准的 test 集群创建独立测试资源、完成跨节点 RWX 实测和显式初始化；记录目标与证据，不修改本机/Kind 服务或其他应用资源。
 - [ ] 7.4 在获得触发授权后用测试 tag 跑通真实 Woodpecker 构建、镜像验证和初次双 Pod 部署，保存 pipeline/tag/commit/digest、imageID 及业务验收结果。

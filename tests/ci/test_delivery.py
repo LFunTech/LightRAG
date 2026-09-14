@@ -392,23 +392,8 @@ def test_environment_snapshot_requires_test_namespace_initialized_profile_and_no
         delivery.validate_test_environment_snapshot(bad)
 
 
-def test_buildkit_command_uses_rootless_amd64_cache_revision_and_auth(tmp_path):
-    auth = delivery.write_registry_auth(tmp_path, "docker-hub.f123.pub", "user", "pass")
-    cmd = delivery.buildkit_command(
-        tag="v1.2.3-test",
-        commit="abc123",
-        auth_file=auth,
-        image="docker-hub.f123.pub/lfun/lightrag",
-        cache_ref="docker-hub.f123.pub/lfun/lightrag:buildcache",
-    )
-    joined = " ".join(cmd)
-    assert cmd[:2] == ["buildctl-daemonless.sh", "build"]
-    assert "--progress=plain" in cmd
-    assert "platform=linux/amd64" in joined
-    assert "org.opencontainers.image.revision=abc123" in joined
-    assert "docker-hub.f123.pub/lfun/lightrag:v1.2.3-test" in joined
-    assert str(auth) in joined
-    assert "buildcache" in joined
+def test_delivery_module_does_not_keep_unused_buildkit_build_entrypoint():
+    assert not hasattr(delivery, "buildkit_command")
 
 
 def test_release_record_rejects_conflicting_version_but_accepts_same_source(tmp_path):

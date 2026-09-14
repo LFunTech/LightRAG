@@ -65,14 +65,14 @@ validation rules and provider-specific behavior.
 
 Docker instructions work the same on all platforms with Docker Desktop installed.
 
-### Build Optimization
+### Build Notes
 
-The Dockerfile uses BuildKit cache mounts to significantly improve build performance:
+The Dockerfile uses deterministic multi-stage builds and pinned internal base images:
 
-- **Automatic cache management**: BuildKit is automatically enabled via `# syntax=docker/dockerfile:1` directive
-- **Faster rebuilds**: Only downloads changed dependencies when `uv.lock` or `bun.lock` files are modified
-- **Efficient package caching**: UV and Bun package downloads are cached across builds
-- **No manual configuration needed**: Works out of the box in Docker Compose and GitHub Actions
+- **Kaniko-compatible syntax**: Release builds avoid BuildKit-only `RUN --mount` and parser directives.
+- **Layered dependency steps**: Dependency layers are still separated from application source copies for ordinary Docker layer reuse.
+- **Mirrored package defaults**: apt defaults to Tsinghua mirrors, Bun/npm to npmmirror, and Python installs to the configured PyPI index.
+- **No manual configuration needed**: Works out of the box in Docker Compose and GitHub Actions.
 
 ### Start LightRAG  server:
 
@@ -341,14 +341,12 @@ The main image bundles everything the native docx parser's opt-in `smart_heading
 ### For local development and testing
 
 ```bash
-# Build and run with Docker Compose (BuildKit automatically enabled)
+# Build and run with Docker Compose
 docker compose up --build
 
-# Or explicitly enable BuildKit if needed
-DOCKER_BUILDKIT=1 docker compose up --build
 ```
 
-**Note**: BuildKit is automatically enabled by the `# syntax=docker/dockerfile:1` directive in the Dockerfile, ensuring optimal caching performance.
+**Note**: The release Dockerfile intentionally avoids BuildKit-only syntax so the same production Dockerfile can be built by Woodpecker's Kaniko workflow.
 
 ### For production release
 
