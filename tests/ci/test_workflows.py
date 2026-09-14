@@ -336,26 +336,35 @@ def test_deploy_test_workflow_injects_repo_runtime_secrets_from_test_secret_file
         "LIGHTRAG_TEST_POSTGRES_DATABASE": "lightrag_test_postgres_database",
         "LIGHTRAG_TEST_POSTGRES_PASSWORD": "lightrag_test_postgres_password",
         "LIGHTRAG_TEST_HUGEGRAPH_URI": "lightrag_test_hugegraph_uri",
+        "LIGHTRAG_TEST_HUGEGRAPH_GREMLIN": "lightrag_test_hugegraph_gremlin",
         "LIGHTRAG_TEST_HUGEGRAPH_GRAPH": "lightrag_test_hugegraph_graph",
         "LIGHTRAG_TEST_HUGEGRAPH_GRAPHSPACE": "lightrag_test_hugegraph_graphspace",
         "LIGHTRAG_TEST_HUGEGRAPH_USERNAME": "lightrag_test_hugegraph_username",
         "LIGHTRAG_TEST_HUGEGRAPH_PASSWORD": "lightrag_test_hugegraph_password",
+        "LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD": "lightrag_test_hugegraph_auth_method",
     }
     for variable, secret_name in expected.items():
         assert env[variable]["from_secret"] == secret_name
 
 
-def test_deploy_test_script_bootstraps_namespace_secrets_and_snapshot_in_pipeline():
+def test_deploy_test_script_bootstraps_namespace_secrets_migration_and_snapshot_in_pipeline():
     script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
     assert "ensure_namespace()" in script
     assert "apply_registry_pull_secret()" in script
     assert "apply_runtime_secret()" in script
+    assert "migrate_coordination_schema()" in script
     assert "apply_environment_snapshot()" in script
     assert "make_coordination_dsn()" in script
     assert "--from-literal=LIGHTRAG_COORDINATION_DSN=\"$LIGHTRAG_COORDINATION_DSN\"" in script
     assert "kubectl get namespace \"$NAMESPACE\" >/dev/null" not in script
     assert "create secret docker-registry lightrag-registry-pull" in script
     assert "create secret generic lightrag-runtime" in script
+    assert "kind: Job" in script
+    assert "name: lightrag-coordination-migrate" in script
+    assert "python -m lightrag.distributed migrate" in script
+    assert "envFrom:" in script
+    assert "secretRef:" in script
+    assert "name: lightrag-runtime" in script
     assert "create configmap lightrag-test-environment" in script
 
 

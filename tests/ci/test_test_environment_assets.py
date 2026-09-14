@@ -81,6 +81,9 @@ def test_runbook_records_pipeline_managed_initialization_and_remote_verification
     assert "lightrag-test" in text
     assert "test.secrets" in text
     assert "Woodpecker repo secrets" in text
+    assert "lightrag_test_hugegraph_gremlin" in text
+    assert "lightrag_test_hugegraph_auth_method" in text
+    assert "coordination migration Job" in text
     assert "creates or updates Kubernetes runtime Secrets" in text
     assert "Remote acceptance not yet run" in text
     assert "Do not claim YAML lint, Kustomize render, or local test results as deployment success" in text

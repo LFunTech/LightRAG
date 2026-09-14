@@ -124,6 +124,8 @@ steps:
         from_secret: lightrag_test_postgres_password
       LIGHTRAG_TEST_HUGEGRAPH_URI:
         from_secret: lightrag_test_hugegraph_uri
+      LIGHTRAG_TEST_HUGEGRAPH_GREMLIN:
+        from_secret: lightrag_test_hugegraph_gremlin
       LIGHTRAG_TEST_HUGEGRAPH_GRAPH:
         from_secret: lightrag_test_hugegraph_graph
       LIGHTRAG_TEST_HUGEGRAPH_GRAPHSPACE:

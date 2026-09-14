@@ -20,6 +20,7 @@ DEPLOYMENT="${LIGHTRAG_TEST_DEPLOYMENT:-lightrag}"
 SERVICE="${LIGHTRAG_TEST_SERVICE:-lightrag}"
 CONTAINER="${LIGHTRAG_TEST_CONTAINER:-lightrag}"
 OVERLAY="${LIGHTRAG_KUSTOMIZE_OVERLAY:-k8s-deploy/lightrag-kustomize/overlays/test}"
+BASE_NETWORK_POLICY="${LIGHTRAG_BASE_NETWORK_POLICY:-k8s-deploy/lightrag-kustomize/base/networkpolicy.yaml}"
 LABEL_SELECTOR="app.kubernetes.io/name=lightrag,app.kubernetes.io/instance=lightrag"
 KUBECONFIG_FILE="${KUBECONFIG_FILE:-/tmp/lightrag-test-kubeconfig}"
 ROUTE_PAUSE_PATCH='{"spec":{"selector":{"lightrag.openai.com/routing-paused":"true"}}}'
@@ -99,10 +100,12 @@ apply_runtime_secret() {
   require_env LIGHTRAG_TEST_POSTGRES_DATABASE
   require_env LIGHTRAG_TEST_POSTGRES_PASSWORD
   require_env LIGHTRAG_TEST_HUGEGRAPH_URI
+  require_env LIGHTRAG_TEST_HUGEGRAPH_GREMLIN
   require_env LIGHTRAG_TEST_HUGEGRAPH_GRAPH
   require_env LIGHTRAG_TEST_HUGEGRAPH_GRAPHSPACE
   require_env LIGHTRAG_TEST_HUGEGRAPH_USERNAME
   require_env LIGHTRAG_TEST_HUGEGRAPH_PASSWORD
+  require_env LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD
 
   LIGHTRAG_COORDINATION_DSN="$(make_coordination_dsn)"
 
@@ -122,11 +125,74 @@ apply_runtime_secret() {
     --from-literal=POSTGRES_DATABASE="$LIGHTRAG_TEST_POSTGRES_DATABASE" \
     --from-literal=POSTGRES_PASSWORD="$LIGHTRAG_TEST_POSTGRES_PASSWORD" \
     --from-literal=HUGEGRAPH_URI="$LIGHTRAG_TEST_HUGEGRAPH_URI" \
+    --from-literal=HUGEGRAPH_GREMLIN="$LIGHTRAG_TEST_HUGEGRAPH_GREMLIN" \
     --from-literal=HUGEGRAPH_GRAPH="$LIGHTRAG_TEST_HUGEGRAPH_GRAPH" \
     --from-literal=HUGEGRAPH_GRAPHSPACE="$LIGHTRAG_TEST_HUGEGRAPH_GRAPHSPACE" \
     --from-literal=HUGEGRAPH_USERNAME="$LIGHTRAG_TEST_HUGEGRAPH_USERNAME" \
     --from-literal=HUGEGRAPH_PASSWORD="$LIGHTRAG_TEST_HUGEGRAPH_PASSWORD" \
+    --from-literal=HUGEGRAPH_AUTH_METHOD="$LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD" \
     --dry-run=client -o yaml | kubectl apply -f -
+}
+
+migrate_coordination_schema() {
+  echo "Migrating LightRAG coordination schema with verified image ${LIGHTRAG_IMAGE_DIGEST}"
+  kubectl -n "$NAMESPACE" delete job lightrag-coordination-migrate --ignore-not-found --wait=true
+  cat <<YAML | kubectl -n "$NAMESPACE" apply -f -
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: lightrag-coordination-migrate
+  labels:
+    app.kubernetes.io/name: lightrag
+    app.kubernetes.io/instance: lightrag
+    app.kubernetes.io/component: coordination-migrate
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 180
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lightrag
+        app.kubernetes.io/instance: lightrag
+        app.kubernetes.io/component: coordination-migrate
+    spec:
+      restartPolicy: Never
+      imagePullSecrets:
+        - name: lightrag-registry-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: migrate
+          image: ${LIGHTRAG_IMAGE_REF}
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "python -m lightrag.distributed migrate"]
+          envFrom:
+            - secretRef:
+                name: lightrag-runtime
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+YAML
+
+  if ! kubectl -n "$NAMESPACE" wait \
+    --for=condition=Complete \
+    job/lightrag-coordination-migrate \
+    --timeout=180s; then
+    echo "Coordination migration failed or timed out; recent non-secret logs follow:" >&2
+    kubectl -n "$NAMESPACE" logs job/lightrag-coordination-migrate --tail=120 >&2 || true
+    kubectl -n "$NAMESPACE" get pods \
+      -l app.kubernetes.io/component=coordination-migrate \
+      -o wide >&2 || true
+    exit 1
+  fi
+
+  kubectl -n "$NAMESPACE" logs job/lightrag-coordination-migrate --tail=120 || true
+  kubectl -n "$NAMESPACE" delete job lightrag-coordination-migrate --wait=true
 }
 
 apply_environment_snapshot() {
@@ -164,6 +230,21 @@ kubectl cluster-info >/dev/null
 ensure_namespace
 apply_registry_pull_secret
 apply_runtime_secret
+kubectl -n "$NAMESPACE" delete job lightrag-coordination-migrate --ignore-not-found --wait=true
+
+if kubectl -n "$NAMESPACE" get service "$SERVICE" >/dev/null 2>&1; then
+  kubectl -n "$NAMESPACE" patch service "$SERVICE" --type=merge -p "$ROUTE_PAUSE_PATCH"
+fi
+
+if kubectl -n "$NAMESPACE" get deployment "$DEPLOYMENT" >/dev/null 2>&1; then
+  kubectl -n "$NAMESPACE" scale "deployment/$DEPLOYMENT" --replicas=0
+  if kubectl -n "$NAMESPACE" get pod -l "$LABEL_SELECTOR" -o name | grep -q .; then
+    kubectl -n "$NAMESPACE" wait --for=delete pod -l "$LABEL_SELECTOR" --timeout=600s
+  fi
+fi
+
+kubectl -n "$NAMESPACE" apply -f "$BASE_NETWORK_POLICY"
+migrate_coordination_schema
 apply_environment_snapshot
 
 SNAPSHOT="$(kubectl -n "$NAMESPACE" get configmap lightrag-test-environment -o jsonpath='{.data.snapshot}')"
@@ -182,17 +263,6 @@ metadata:
 data:
   digest: $LIGHTRAG_IMAGE_DIGEST
 YAML
-
-if kubectl -n "$NAMESPACE" get service "$SERVICE" >/dev/null 2>&1; then
-  kubectl -n "$NAMESPACE" patch service "$SERVICE" --type=merge -p "$ROUTE_PAUSE_PATCH"
-fi
-
-if kubectl -n "$NAMESPACE" get deployment "$DEPLOYMENT" >/dev/null 2>&1; then
-  kubectl -n "$NAMESPACE" scale "deployment/$DEPLOYMENT" --replicas=0
-  if kubectl -n "$NAMESPACE" get pod -l "$LABEL_SELECTOR" -o name | grep -q .; then
-    kubectl -n "$NAMESPACE" wait --for=delete pod -l "$LABEL_SELECTOR" --timeout=600s
-  fi
-fi
 
 kubectl apply -k "$OVERLAY"
 wait_for_pvc_bound lightrag-test-working-rwx

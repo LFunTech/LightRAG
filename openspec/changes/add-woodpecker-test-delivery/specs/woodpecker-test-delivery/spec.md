@@ -86,11 +86,11 @@ The delivery system SHALL bind source archives and release records to repository
 
 ### Requirement: The test environment preserves the supported distributed profile
 
-The delivery system SHALL target the confirmed test cluster and lightrag-test namespace, run two application replicas with one process per replica, and preserve shared PostgreSQL/vector/status, HugeGraph, workspace and filesystem configuration. The application workspace and PostgreSQL workspace SHALL use the valid identifier `lightrag_test` while the Kubernetes namespace remains `lightrag-test`. The deployment pipeline SHALL prepare Kubernetes-side test environment resources from scoped Woodpecker secrets, including namespace, registry pull Secret, runtime Secret, coordination DSN, profile snapshot and shared PVCs. It MUST reject missing secret values, incompatible profiles, unsafe storage state and unverified shared storage rather than fall back to local storage or an unauthenticated single replica.
+The delivery system SHALL target the confirmed test cluster and lightrag-test namespace, run two application replicas with one process per replica, and preserve shared PostgreSQL/vector/status, HugeGraph, workspace and filesystem configuration. The application workspace and PostgreSQL workspace SHALL use the valid identifier `lightrag_test` while the Kubernetes namespace remains `lightrag-test`. The deployment pipeline SHALL prepare Kubernetes-side test environment resources from scoped Woodpecker secrets, including namespace, registry pull Secret, runtime Secret, coordination DSN, coordination schema migration Job, profile snapshot and shared PVCs. It MUST reject missing secret values, incompatible profiles, unsafe storage state and unverified shared storage rather than fall back to local storage or an unauthenticated single replica.
 
 #### Scenario: Pipeline prepares Kubernetes test resources
 - **WHEN** a valid `vX.Y.Z-test` deployment starts and all required Woodpecker secrets have been populated from `.secrets/test.secrets`
-- **THEN** the deploy step creates or updates `lightrag-test`, `lightrag-registry-pull`, `lightrag-runtime`, `lightrag-test-environment`, and the Kustomize-managed RWX PVCs before rolling out the application
+- **THEN** the deploy step creates or updates `lightrag-test`, `lightrag-registry-pull`, `lightrag-runtime`, runs the `lightrag-coordination-migrate` Job from the verified release image, creates or updates `lightrag-test-environment`, and applies the Kustomize-managed RWX PVCs before rolling out the application
 
 #### Scenario: Runtime connection secrets are missing
 - **WHEN** a required Bailian, PostgreSQL, HugeGraph, application API or registry secret is absent or empty
