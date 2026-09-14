@@ -1,0 +1,35 @@
+## Why
+
+当前 fork 没有 Woodpecker 发布链路；直接复制 `../ai-center` 的 Kaniko 构建和单实例部署，会与本仓库 Dockerfile 的 BuildKit 特性、HugeGraph 分布式写入和维护合同冲突。需要一条从质量检查、源码归档、镜像发布到 Kubernetes 测试部署的可追溯链路。
+
+用户已确认包含 `*-test` 标签后的自动部署，目标为 ai-center 所在 **test 集群**，使用独立 **`lightrag-test` namespace**。本 proposal 的具体实施方案待评审批准；不因范围确认而直接部署或启动初始化。
+
+## What Changes
+
+- 新增 `.woodpecker/` 工作流：质量检查、发布身份校验与源码归档、镜像构建发布、镜像校验、测试部署和部署验收。保留现有 GitHub Actions。
+- `master` 的 push/PR 执行无发布凭据的质量检查；符合规范且来自 `master` 历史的发布 tag 执行完整发布门禁。`main` 不修改、不作为 fork 发布来源。
+- 沿用参考仓库的 `vX.Y.Z-test`、`vX.Y.Z-pre`、`vX.Y.Z` 约定。只有 `-test` 自动部署，pre/prod 仅发布并校验镜像。
+- 使用 rootless BuildKit 构建现有完整 Dockerfile，目标 `linux/amd64`、镜像仓库 `docker-hub.f123.pub/lfun/lightrag`。源码与发布记录使用独立 COS 路径，绑定 commit、pipeline 身份和校验和；部署使用已校验的镜像 digest。
+- 新增测试环境 Helm values 和命名空间级发布配套，复用现有分布式 chart，运行两个 Pod、每 Pod 一个进程；使用 PG/pgvector、HugeGraph 和真实共享持久存储，不使用本机测试模型替身。
+- 自动发布只操作预置、已初始化且兼容的测试环境：串行发布、旧副本优雅退出、持久化状态检查、新副本启动及验收。首次初始化、模式迁移、故障恢复和回滚仍是显式维护操作，不加入发布自动补偿。
+- 默认仅 ClusterIP，无公网 Ingress/NodePort/LoadBalancer；明确内部访问控制、API 鉴权及数据库/模型受控出站要求。
+- 增加工作流、发布脚本及 Helm 回归测试；全量非 integration 后端测试和完整前端检查作为发布门禁，针对现有两个鉴权状态码失败先独立定位，禁止跳过或弱化断言以获取绿灯。
+- 提供首次接入、Secret/RBAC 配置、测试基础设施初始化、正常发布、失败处理及受控回滚文档。真实远端发布验收与静态检查分别记录，不以 YAML lint 代替部署成功。
+
+## Capabilities
+
+### New Capabilities
+
+- `woodpecker-test-delivery`: fork 的质量门禁、可信源码与镜像交付，以及遵守分布式写入合同的私有测试环境自动部署。
+
+### Modified Capabilities
+
+无已归档正式 spec。本 change 不改变 HugeGraph 存储语义、分布式写入与恢复合同、默认 local 部署模式或对外业务 API。
+
+## Impact
+
+计划涉及 `.woodpecker/`、`scripts/ci/`、`tests/ci/`、`k8s-deploy/lightrag/` 的 digest/测试部署配套及对应 `tests/setup/`、部署文档与本 change artifacts。Dockerfile 仅在确有必要时增加可覆盖的基础镜像参数，保留既有默认构建行为，不创建分叉的生产 Dockerfile。
+
+外部依赖为已有 Woodpecker 3.18.1 Kubernetes agent、COS、私有镜像仓库，以及 test 集群专属的命名空间、命名空间范围部署凭据、运行 Secret、PG/pgvector、HugeGraph 和两个 RWX 根目录。测试环境尚未预置时发布必须明确失败，不降级为文件后端或无认证单 Pod。
+
+不修改 `../ai-center`、`main`、Woodpecker server/agent 版本或全局权限，也不使用其他应用的数据库、身份密钥或生产凭据。不改动当前本机 `.env`、`.secrets`、原生服务和既有 Kind 并发测试环境。
