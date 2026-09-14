@@ -1,5 +1,8 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env sh
+set -eu
+if (set -o pipefail) 2>/dev/null; then
+  set -o pipefail
+fi
 
 : "${CI_COMMIT_TAG:?CI_COMMIT_TAG is required}"
 : "${CI_COMMIT_SHA:?CI_COMMIT_SHA is required}"

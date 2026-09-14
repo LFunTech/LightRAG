@@ -181,6 +181,7 @@ def test_release_workflows_delegate_complex_steps_to_tested_scripts():
 
 def test_build_image_script_streams_plain_buildkit_progress():
     script = (ROOT / "scripts/ci/build-image.sh").read_text()
+    assert script.startswith("#!/usr/bin/env sh\n")
     assert "starting rootless BuildKit image build" in script
     assert "BUILDKIT_PROGRESS=plain" in script
     assert "--progress=plain" in script
