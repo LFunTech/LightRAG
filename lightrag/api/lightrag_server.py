@@ -117,6 +117,30 @@ class _ObjectUploadComponents:
     upload_session_storage: Any | None
 
 
+def _bind_upload_session_storage_runtime(rag: Any, storage: Any | None) -> None:
+    if storage is None:
+        return
+    from lightrag.distributed.runtime import get_runtime
+
+    runtime = get_runtime(rag)
+    if runtime is not None:
+        storage._distributed_runtime = runtime
+
+
+async def _initialize_upload_session_storage(rag: Any, storage: Any | None) -> None:
+    if storage is None:
+        return
+    _bind_upload_session_storage_runtime(rag, storage)
+    from lightrag.distributed.runtime import get_runtime
+
+    runtime = get_runtime(rag)
+    if runtime is None:
+        await storage.initialize()
+        return
+    async with runtime.operation("initialize_upload_sessions"):
+        await storage.initialize()
+
+
 def _build_object_upload_components(args: Any, rag: Any) -> _ObjectUploadComponents:
     """Build optional object-upload dependencies without touching the network."""
     provider = str(getattr(args, "object_storage", "disabled") or "disabled").lower()
@@ -152,6 +176,7 @@ def _build_object_upload_components(args: Any, rag: Any) -> _ObjectUploadCompone
         workspace=getattr(rag, "workspace", "") or "",
         embedding_func=getattr(rag, "embedding_func", None),
     )
+    _bind_upload_session_storage_runtime(rag, upload_session_storage)
     upload_session_manager = UploadSessionManager(
         KVUploadSessionStore(upload_session_storage),
         bucket=config.bucket,
@@ -1652,8 +1677,9 @@ def create_app(args):
             # Initialize database connections
             # Note: initialize_storages() now auto-initializes pipeline_status for rag.workspace
             await rag.initialize_storages()
-            if object_upload_components.upload_session_storage is not None:
-                await object_upload_components.upload_session_storage.initialize()
+            await _initialize_upload_session_storage(
+                rag, object_upload_components.upload_session_storage
+            )
             if object_upload_components.object_store is not None:
                 await object_upload_components.object_store.preflight()
                 logger.info(

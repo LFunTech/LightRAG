@@ -13,6 +13,7 @@ import shutil
 import sqlite3
 import tempfile
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from enum import Enum
 from uuid import uuid4
@@ -4819,6 +4820,16 @@ async def background_delete_documents(
                 logger.error(f"Error processing pending documents after deletion: {e}")
 
 
+@asynccontextmanager
+async def _object_upload_operation(rag: LightRAG, kind: str):
+    runtime = get_runtime(rag)
+    if runtime is None:
+        yield
+        return
+    async with runtime.operation(kind):
+        yield
+
+
 def create_document_routes(
     rag: LightRAG,
     doc_manager: DocumentManager,
@@ -4889,23 +4900,24 @@ def create_document_routes(
         ttl = getattr(global_args, "s3_presign_ttl_seconds", 900)
         session_ttl = getattr(global_args, "s3_upload_session_ttl_seconds", ttl)
         try:
-            session = await sessions.create_session(
-                workspace=getattr(rag, "workspace", "") or "",
-                filename=safe_filename,
-                content_type=request.content_type,
-                size=request.size,
-                checksum_sha256=request.checksum_sha256.lower()
-                if request.checksum_sha256
-                else None,
-                ttl_seconds=session_ttl,
-            )
-            signed = await store.presign_upload(
-                session.object_key,
-                content_type=request.content_type,
-                size=request.size,
-                checksum_sha256=session.checksum_sha256,
-                expires_in=ttl,
-            )
+            async with _object_upload_operation(rag, "object_upload_presign"):
+                session = await sessions.create_session(
+                    workspace=getattr(rag, "workspace", "") or "",
+                    filename=safe_filename,
+                    content_type=request.content_type,
+                    size=request.size,
+                    checksum_sha256=request.checksum_sha256.lower()
+                    if request.checksum_sha256
+                    else None,
+                    ttl_seconds=session_ttl,
+                )
+                signed = await store.presign_upload(
+                    session.object_key,
+                    content_type=request.content_type,
+                    size=request.size,
+                    checksum_sha256=session.checksum_sha256,
+                    expires_in=ttl,
+                )
         except ObjectStoreUnavailableError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except ObjectStoreError as exc:
@@ -4930,122 +4942,129 @@ def create_document_routes(
         """Verify a direct object upload and enqueue it as an object-backed document."""
 
         store, sessions = _require_object_upload_components()
-        try:
-            issued = await sessions.get_session(request.upload_id)
-            if request.object_key != issued.object_key:
-                raise UploadSessionMismatchError(
-                    "object key does not match upload session"
-                )
-            if issued.status == "completed" and issued.track_id:
-                return InsertResponse(
-                    status="success",
-                    message=(
-                        f"Object '{issued.canonical_file_path}' was already "
-                        "uploaded. Processing continues under the original track."
-                    ),
-                    track_id=issued.track_id,
-                )
-            metadata = await store.head_object(request.object_key)
-            completed = await sessions.complete_session(
-                request.upload_id,
-                workspace=getattr(rag, "workspace", "") or "",
-                object_key=request.object_key,
-                metadata=metadata,
-            )
-        except ObjectNotFoundError as exc:
-            raise HTTPException(status_code=404, detail="Uploaded object does not exist") from exc
-        except UploadSessionNotFoundError as exc:
-            raise HTTPException(status_code=404, detail="Upload session does not exist") from exc
-        except UploadSessionExpiredError as exc:
-            raise HTTPException(status_code=409, detail="Upload session has expired") from exc
-        except UploadSessionMismatchError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        except ObjectStoreUnavailableError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        except ObjectStoreError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-        existing_doc_data = await get_existing_doc_by_file_path_candidates(
-            rag.doc_status, Path(completed.canonical_file_path)
-        )
-        if existing_doc_data:
-            status = get_doc_status_value(existing_doc_data) or "unknown"
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"Document storage already contains '{completed.canonical_file_path}' "
-                    f"(Status: {status}). Delete the existing record before re-uploading."
-                ),
-            )
-
-        directives = resolve_parser_directives(completed.filename)
-        active_strategy = parse_process_options(directives.process_options).chunking
-        hint_chunk_options = None
-        hint_chunk_params = directives.chunk_params.get(active_strategy)
-        if hint_chunk_params:
+        async with _object_upload_operation(rag, "object_upload_complete"):
             try:
-                strategy_key = chunk_strategy_key(directives.process_options)
-                hint_chunk_options = resolve_chunk_options(
-                    rag.addon_params, process_options=directives.process_options
+                issued = await sessions.get_session(request.upload_id)
+                if request.object_key != issued.object_key:
+                    raise UploadSessionMismatchError(
+                        "object key does not match upload session"
+                    )
+                if issued.status == "completed" and issued.track_id:
+                    return InsertResponse(
+                        status="success",
+                        message=(
+                            f"Object '{issued.canonical_file_path}' was already "
+                            "uploaded. Processing continues under the original track."
+                        ),
+                        track_id=issued.track_id,
+                    )
+                metadata = await store.head_object(request.object_key)
+                completed = await sessions.complete_session(
+                    request.upload_id,
+                    workspace=getattr(rag, "workspace", "") or "",
+                    object_key=request.object_key,
+                    metadata=metadata,
                 )
-                hint_chunk_options[strategy_key].update(hint_chunk_params)
-                _validate_effective_chunk_overlap(
-                    hint_chunk_options, strategy_key, strategy_key
-                )
-            except ValueError as exc:
+            except ObjectNotFoundError as exc:
                 raise HTTPException(
-                    status_code=422,
-                    detail=f"Invalid chunking configuration: {exc}",
+                    status_code=404, detail="Uploaded object does not exist"
                 ) from exc
-        parse_engine_field = encode_parse_engine(
-            directives.engine, directives.engine_params
-        )
-        track_id = generate_track_id("upload")
-        object_source = {
-            "source_kind": "s3_object",
-            "bucket": completed.bucket,
-            "object_key": completed.object_key,
-            "etag": completed.object_etag,
-            "size": completed.object_size,
-            "content_type": completed.object_content_type or completed.content_type,
-            "checksum_sha256": completed.checksum_sha256,
-            "upload_id": completed.upload_id,
-        }
-        enqueue_kwargs: dict[str, Any] = {
-            "input": "",
-            "file_paths": completed.canonical_file_path,
-            "track_id": track_id,
-            "docs_format": FULL_DOCS_FORMAT_PENDING_PARSE,
-            "parse_engine": parse_engine_field,
-            "process_options": directives.process_options,
-            "object_source": object_source,
-        }
-        if hint_chunk_options is not None:
-            enqueue_kwargs["chunk_options"] = hint_chunk_options
-        await rag.apipeline_enqueue_documents(**enqueue_kwargs)
-        try:
-            await sessions.mark_enqueued(
-                completed.upload_id,
-                workspace=getattr(rag, "workspace", "") or "",
+            except UploadSessionNotFoundError as exc:
+                raise HTTPException(
+                    status_code=404, detail="Upload session does not exist"
+                ) from exc
+            except UploadSessionExpiredError as exc:
+                raise HTTPException(
+                    status_code=409, detail="Upload session has expired"
+                ) from exc
+            except UploadSessionMismatchError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            except ObjectStoreUnavailableError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            except ObjectStoreError as exc:
+                raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+            existing_doc_data = await get_existing_doc_by_file_path_candidates(
+                rag.doc_status, Path(completed.canonical_file_path)
+            )
+            if existing_doc_data:
+                status = get_doc_status_value(existing_doc_data) or "unknown"
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Document storage already contains '{completed.canonical_file_path}' "
+                        f"(Status: {status}). Delete the existing record before re-uploading."
+                    ),
+                )
+
+            directives = resolve_parser_directives(completed.filename)
+            active_strategy = parse_process_options(directives.process_options).chunking
+            hint_chunk_options = None
+            hint_chunk_params = directives.chunk_params.get(active_strategy)
+            if hint_chunk_params:
+                try:
+                    strategy_key = chunk_strategy_key(directives.process_options)
+                    hint_chunk_options = resolve_chunk_options(
+                        rag.addon_params, process_options=directives.process_options
+                    )
+                    hint_chunk_options[strategy_key].update(hint_chunk_params)
+                    _validate_effective_chunk_overlap(
+                        hint_chunk_options, strategy_key, strategy_key
+                    )
+                except ValueError as exc:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"Invalid chunking configuration: {exc}",
+                    ) from exc
+            parse_engine_field = encode_parse_engine(
+                directives.engine, directives.engine_params
+            )
+            track_id = generate_track_id("upload")
+            object_source = {
+                "source_kind": "s3_object",
+                "bucket": completed.bucket,
+                "object_key": completed.object_key,
+                "etag": completed.object_etag,
+                "size": completed.object_size,
+                "content_type": completed.object_content_type or completed.content_type,
+                "checksum_sha256": completed.checksum_sha256,
+                "upload_id": completed.upload_id,
+            }
+            enqueue_kwargs: dict[str, Any] = {
+                "input": "",
+                "file_paths": completed.canonical_file_path,
+                "track_id": track_id,
+                "docs_format": FULL_DOCS_FORMAT_PENDING_PARSE,
+                "parse_engine": parse_engine_field,
+                "process_options": directives.process_options,
+                "object_source": object_source,
+            }
+            if hint_chunk_options is not None:
+                enqueue_kwargs["chunk_options"] = hint_chunk_options
+            await rag.apipeline_enqueue_documents(**enqueue_kwargs)
+            try:
+                await sessions.mark_enqueued(
+                    completed.upload_id,
+                    workspace=getattr(rag, "workspace", "") or "",
+                    track_id=track_id,
+                )
+            except Exception as session_error:
+                logger.warning(
+                    "Object upload session %s completed but its track_id could "
+                    "not be recorded; repeated complete may need source dedup to "
+                    "avoid duplicate enqueue: %s",
+                    completed.upload_id,
+                    session_error,
+                )
+            await drive_pipeline(rag)
+            return InsertResponse(
+                status="success",
+                message=(
+                    f"Object '{completed.canonical_file_path}' uploaded successfully. "
+                    "Processing will continue in background."
+                ),
                 track_id=track_id,
             )
-        except Exception as session_error:
-            logger.warning(
-                "Object upload session %s completed but its track_id could "
-                "not be recorded; repeated complete may need source dedup to "
-                "avoid duplicate enqueue: %s",
-                completed.upload_id,
-                session_error,
-            )
-        await drive_pipeline(rag)
-        return InsertResponse(
-            status="success",
-            message=(
-                f"Object '{completed.canonical_file_path}' uploaded successfully. "
-                "Processing will continue in background."
-            ),
-            track_id=track_id,
-        )
 
     @router.post(
         "/scan", response_model=ScanResponse, dependencies=[Depends(combined_auth)]

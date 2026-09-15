@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import importlib
 import sys
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
+
+from lightrag.distributed.runtime import DistributedRuntime, storage_write
 
 pytestmark = pytest.mark.offline
 
@@ -14,6 +18,9 @@ pytestmark = pytest.mark.offline
 class _KVStorage:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
+        self.namespace = kwargs.get("namespace", "upload_sessions")
+        self.workspace = kwargs.get("workspace", "tenant_a")
+        self.global_config = {}
         self.initialized = False
 
     async def initialize(self):
@@ -27,12 +34,39 @@ class _Rag:
     workspace = "tenant_a"
     embedding_func = object()
 
-    def __init__(self):
+    def __init__(self, runtime=None):
         self.created_storage = None
+        self._distributed_runtime = runtime
 
     def key_string_value_json_storage_cls(self, **kwargs):
         self.created_storage = _KVStorage(**kwargs)
         return self.created_storage
+
+
+class _Coordinator:
+    def __init__(self):
+        self.events = []
+
+    async def initialize(self):
+        self.events.append(("initialize",))
+
+    @asynccontextmanager
+    async def operation(self, kind, **kwargs):
+        operation = SimpleNamespace(id=uuid4())
+        self.events.append(("enter", kind, kwargs.get("exclusive", False)))
+        try:
+            yield operation
+        finally:
+            self.events.append(("exit", kind))
+
+    async def heartbeat(self, operation):
+        self.events.append(("heartbeat", operation.id))
+
+
+class _GuardedKVStorage(_KVStorage):
+    @storage_write
+    async def initialize(self):
+        self.initialized = True
 
 
 def _args(**overrides):
@@ -104,6 +138,46 @@ def test_enabled_object_upload_components_use_s3_and_kv_namespace():
     assert components.upload_session_storage is rag.created_storage
     assert rag.created_storage.kwargs["namespace"] == "upload_sessions"
     assert rag.created_storage.kwargs["workspace"] == "tenant_a"
+
+
+def test_enabled_object_upload_components_bind_session_storage_to_distributed_runtime():
+    _build_object_upload_components = _build_components_fn()
+    runtime = DistributedRuntime(_Coordinator(), workspace="tenant_a")
+    rag = _Rag(runtime=runtime)
+
+    components = _build_object_upload_components(
+        _args(
+            object_storage_enabled=True,
+            object_storage="s3",
+            s3_endpoint_url="https://objects.example.com",
+            s3_bucket="docs",
+            s3_access_key_id="access-key",
+            s3_secret_access_key="secret-key",
+        ),
+        rag,
+    )
+
+    assert components.upload_session_storage is rag.created_storage
+    assert getattr(rag.created_storage, "_distributed_runtime", None) is runtime
+
+
+async def test_upload_session_storage_initializes_inside_distributed_operation():
+    original_argv = sys.argv[:]
+    sys.argv = [sys.argv[0]]
+    try:
+        module = importlib.import_module("lightrag.api.lightrag_server")
+    finally:
+        sys.argv = original_argv
+    coordinator = _Coordinator()
+    runtime = DistributedRuntime(coordinator, workspace="tenant_a")
+    rag = SimpleNamespace(_distributed_runtime=runtime)
+    storage = _GuardedKVStorage(namespace="upload_sessions", workspace="tenant_a")
+    storage._distributed_runtime = runtime
+
+    await module._initialize_upload_session_storage(rag, storage)
+
+    assert storage.initialized is True
+    assert ("enter", "initialize_upload_sessions", False) in coordinator.events
 
 
 def test_object_upload_components_derive_enabled_from_provider_when_flag_missing():

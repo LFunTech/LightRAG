@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import importlib
 import sys
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
@@ -22,8 +24,10 @@ from lightrag.object_storage import FakeObjectStore, ObjectStoreConfig  # noqa: 
 from lightrag.object_storage import ObjectStoreUnavailableError  # noqa: E402
 from lightrag.object_storage.sessions import (  # noqa: E402
     InMemoryUploadSessionStore,
+    UploadSession,
     UploadSessionManager,
 )
+from lightrag.distributed.runtime import DistributedRuntime, storage_write  # noqa: E402
 
 pytestmark = pytest.mark.offline
 
@@ -44,7 +48,8 @@ class _Rag:
     workspace = "tenant_a"
     addon_params = {}
 
-    def __init__(self):
+    def __init__(self, runtime=None):
+        self._distributed_runtime = runtime
         self.doc_status = _DocStatus()
         self.enqueued = []
         self.process_calls = 0
@@ -62,8 +67,51 @@ class _UnavailablePresignStore(FakeObjectStore):
         raise ObjectStoreUnavailableError("object store unavailable")
 
 
-def _make_client(monkeypatch, tmp_path, *, with_object_store=True, max_upload_size=100):
-    rag = _Rag()
+class _Coordinator:
+    def __init__(self):
+        self.events = []
+
+    @asynccontextmanager
+    async def operation(self, kind, **kwargs):
+        operation = SimpleNamespace(id=uuid4())
+        self.events.append(("enter", kind, kwargs.get("exclusive", False)))
+        try:
+            yield operation
+        finally:
+            self.events.append(("exit", kind))
+
+    async def heartbeat(self, operation):
+        self.events.append(("heartbeat", operation.id))
+
+
+class _DistributedUploadSessionStore(InMemoryUploadSessionStore):
+    namespace = "upload_sessions"
+    workspace = "tenant_a"
+
+    def __init__(self, runtime):
+        super().__init__()
+        self._distributed_runtime = runtime
+
+    @storage_write
+    async def put(self, session: UploadSession) -> None:
+        await super().put(session)
+
+
+def _make_runtime():
+    coordinator = _Coordinator()
+    return DistributedRuntime(coordinator, workspace="tenant_a"), coordinator
+
+
+def _make_client(
+    monkeypatch,
+    tmp_path,
+    *,
+    with_object_store=True,
+    max_upload_size=100,
+    runtime=None,
+    session_manager=None,
+):
+    rag = _Rag(runtime=runtime)
     app = FastAPI()
     app.state.background_tasks = set()
     manager = DocumentManager(str(tmp_path / "inputs"), workspace=rag.workspace)
@@ -79,7 +127,7 @@ def _make_client(monkeypatch, tmp_path, *, with_object_store=True, max_upload_si
                 secret_access_key="secret-key",
             )
         )
-        sessions = UploadSessionManager(
+        sessions = session_manager or UploadSessionManager(
             InMemoryUploadSessionStore(), bucket="docs", prefix="lightrag"
         )
     routes_module_args = SimpleNamespace(
@@ -162,6 +210,72 @@ def test_presign_issues_server_owned_key_and_secret_safe_url(monkeypatch, tmp_pa
     assert body["headers"]["Content-Type"].startswith("application/vnd")
     assert "secret-key" not in response.text
     assert "access-key" not in response.text
+
+
+def test_presign_records_upload_session_inside_distributed_operation(
+    monkeypatch, tmp_path
+):
+    runtime, coordinator = _make_runtime()
+    sessions = UploadSessionManager(
+        _DistributedUploadSessionStore(runtime), bucket="docs", prefix="lightrag"
+    )
+    client, _, _ = _make_client(
+        monkeypatch, tmp_path, runtime=runtime, session_manager=sessions
+    )
+
+    response = client.post(
+        "/documents/uploads/presign",
+        headers=_HEADERS,
+        json={"filename": "report.pdf", "content_type": "application/pdf", "size": 5},
+    )
+
+    assert response.status_code == 200
+    assert ("enter", "object_upload_presign", False) in coordinator.events
+
+
+def test_complete_updates_upload_session_inside_distributed_operation(
+    monkeypatch, tmp_path
+):
+    import anyio
+
+    runtime, coordinator = _make_runtime()
+    sessions = UploadSessionManager(
+        _DistributedUploadSessionStore(runtime), bucket="docs", prefix="lightrag"
+    )
+    client, rag, object_store = _make_client(
+        monkeypatch, tmp_path, runtime=runtime, session_manager=sessions
+    )
+    async def _drive_pipeline(_rag):
+        return None
+
+    monkeypatch.setattr(_dr, "drive_pipeline", _drive_pipeline)
+
+    async def _seed_session_and_object():
+        async with runtime.operation("seed_upload_session"):
+            session = await sessions.create_session(
+                workspace=rag.workspace,
+                filename="report.pdf",
+                content_type="application/pdf",
+                size=5,
+                checksum_sha256=None,
+                ttl_seconds=1800,
+            )
+        await object_store.put_bytes(
+            session.object_key, b"hello", content_type="application/pdf"
+        )
+        return session
+
+    session = anyio.run(_seed_session_and_object)
+
+    response = client.post(
+        "/documents/uploads/complete",
+        headers=_HEADERS,
+        json={"upload_id": session.upload_id, "object_key": session.object_key},
+    )
+
+    assert response.status_code == 200
+    assert rag.enqueued
+    assert ("enter", "object_upload_complete", False) in coordinator.events
 
 
 def test_complete_verifies_object_and_enqueues_object_backed_document(monkeypatch, tmp_path):
