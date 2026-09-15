@@ -74,7 +74,9 @@ def test_build_image_uses_haier_style_kaniko_builder_for_streamed_logs():
     assert step["environment"]["REGISTRY"] == "docker-hub.f123.pub"
     assert step["environment"]["LIGHTRAG_IMAGE_REPOSITORY"] == "lfun/lightrag"
     assert step["environment"]["LIGHTRAG_IMAGE_CACHE_REPOSITORY"] == "lfun/cache-lightrag"
-    assert step["commands"] == ["sh scripts/ci/build-image.sh"]
+    command_text = "\n".join(step["commands"])
+    assert 'LIGHTRAG_BUILD_CONTEXT_DIR="$SOURCE_DIR"' in command_text
+    assert "sh scripts/ci/build-image.sh" in command_text
 
 
 def test_build_image_uses_redo_snapshot_mode_for_large_python_venv_layers():
@@ -161,8 +163,7 @@ def test_source_artifact_bootstrap_escapes_shell_parameter_expansion():
     ):
         workflow = load(name)
         steps = workflow["steps"]
-        step_names = ["release-source"] if name == "validate-release.yml" else ["download-source"]
-        for step_name in step_names:
+        for step_name in steps:
             command_text = "\n".join(steps[step_name]["commands"])
             assert not re.search(r"(?<!\$)\$\{", command_text), (name, step_name)
 
@@ -207,8 +208,32 @@ def test_downstream_workflows_skip_clone_and_download_source_from_minio():
         assert "mc cp" in command_text
         assert SOURCE_ARTIFACT_PREFIX in command_text
         assert "sha256sum -c source.tar.gz.sha256" in command_text
-        assert "find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +" in command_text
-        assert "tar -xzf /tmp/lightrag-source/source.tar.gz -C ." in command_text
+        assert 'SOURCE_ARCHIVE_DIR="$${LIGHTRAG_SOURCE_ARCHIVE_DIR:-build/source-artifact}"' in command_text
+        assert 'mc cp "deploy/$STORAGE_BUCKET/$ARTIFACT_PREFIX/source.tar.gz" "$SOURCE_ARCHIVE_DIR/source.tar.gz"' in command_text
+        assert "find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +" not in command_text
+        assert "tar -xzf /tmp/lightrag-source/source.tar.gz -C ." not in command_text
+
+
+def test_downstream_source_extraction_stays_off_nfs_workspace():
+    for workflow_name, consumer_steps in {
+        "build-image.yml": ("build-image",),
+        "pre-deploy.yml": ("verify-image",),
+        "deploy-test.yml": ("resolve-image", "deploy-test"),
+    }.items():
+        workflow = load(workflow_name)
+        all_commands = "\n".join(
+            command
+            for step in workflow["steps"].values()
+            for command in step.get("commands") or []
+        )
+        assert "tar -xzf /tmp/lightrag-source/source.tar.gz -C ." not in all_commands
+        assert "find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +" not in all_commands
+        for step_name in consumer_steps:
+            command_text = "\n".join(workflow["steps"][step_name]["commands"])
+            assert 'SOURCE_ARCHIVE_DIR="$${LIGHTRAG_SOURCE_ARCHIVE_DIR:-build/source-artifact}"' in command_text
+            assert 'SOURCE_DIR="$${LIGHTRAG_SOURCE_DIR:-/tmp/lightrag-source}"' in command_text
+            assert 'tar -xzf "$SOURCE_ARCHIVE_DIR/source.tar.gz" -C "$SOURCE_DIR"' in command_text
+            assert 'cd "$SOURCE_DIR"' in command_text
 
 
 def test_release_workflows_are_tag_only_and_ordered_from_source_artifact():
@@ -303,10 +328,14 @@ def test_tag_delivery_workflows_are_self_contained_not_static_only():
 
     assert build["steps"]["build-image"].get("depends_on") == ["download-source"]
     assert build["steps"]["build-image"]["image"] == KANIKO_IMAGE
-    assert build["steps"]["build-image"]["commands"] == ["sh scripts/ci/build-image.sh"]
+    build_command = "\n".join(build["steps"]["build-image"]["commands"])
+    assert "sh scripts/ci/build-image.sh" in build_command
+    assert 'LIGHTRAG_BUILD_CONTEXT_DIR="$SOURCE_DIR"' in build_command
 
     assert pre["steps"]["verify-image"].get("depends_on") == ["download-source"]
-    assert "resolve-image" in " ".join(pre["steps"]["verify-image"]["commands"])
+    pre_command = "\n".join(pre["steps"]["verify-image"]["commands"])
+    assert "resolve-image" in pre_command
+    assert "--record-output /woodpecker/src/build/release/image-record.json" in pre_command
     assert "LIGHTRAG_IMAGE_DIGEST" not in pre["steps"]["verify-image"].get("environment", {})
 
     assert set(deploy["steps"]) == {"download-source", "resolve-image", "deploy-test"}
@@ -314,10 +343,12 @@ def test_tag_delivery_workflows_are_self_contained_not_static_only():
     assert deploy["steps"]["resolve-image"]["image"].startswith("docker-hub.f123.pub/base/uv:")
     assert deploy["steps"]["deploy-test"]["image"].startswith("docker-hub.f123.pub/base/ci-tools:")
     assert deploy["steps"]["deploy-test"].get("depends_on") == ["resolve-image"]
-    assert deploy["steps"]["deploy-test"]["commands"] == [
-        "test -s build/release/image.env",
-        ". build/release/image.env && sh scripts/ci/deploy-test.sh",
-    ]
+    resolve_command = "\n".join(deploy["steps"]["resolve-image"]["commands"])
+    assert "--env-output /woodpecker/src/build/release/image.env" in resolve_command
+    deploy_command = "\n".join(deploy["steps"]["deploy-test"]["commands"])
+    assert "test -s /woodpecker/src/build/release/image.env" in deploy_command
+    assert ". /woodpecker/src/build/release/image.env" in deploy_command
+    assert "sh scripts/ci/deploy-test.sh" in deploy_command
 
 
 def test_deploy_test_workflow_injects_repo_runtime_secrets_from_test_secret_file():

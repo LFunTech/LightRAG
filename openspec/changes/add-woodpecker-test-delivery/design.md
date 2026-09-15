@@ -82,7 +82,7 @@ Kaniko 工具镜像也必须由内部 registry 提供，不能让 Kubernetes age
 
 ### 4. 源码、镜像及发布记录
 
-COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record 命名空间，不能覆盖 ai-center 路径。归档仅由 `validate-release` 的 `release-source` 唯一 clone 产出，包含受审源码；该 clone worktree 位于容器本地 `/tmp`，不依赖 Woodpecker NFS workspace 写入性能。归档拒绝纳入 `.env`、`.secrets`、私钥、开发数据和构建凭据。生成 SHA-256 校验和及记录，包含 repo、tag、commit、pipeline 身份；下游 workflow 先从 MinIO/COS 下载源码包并校验 SHA-256，再解包使用。消费者验证全部身份与校验和，拒绝路径穿越、符号链接逃逸和异常归档。
+COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record 命名空间，不能覆盖 ai-center 路径。归档仅由 `validate-release` 的 `release-source` 唯一 clone 产出，包含受审源码；该 clone worktree 位于容器本地 `/tmp`，不依赖 Woodpecker NFS workspace 写入性能。归档拒绝纳入 `.env`、`.secrets`、私钥、开发数据和构建凭据。生成 SHA-256 校验和及记录，包含 repo、tag、commit、pipeline 身份；下游 workflow 先从 MinIO/COS 下载源码包并校验 SHA-256，但只把压缩包、校验和和记录作为小型 workspace artifact 保存在 `build/source-artifact/`，实际 build、image verification 和 deploy 步骤再次校验后解包到各自容器本地 `/tmp/lightrag-source` 并从该目录执行脚本，避免在 Woodpecker NFS workspace 上删除或物化整棵源码树。消费者验证全部身份与校验和，拒绝路径穿越、符号链接逃逸和异常归档。
 
 镜像仓库固定为 `docker-hub.f123.pub/lfun/lightrag`，不调用默认发布到上游的 `docker-build-push.sh`。镜像附带 commit/source/tag 标识，发布记录包含最终 digest、平台和源码包 hash。版本 tag 需不可变；遇到已经存在但来源不同的版本拒绝覆盖。相同版本重试复核已有 digest 和来源，不假定重复构建字节相同。
 

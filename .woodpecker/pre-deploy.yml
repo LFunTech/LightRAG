@@ -54,17 +54,16 @@ steps:
         }
         STORAGE_ENDPOINT_ROOT="$(resolve_storage_endpoint "$STORAGE_ENDPOINT")"
         ARTIFACT_PREFIX="lightrag/ci-source/$CI_COMMIT_SHA/$CI_PIPELINE_NUMBER"
-        rm -rf /tmp/lightrag-source
-        mkdir -p /tmp/lightrag-source
+        SOURCE_ARCHIVE_DIR="$${LIGHTRAG_SOURCE_ARCHIVE_DIR:-build/source-artifact}"
+        rm -rf "$SOURCE_ARCHIVE_DIR"
+        mkdir -p "$SOURCE_ARCHIVE_DIR"
         mc alias set deploy "$STORAGE_ENDPOINT_ROOT" "$STORAGE_ACCESS_KEY" "$STORAGE_SECRET_KEY"
-        mc cp "deploy/$STORAGE_BUCKET/$ARTIFACT_PREFIX/source.tar.gz" /tmp/lightrag-source/source.tar.gz
-        mc cp "deploy/$STORAGE_BUCKET/$ARTIFACT_PREFIX/source.tar.gz.sha256" /tmp/lightrag-source/source.tar.gz.sha256
-        mc cp "deploy/$STORAGE_BUCKET/$ARTIFACT_PREFIX/source-record.json" /tmp/lightrag-source/source-record.json
-        (cd /tmp/lightrag-source && sha256sum -c source.tar.gz.sha256)
-        find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-        tar -xzf /tmp/lightrag-source/source.tar.gz -C .
-        test -f scripts/ci/delivery.py
-        echo "source archive downloaded: $ARTIFACT_PREFIX"
+        mc cp "deploy/$STORAGE_BUCKET/$ARTIFACT_PREFIX/source.tar.gz" "$SOURCE_ARCHIVE_DIR/source.tar.gz"
+        mc cp "deploy/$STORAGE_BUCKET/$ARTIFACT_PREFIX/source.tar.gz.sha256" "$SOURCE_ARCHIVE_DIR/source.tar.gz.sha256"
+        mc cp "deploy/$STORAGE_BUCKET/$ARTIFACT_PREFIX/source-record.json" "$SOURCE_ARCHIVE_DIR/source-record.json"
+        (cd "$SOURCE_ARCHIVE_DIR" && sha256sum -c source.tar.gz.sha256)
+        test -s "$SOURCE_ARCHIVE_DIR/source-record.json"
+        echo "source archive downloaded: $ARTIFACT_PREFIX -> $SOURCE_ARCHIVE_DIR"
     environment:
       STORAGE_ENDPOINT:
         from_secret: cos_storage_endpoint
@@ -78,8 +77,22 @@ steps:
     image: docker-hub.f123.pub/base/uv:python3.12-bookworm-slim-lightrag-e5b65587bce7@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
     depends_on: [download-source]
     commands:
-      - mkdir -p build/release
-      - python -m scripts.ci.delivery resolve-image --tag "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA" --image "docker-hub.f123.pub/lfun/lightrag" --record-output build/release/image-record.json
+      - |
+        set -eu
+        if (set -o pipefail) 2>/dev/null; then
+          set -o pipefail
+        fi
+        SOURCE_ARCHIVE_DIR="$${LIGHTRAG_SOURCE_ARCHIVE_DIR:-build/source-artifact}"
+        SOURCE_DIR="$${LIGHTRAG_SOURCE_DIR:-/tmp/lightrag-source}"
+        test -s "$SOURCE_ARCHIVE_DIR/source.tar.gz"
+        test -s "$SOURCE_ARCHIVE_DIR/source.tar.gz.sha256"
+        rm -rf "$SOURCE_DIR"
+        mkdir -p "$SOURCE_DIR" /woodpecker/src/build/release
+        (cd "$SOURCE_ARCHIVE_DIR" && sha256sum -c source.tar.gz.sha256)
+        tar -xzf "$SOURCE_ARCHIVE_DIR/source.tar.gz" -C "$SOURCE_DIR"
+        test -f "$SOURCE_DIR/scripts/ci/delivery.py"
+        cd "$SOURCE_DIR"
+        python -m scripts.ci.delivery resolve-image --tag "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA" --image "docker-hub.f123.pub/lfun/lightrag" --record-output /woodpecker/src/build/release/image-record.json
     environment:
       DOCKER_USERNAME:
         from_secret: DOCKER_USERNAME

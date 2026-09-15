@@ -40,6 +40,7 @@
   - 2026-09-14 `v1.5.29-test` / pipeline #38 验证删除 Rust/离线缓存后，Kaniko 构建进入 `uv sync` 并在无 Cargo/GCC/模型缓存下载下完成 193 个依赖安装；随后默认 full snapshot 在大型 `.venv` 层数分钟无输出但 Pod 仍有 CPU，根因为 Kaniko 内容 hash 快照成本。已增加 `--snapshot-mode=redo` 回归与 build 参数；完整远端成功仍待新 tag 验证。
   - 2026-09-14 `v1.5.30-test` / pipeline #39 验证 `--snapshot-mode=redo` 已进入 Kaniko 参数，但旧 Dockerfile 仍让 Kaniko 为后续 stage 保存 `root/.local`、`app/lightrag` 和大型 `app/.venv`，日志停在 `Saving file app/.venv for later use`。已删除 release Dockerfile/Dockerfile.lite 的 Python builder stage，改为 final stage 直接安装 locked Python 依赖，避免跨 stage 保存/复制 `.venv`；完整远端成功仍待新 tag 验证。
   - 2026-09-14 `v1.5.31-test` / pipeline #41 通过完整 Kaniko 构建：只剩前端产物跨 stage，final stage 直接安装 193 个 locked Python 依赖，apt 命中清华镜像，镜像成功推送并输出 digest `sha256:42df257a4bb8a244633bceb6b96fd7495a8ab262f43a89efa9ab0bbea927e8a9`；build-image 用时约 4 分 40 秒。
+  - 2026-09-15 `v1.5.43-test` / pipeline #50 证明普通 push 空流水线无持久 step，但 tag 流水线在 `build-image > download-source` 下载并校验源码包后，又把整棵源码 `tar -C .` 解包到 `/woodpecker/src`，Kubernetes 侧可见 tar 进程卡在 NFS workspace。已改为下游 `download-source` 仅把压缩包/校验和/记录保存为 `build/source-artifact/` 小型 workspace artifact，实际 build/verify/deploy 消费步骤各自重新校验并解包到容器本地 `/tmp/lightrag-source`，再从该目录运行脚本；完整远端成功仍待新 tag 验证。
 - [x] 4.2 安全生成与清理 registry 凭据，发布到 `docker-hub.f123.pub/lfun/lightrag`，实现既有版本冲突拒绝及来源一致的幂等重试。
 - [x] 4.3 校验 manifest/index、平台、revision 和 digest，持久化发布记录，添加镜像身份不符和未知格式等拒绝路径测试。
   - 2026-09-14 pipeline #41 的 `pre-deploy > verify-image` 已使用 registry 记录解析并验证 `v1.5.31-test` 指向 commit `c4fe1e2241943bc9777eda7dccb151aeb73844ac`、digest `sha256:42df257a4bb8a244633bceb6b96fd7495a8ab262f43a89efa9ab0bbea927e8a9`。
@@ -89,6 +90,7 @@
 - [ ] 7.4 在获得触发授权后用测试 tag 跑通真实 Woodpecker 构建、镜像验证和初次双 Pod 部署，保存 pipeline/tag/commit/digest、imageID 及业务验收结果。
   - 2026-09-14 `v1.5.31-test` / pipeline #41 已跑通真实 Woodpecker 源码归档、镜像构建和 pre-deploy 镜像验证；`deploy-test` 已进入真实部署步骤，但因 `image.env` 未 export 导致脚本入参缺失而失败。修复后仍需新测试 tag 验证初次双 Pod 部署。
   - 2026-09-14 `v1.5.32-test` / pipeline #42 已跑通真实 Woodpecker 源码归档、镜像构建、pre-deploy 镜像验证和 deploy-test 的 image env 传播；构建 digest 为 `sha256:575beb3cf5c93be229b94cc00d0f7cbf581a33d96fe73cbfe58f187242da296f`。deploy-test 随后按前置检查失败于 `namespaces "lightrag-test" not found`，说明下一步阻塞在首次 test 环境初始化，而不是 CI 构建/变量传递。
+  - 2026-09-15 `v1.5.43-test` / pipeline #50 的 tag 运行完成唯一 clone 与源码包上传，但下游仍在 `/woodpecker/src` 解包源码导致 build-image 未开始。该运行不满足初次双 Pod 部署证据，已用本地 workflow 回归禁止下游源码解包到 NFS workspace；仍需新测试 tag 验证完整构建、部署和验收。
 - [ ] 7.5 通过后续兼容测试版本验证自动升级，以及至少一个不破坏存储的拒绝发布场景，确认旧流量不会在验收前恢复。
 - [ ] 7.6 完成 CI 接入、Secret/RBAC、失败处理与人工回退 runbook；明确未验证项目，不用静态验证替代远端成功。
 - [ ] 7.7 对照 spec 自检全部场景，执行 OpenSpec strict validation，提交并推送到 master，确认 main 未改变；不自动归档或创建生产 release。
