@@ -9,7 +9,12 @@ import pytest
 
 from lightrag.distributed import OperationOwnershipError
 from lightrag.distributed.runtime import DistributedRuntime, storage_write
-from lightrag.kg.postgres_impl import PostgreSQLDB, ClientManager, PGDocStatusStorage
+from lightrag.kg.postgres_impl import (
+    PostgreSQLDB,
+    ClientManager,
+    PGDocStatusStorage,
+    PGKVStorage,
+)
 from tests.kg.postgres_impl.test_postgres_vector_deferred import (
     _make_storage,
     _entity_data,
@@ -175,6 +180,41 @@ async def test_distributed_normal_initialize_never_runs_table_migrations():
     async with rt.operation("initialize"):
         await s.initialize()
     rt.verify_pg_table.assert_awaited_once_with(s)
+
+
+async def test_distributed_maintenance_runs_business_table_migrations_before_verify():
+    rt, c = runtime()
+    db = db_with_connection(SimpleNamespace())
+    db.workspace = None
+    db.check_tables = AsyncMock()
+    db.execute = AsyncMock()
+    rt.db = db
+    events = []
+
+    async def check_tables():
+        events.append("check_tables")
+
+    async def verify(storage):
+        events.append(f"verify:{storage.namespace}")
+
+    db.check_tables.side_effect = check_tables
+    rt.verify_pg_table = AsyncMock(side_effect=verify)
+
+    full_docs = PGKVStorage("full_docs", "test_ws", {}, None)
+    full_docs._distributed_runtime = rt
+    status = PGDocStatusStorage("doc_status", "test_ws", {}, None)
+    status._distributed_runtime = rt
+
+    async with rt.operation("bootstrap", exclusive=True, maintenance=True):
+        await full_docs.initialize()
+        await status.initialize()
+
+    assert events == [
+        "check_tables",
+        "verify:full_docs",
+        "verify:doc_status",
+    ]
+    db.check_tables.assert_awaited_once()
 
 
 async def test_pg_runtime_verify_rejects_wrong_vector_dimension_without_ddl():

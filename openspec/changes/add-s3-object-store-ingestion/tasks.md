@@ -68,4 +68,4 @@
 
 ## 未完成/待远端验证
 
-- 7.4 尚未触发新的 Woodpecker test tag，因此 test 集群中的完整 rollout、双 Pod object-backed 摄取、retry/delete 和对外 Ingress 仍需远端流水线证据确认。
+- 2026-09-15 `v1.5.47-test` / pipeline #57 已使用 S3 object-store 配置进入测试部署，但在 `lightrag-storage-bootstrap` 阶段失败，尚未到达 object-backed 摄取验收。失败根因为已有 PostgreSQL 业务表缺少 S3 元数据列 `object_source`，而分布式 bootstrap 未先执行业务表兼容迁移；本次修复使显式 maintenance/bootstrap 路径先运行既有 PG `check_tables()` 迁移，再执行 verify。7.4 仍未完成，需新 tag 验证 test 集群完整 rollout、双 Pod object-backed 摄取、retry/delete 和对外 Ingress。

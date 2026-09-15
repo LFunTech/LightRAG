@@ -92,10 +92,10 @@ steps:
         echo "source archive uploaded: $ARTIFACT_PREFIX"
     environment:
       STORAGE_ENDPOINT:
-        from_secret: cos_storage_endpoint
+        from_secret: lightrag_cos_storage_endpoint
       STORAGE_BUCKET:
-        from_secret: cos_storage_bucket
+        from_secret: lightrag_cos_storage_bucket
       STORAGE_ACCESS_KEY:
-        from_secret: cos_storage_secret_id
+        from_secret: lightrag_cos_storage_secret_id
       STORAGE_SECRET_KEY:
-        from_secret: cos_storage_secret_key
+        from_secret: lightrag_cos_storage_secret_key

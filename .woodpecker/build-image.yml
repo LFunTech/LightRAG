@@ -66,13 +66,13 @@ steps:
         echo "source archive downloaded: $ARTIFACT_PREFIX -> $SOURCE_ARCHIVE_DIR"
     environment:
       STORAGE_ENDPOINT:
-        from_secret: cos_storage_endpoint
+        from_secret: lightrag_cos_storage_endpoint
       STORAGE_BUCKET:
-        from_secret: cos_storage_bucket
+        from_secret: lightrag_cos_storage_bucket
       STORAGE_ACCESS_KEY:
-        from_secret: cos_storage_secret_id
+        from_secret: lightrag_cos_storage_secret_id
       STORAGE_SECRET_KEY:
-        from_secret: cos_storage_secret_key
+        from_secret: lightrag_cos_storage_secret_key
   build-image:
     image: docker-hub.f123.pub/devops/kaniko:v1.14.0-debug@sha256:1b282be1c4467618e9122d2ae457ffa3776a7caa52d7539e329123283bc71f79
     privileged: false

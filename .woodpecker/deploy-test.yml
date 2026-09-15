@@ -66,13 +66,13 @@ steps:
         echo "source archive downloaded: $ARTIFACT_PREFIX -> $SOURCE_ARCHIVE_DIR"
     environment:
       STORAGE_ENDPOINT:
-        from_secret: cos_storage_endpoint
+        from_secret: lightrag_cos_storage_endpoint
       STORAGE_BUCKET:
-        from_secret: cos_storage_bucket
+        from_secret: lightrag_cos_storage_bucket
       STORAGE_ACCESS_KEY:
-        from_secret: cos_storage_secret_id
+        from_secret: lightrag_cos_storage_secret_id
       STORAGE_SECRET_KEY:
-        from_secret: cos_storage_secret_key
+        from_secret: lightrag_cos_storage_secret_key
   resolve-image:
     image: docker-hub.f123.pub/base/uv:python3.12-bookworm-slim-lightrag-e5b65587bce7@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
     depends_on: [download-source]
@@ -173,10 +173,10 @@ steps:
       LIGHTRAG_TEST_HUGEGRAPH_PASSWORD:
         from_secret: lightrag_test_hugegraph_password
       LIGHTRAG_TEST_S3_ENDPOINT_URL:
-        from_secret: cos_storage_endpoint
+        from_secret: lightrag_cos_storage_endpoint
       LIGHTRAG_TEST_S3_BUCKET:
-        from_secret: cos_storage_bucket
+        from_secret: lightrag_cos_storage_bucket
       LIGHTRAG_TEST_S3_ACCESS_KEY_ID:
-        from_secret: cos_storage_secret_id
+        from_secret: lightrag_cos_storage_secret_id
       LIGHTRAG_TEST_S3_SECRET_ACCESS_KEY:
-        from_secret: cos_storage_secret_key
+        from_secret: lightrag_cos_storage_secret_key

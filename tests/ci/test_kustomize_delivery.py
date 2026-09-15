@@ -24,11 +24,11 @@ def test_deploy_workflow_uses_kubectl_apply_k_not_helm():
     assert "LIGHTRAG_TEST_PUBLIC_HOST" not in step["environment"]
     assert (
         step["environment"]["LIGHTRAG_TEST_S3_ENDPOINT_URL"]["from_secret"]
-        == "cos_storage_endpoint"
+        == "lightrag_cos_storage_endpoint"
     )
     assert (
         step["environment"]["LIGHTRAG_TEST_S3_ACCESS_KEY_ID"]["from_secret"]
-        == "cos_storage_secret_id"
+        == "lightrag_cos_storage_secret_id"
     )
     assert "verify_public_ingress" in script
     assert "/webui" in script

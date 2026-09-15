@@ -113,10 +113,10 @@ def test_release_source_workflow_runs_static_validation_and_uploads_source_once(
     assert "source.tar.gz" in command_text
     assert "source.tar.gz.sha256" in command_text
     assert "source-record.json" in command_text
-    assert source["environment"]["STORAGE_ENDPOINT"]["from_secret"] == "cos_storage_endpoint"
-    assert source["environment"]["STORAGE_BUCKET"]["from_secret"] == "cos_storage_bucket"
-    assert source["environment"]["STORAGE_ACCESS_KEY"]["from_secret"] == "cos_storage_secret_id"
-    assert source["environment"]["STORAGE_SECRET_KEY"]["from_secret"] == "cos_storage_secret_key"
+    assert source["environment"]["STORAGE_ENDPOINT"]["from_secret"] == "lightrag_cos_storage_endpoint"
+    assert source["environment"]["STORAGE_BUCKET"]["from_secret"] == "lightrag_cos_storage_bucket"
+    assert source["environment"]["STORAGE_ACCESS_KEY"]["from_secret"] == "lightrag_cos_storage_secret_id"
+    assert source["environment"]["STORAGE_SECRET_KEY"]["from_secret"] == "lightrag_cos_storage_secret_key"
     text = (WOODPECKER / "validate-release.yml").read_text()
     for forbidden in (
         "KUBECONFIG",
@@ -197,10 +197,10 @@ def test_downstream_workflows_skip_clone_and_download_source_from_minio():
         assert "download-source" in workflow["steps"]
         download = workflow["steps"]["download-source"]
         assert download["image"] == CI_TOOLS_IMAGE
-        assert download["environment"]["STORAGE_ENDPOINT"]["from_secret"] == "cos_storage_endpoint"
-        assert download["environment"]["STORAGE_BUCKET"]["from_secret"] == "cos_storage_bucket"
-        assert download["environment"]["STORAGE_ACCESS_KEY"]["from_secret"] == "cos_storage_secret_id"
-        assert download["environment"]["STORAGE_SECRET_KEY"]["from_secret"] == "cos_storage_secret_key"
+        assert download["environment"]["STORAGE_ENDPOINT"]["from_secret"] == "lightrag_cos_storage_endpoint"
+        assert download["environment"]["STORAGE_BUCKET"]["from_secret"] == "lightrag_cos_storage_bucket"
+        assert download["environment"]["STORAGE_ACCESS_KEY"]["from_secret"] == "lightrag_cos_storage_secret_id"
+        assert download["environment"]["STORAGE_SECRET_KEY"]["from_secret"] == "lightrag_cos_storage_secret_key"
         command_text = "\n".join(download["commands"])
         assert ". scripts/ci/source-artifact.sh" not in command_text
         assert "resolve_storage_endpoint() {" in command_text
@@ -273,18 +273,18 @@ def test_release_secrets_do_not_appear_in_pull_request_workflow():
     assert "from_secret" in release_text
     assert "kubeconfig_test" in release_text
     assert "DOCKER_PASSWORD" in release_text
-    assert "cos_storage_secret_key" in release_text
+    assert "lightrag_cos_storage_secret_key" in release_text
 
 
-def test_release_workflows_reference_existing_global_or_org_secrets():
+def test_release_workflows_reference_expected_scoped_secrets():
     release_text = "\n".join(p.read_text() for p in WOODPECKER.glob("*.yml"))
     for expected in (
         "DOCKER_USERNAME",
         "DOCKER_PASSWORD",
-        "cos_storage_endpoint",
-        "cos_storage_bucket",
-        "cos_storage_secret_id",
-        "cos_storage_secret_key",
+        "lightrag_cos_storage_endpoint",
+        "lightrag_cos_storage_bucket",
+        "lightrag_cos_storage_secret_id",
+        "lightrag_cos_storage_secret_key",
         "kubeconfig_test",
     ):
         assert expected in release_text

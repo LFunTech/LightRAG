@@ -59,6 +59,7 @@ class DistributedRuntime:
         self.db = None
         self._db_init_lock = asyncio.Lock()
         self._init_lock = asyncio.Lock()
+        self._pg_maintenance_schema_checked = False
 
     async def initialize(self):
         if self.closed:
@@ -180,6 +181,14 @@ class DistributedRuntime:
                         migrate=False,
                     )
                 else:
+                    if not self._pg_maintenance_schema_checked:
+                        # Explicit maintenance bootstrap is the only distributed
+                        # path allowed to converge shared business PG tables.
+                        # Normal startup below remains verify-only so an
+                        # unprepared schema fails closed while writers may be
+                        # active.
+                        await self.db.check_tables()
+                        self._pg_maintenance_schema_checked = True
                     from lightrag.kg.postgres_impl import namespace_to_table_name
 
                     table = namespace_to_table_name(storage.namespace)
