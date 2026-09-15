@@ -18,6 +18,10 @@ def test_kustomize_test_deployment_preserves_distributed_profile_without_plainte
     env = {item["name"]: item["value"] for item in container["env"]}
     assert env["WORKERS"] == "1"
     assert env["LIGHTRAG_DEPLOYMENT_ID"] == "lightrag_test"
+    assert env["LIGHTRAG_SHARED_STORAGE"] == "false"
+    assert env["LIGHTRAG_OBJECT_STORAGE"] == "s3"
+    assert env["S3_OBJECT_PREFIX"] == "lightrag/test-object-ingestion"
+    assert env["S3_SCRATCH_DIR"] == "/app/data/object-scratch"
     assert env["WORKSPACE"] == "lightrag_test"
     assert env["POSTGRES_WORKSPACE"] == "lightrag_test"
     assert env["LIGHTRAG_GRAPH_STORAGE"] == "HugeGraphStorage"
@@ -39,8 +43,20 @@ def test_kustomize_test_deployment_preserves_distributed_profile_without_plainte
         "EMBEDDING_BINDING_API_KEY",
         "EMBEDDING_BINDING_HOST",
         "LIGHTRAG_API_KEY",
+        "S3_ENDPOINT_URL",
+        "S3_BUCKET",
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+        "S3_SESSION_TOKEN",
     }
     assert not (forbidden & set(env))
+    volumes = {item["name"]: item for item in pod["volumes"]}
+    assert volumes["inputs"] == {"name": "inputs", "emptyDir": {"sizeLimit": "1Gi"}}
+    assert volumes["object-scratch"] == {
+        "name": "object-scratch",
+        "emptyDir": {"sizeLimit": "5Gi"},
+    }
+    assert "persistentVolumeClaim" not in volumes["inputs"]
 
 
 def test_kustomize_deployer_rbac_is_namespace_scoped():
@@ -85,10 +101,9 @@ def test_kustomize_network_policy_allows_only_internal_callers_and_rke2_ingress(
     assert "to" not in backend_rule
 
 
-def test_kustomize_pvcs_pin_test_cluster_rwx_storage_class():
+def test_kustomize_pvcs_do_not_include_shared_input_dir():
     docs = list(yaml.safe_load_all((BASE / "pvc.yaml").read_text()))
     assert {doc["metadata"]["name"] for doc in docs} == {
-        "lightrag-test-inputs-rwx",
         "lightrag-test-working-rwx",
     }
     assert all(doc["spec"]["storageClassName"] == "syno-nfs" for doc in docs)

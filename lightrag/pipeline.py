@@ -96,6 +96,12 @@ from lightrag.parser.routing import (
     resolve_file_parser_directives,
     resolve_stored_document_parser_engine,
 )
+from lightrag.object_storage import (
+    ObjectStorePreconditionError,
+    download_to_scratch,
+    object_store_uri,
+    upload_directory,
+)
 from lightrag.utils import (
     get_extract_cache_fence,
     CacheData,
@@ -150,6 +156,7 @@ from lightrag.utils_pipeline import (
     resolve_existing_doc_source,
     resolve_doc_file_path,
     resolve_doc_status_parse_engine,
+    resolve_sidecar_uri,
     source_candidate_set_lock,
     strip_lightrag_doc_prefix,
 )
@@ -460,6 +467,26 @@ def _rearm_auto_rescan(ingress: Any) -> None:
 _read_source_file = read_source_file_basename
 
 
+def _optional_positive_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    parsed = int(value)
+    if parsed < 0:
+        raise ObjectStorePreconditionError("object size metadata must be non-negative")
+    return parsed
+
+
+def _validate_remote_prefix(value: str) -> str:
+    prefix = str(value or "").strip().strip("/")
+    if not prefix or "\x00" in prefix:
+        raise ObjectStorePreconditionError("object artifact prefix must not be empty")
+    if any(part in {"", ".", ".."} for part in prefix.split("/")):
+        raise ObjectStorePreconditionError(
+            "object artifact prefix must not contain dot segments"
+        )
+    return prefix
+
+
 # Map ``process_options.chunking`` selector → ``extraction_meta.chunk_method``
 # string used by the pipeline observability layer and the resume path.
 _CHUNKING_METHOD_LABELS: dict[str, str] = {
@@ -688,6 +715,7 @@ class _PipelineMixin:
         parse_engine: str | list[str] | None = None,
         process_options: str | list[str] | None = None,
         chunk_options: dict | list[dict] | None = None,
+        object_source: dict | list[dict] | None = None,
         admission_token: str | None = None,
         from_scan: bool = False,
     ) -> str:
@@ -740,6 +768,10 @@ class _PipelineMixin:
                 :func:`lightrag.utils_pipeline.apply_trusted_sentence_split_regex`
                 and GHSA-32jh-39m7-8x84.  See
                 ``docs/FileProcessingPipeline.md`` for the schema.
+            object_source: Optional per-document object-store source metadata for
+                object-backed pending-parse records. Local upload/scan callers leave
+                this unset; ``file_paths`` remains the canonical user-visible source
+                name and the object location is stored separately.
             admission_token: the pending-enqueue reservation the caller already
                 holds (endpoints reserve one before reading the request body).
                 With ``MAX_PENDING_DOCUMENTS > 0`` the admission guard
@@ -869,6 +901,8 @@ class _PipelineMixin:
             process_options = [process_options] * len(input)
         if isinstance(chunk_options, dict):
             chunk_options = [chunk_options] * len(input)
+        if isinstance(object_source, dict):
+            object_source = [object_source] * len(input)
         # If file_paths is provided, ensure it matches the number of documents
         if file_paths is not None:
             if isinstance(file_paths, str):
@@ -904,6 +938,20 @@ class _PipelineMixin:
             raise ValueError(
                 "Number of chunk_options dicts must match the number of documents"
             )
+        if object_source is not None and len(object_source) != len(input):
+            raise ValueError(
+                "Number of object_source dicts must match the number of documents"
+            )
+
+        def _object_source_at(index: int) -> dict[str, Any] | None:
+            if object_source is None:
+                return None
+            raw = object_source[index]
+            if not raw:
+                return None
+            if not isinstance(raw, dict):
+                raise ValueError("object_source entries must be dictionaries")
+            return dict(raw)
 
         def _parse_engine_at(index: int, doc_format: str) -> str | None:
             if parse_engine is None:
@@ -1067,6 +1115,8 @@ class _PipelineMixin:
                 source_file = Path(str(file_paths[index] or "").strip()).name
                 if has_known_document_source(source_file):
                     content_data["source_file"] = source_file
+            if obj_source := _object_source_at(index):
+                content_data["object_source"] = obj_source
             options_str = _process_options_at(index)
             if options_str:
                 content_data["process_options"] = options_str
@@ -1145,6 +1195,10 @@ class _PipelineMixin:
             source_file = _read_source_file(content_data)
             if source_file:
                 metadata["source_file"] = source_file
+            obj_source = content_data.get("object_source")
+            if isinstance(obj_source, dict) and obj_source:
+                metadata["source_kind"] = obj_source.get("source_kind", "s3_object")
+                metadata["object_source"] = dict(obj_source)
             if metadata:
                 base["metadata"] = metadata
             return base
@@ -1473,6 +1527,10 @@ class _PipelineMixin:
                     full_docs_data[doc_id]["process_options"] = contents[doc_id][
                         "process_options"
                     ]
+                if isinstance(contents[doc_id].get("object_source"), dict):
+                    full_docs_data[doc_id]["object_source"] = dict(
+                        contents[doc_id]["object_source"]
+                    )
                 # ``chunk_options`` is always populated by ``_add_content``
                 # at enqueue time so it's persisted unconditionally.
                 if contents[doc_id].get("chunk_options") is not None:
@@ -4407,6 +4465,11 @@ class _PipelineMixin:
                             f"engine {effective_key!r} does not support "
                             f".{suffix_w or '<no suffix>'}: doc_id={doc_id_w}"
                         )
+                await self._prepare_object_source_for_parse(
+                    doc_id_w,
+                    file_path_w,
+                    content_data_w,
+                )
                 parsed_data_w = (
                     await parser.parse(
                         ParseContext(
@@ -4418,6 +4481,11 @@ class _PipelineMixin:
                         )
                     )
                 ).to_dict()
+                await self._upload_object_sidecar_artifacts(
+                    doc_id_w,
+                    status_doc_w,
+                    content_data_w,
+                )
 
                 # Mirror parse-stage LLM cache keys before the post-parse
                 # cancellation check. A cancellation flushes completed cache
@@ -6518,6 +6586,168 @@ class _PipelineMixin:
                 append_pipeline_history(pipeline_status, warning)
         return True
 
+    def _object_source_scratch_dir(
+        self, doc_id: str, object_source: dict[str, Any]
+    ) -> Path:
+        """Return the per-document scratch directory for an object-backed parse."""
+        store = getattr(self, "object_store", None) or getattr(
+            self, "object_storage", None
+        )
+        configured = getattr(self, "object_storage_scratch_dir", None)
+        if not configured and store is not None:
+            configured = getattr(getattr(store, "config", None), "scratch_dir", None)
+        root = Path(configured or Path(getattr(self, "working_dir", ".")) / "object_scratch")
+        upload_id = str(object_source.get("upload_id") or doc_id).replace("/", "_")
+        return root / "sources" / doc_id / upload_id
+
+    async def _prepare_object_source_for_parse(
+        self,
+        doc_id: str,
+        file_path: str,
+        content_data: dict[str, Any],
+    ) -> Path | None:
+        """Materialize an object-backed source into local scratch for parsers."""
+        object_source = (
+            content_data.get("object_source")
+            if isinstance(content_data, dict)
+            else None
+        )
+        if not isinstance(object_source, dict):
+            return None
+        source_kind = str(object_source.get("source_kind") or "s3_object")
+        if source_kind != "s3_object":
+            return None
+
+        store = getattr(self, "object_store", None) or getattr(
+            self, "object_storage", None
+        )
+        if store is None:
+            raise RuntimeError("object-backed source requires configured object store")
+
+        key = str(object_source.get("object_key") or "").strip()
+        if not key:
+            raise ObjectStorePreconditionError(
+                f"object source key is missing for doc_id={doc_id}"
+            )
+
+        expected_bucket = str(object_source.get("bucket") or "").strip()
+        store_bucket = str(getattr(getattr(store, "config", None), "bucket", "") or "")
+        if expected_bucket and store_bucket and expected_bucket != store_bucket:
+            raise ObjectStorePreconditionError(
+                f"object bucket does not match configured store for doc_id={doc_id}"
+            )
+
+        metadata = await store.head_object(key)
+        expected_size = _optional_positive_int(object_source.get("size"))
+        if expected_size is not None and metadata.size != expected_size:
+            raise ObjectStorePreconditionError(
+                f"object size does not match expected metadata for doc_id={doc_id}"
+            )
+        expected_content_type = str(object_source.get("content_type") or "").strip()
+        if (
+            expected_content_type
+            and metadata.content_type
+            and metadata.content_type != expected_content_type
+        ):
+            raise ObjectStorePreconditionError(
+                f"object content type does not match expected metadata for doc_id={doc_id}"
+            )
+        checksum_sha256 = str(object_source.get("checksum_sha256") or "").strip()
+        if (
+            checksum_sha256
+            and metadata.checksum_sha256
+            and metadata.checksum_sha256.lower() != checksum_sha256.lower()
+        ):
+            raise ObjectStorePreconditionError(
+                f"object checksum does not match expected metadata for doc_id={doc_id}"
+            )
+
+        scratch_path = await download_to_scratch(
+            store,
+            key,
+            scratch_dir=self._object_source_scratch_dir(doc_id, object_source),
+            filename=file_path,
+            expected_size=expected_size,
+            checksum_sha256=checksum_sha256 or None,
+        )
+        content_data["source_file"] = str(scratch_path)
+        return scratch_path
+
+    def _object_artifact_prefix(
+        self, doc_id: str, object_source: dict[str, Any]
+    ) -> str:
+        object_key = str(object_source.get("object_key") or "").strip()
+        prefix = ""
+        if "/uploads/" in object_key:
+            prefix = object_key.split("/uploads/", 1)[0]
+        if not prefix:
+            store = getattr(self, "object_store", None) or getattr(
+                self, "object_storage", None
+            )
+            prefix = str(
+                getattr(getattr(store, "config", None), "object_prefix", "") or ""
+            ).strip("/")
+        workspace = str(getattr(self, "workspace", "") or "default")
+        return "/".join(part for part in (prefix, "artifacts", workspace, doc_id) if part)
+
+    async def _upload_object_sidecar_artifacts(
+        self,
+        doc_id: str,
+        status_doc: DocProcessingStatus,
+        content_data: dict[str, Any],
+    ) -> str | None:
+        """Upload local parse sidecars for object-backed documents."""
+        object_source = (
+            content_data.get("object_source")
+            if isinstance(content_data, dict)
+            else None
+        )
+        if not isinstance(object_source, dict):
+            return None
+        if str(object_source.get("source_kind") or "s3_object") != "s3_object":
+            return None
+
+        store = getattr(self, "object_store", None) or getattr(
+            self, "object_storage", None
+        )
+        if store is None:
+            raise RuntimeError("object-backed sidecar upload requires object store")
+
+        full_doc = await _pipeline_get_full_doc(self, doc_id)
+        if not isinstance(full_doc, dict):
+            return None
+        sidecar_location = full_doc.get("sidecar_location")
+        sidecar_dir = resolve_sidecar_uri(sidecar_location)
+        if sidecar_dir is None or not sidecar_dir.is_dir():
+            return None
+
+        artifact_prefix = _validate_remote_prefix(
+            self._object_artifact_prefix(doc_id, object_source)
+        )
+        await upload_directory(store, sidecar_dir, target_prefix=artifact_prefix)
+        bucket = str(object_source.get("bucket") or store.config.bucket)
+        remote_uri = object_store_uri(bucket, artifact_prefix) + "/"
+        updated_source = {
+            **object_source,
+            "artifact_prefix": artifact_prefix,
+            "sidecar_location": remote_uri,
+        }
+        await self.full_docs.upsert(
+            {
+                doc_id: {
+                    **full_doc,
+                    "sidecar_location": remote_uri,
+                    "object_source": updated_source,
+                }
+            }
+        )
+        await self.full_docs.index_done_callback()
+        content_data["sidecar_location"] = remote_uri
+        content_data["object_source"] = updated_source
+        if isinstance(status_doc.metadata, dict):
+            status_doc.metadata["object_source"] = dict(updated_source)
+        return remote_uri
+
     def _resolve_source_file_for_parser(
         self,
         file_path: str,
@@ -6545,6 +6775,7 @@ class _PipelineMixin:
                 roots.append(path.parent / PARSED_DIR_NAME)
                 candidates.append(path.parent / PARSED_DIR_NAME / path.name)
 
+        _add_candidate(source_file)
         _add_candidate(file_path)
 
         p = Path(file_path)

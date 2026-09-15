@@ -85,11 +85,11 @@ LIGHTRAG_PARSER=*:native-teP,*:legacy-R
 
 **1. 先验证路由，别浪费一次解析。** 写错的 `LIGHTRAG_PARSER` 在启动时就会失败（§2.7）。服务起来后，`GET /documents/supported_file_types` 返回**服务端实际解析出的**后缀白名单与引擎-后缀映射，不入库一个文件就能确认规则是否生效。
 
-**2. 把文件送进来。** 要么 `POST /documents/upload`（文件存入 `INPUT_DIR`，响应带 `track_id`），要么把文件放进 `INPUT_DIR` 后调 `POST /documents/scan`。想对单个文件试不同配置又不改 `.env`，就用文件名 hint：`report.[native-teP].docx`（§2.5）。
+**2. 把文件送进来。** 要么 `POST /documents/upload`（文件存入 `INPUT_DIR`，响应带 `track_id`），要么把文件放进 `INPUT_DIR` 后调 `POST /documents/scan`。如果启用了 `LIGHTRAG_OBJECT_STORAGE=s3`，外部应用还可以先调 `POST /documents/uploads/presign`，把字节直接上传到返回的 S3-compatible URL，再调 `POST /documents/uploads/complete`；这条路径里 LightRAG API 只承载控制面 metadata，不承载文件正文。运维手册见 [S3ObjectStoreIngestion-zh.md](./S3ObjectStoreIngestion-zh.md)。想对单个文件试不同配置又不改 `.env`，就用文件名 hint：`report.[native-teP].docx`（§2.5）。
 
 **3. 看进度。** `GET /documents/track_status/{track_id}` 看这次上传，`GET /documents/pipeline_status` 看实时日志，`GET /documents/status_counts` 看整批。状态阶梯是 `PENDING → PARSING → ANALYZING → PROCESSING → PROCESSED`。
 
-**4. 产物落在哪。** 全部在 `INPUT_DIR/__parsed__/` 下（§6.2）。以 `report.[native-teP].docx` 为例：
+**4. 产物落在哪。** 本地上传和目录扫描写入 `INPUT_DIR/__parsed__/`（§6.2）。object-backed 上传会把同样的 parsed sidecar 布局写入该文档的对象存储 artifact prefix，并在 `full_docs.sidecar_location` 中记录远程 sidecar URI。以下是本地 `report.[native-teP].docx` 的例子：
 
 ```
 __parsed__/report.[native-teP].docx   # 归档的原件，保留 hint
@@ -109,7 +109,7 @@ __parsed__/report.docx.parsed/        # 规范名，已剥掉 hint
 
 **6. 验证分块与入库。** `GET /documents/paginated` 的 `chunks_count` 是分块数；doc_status 记录里的 `metadata.parse_engine` 与 `metadata.process_options` 表明**实际生效的**引擎和选项，这是发现"hint 被静默判为无效"最快的办法（§2.7）。
 
-**失败了怎么办：** 源文件**留在 `INPUT_DIR`**，改完配置可以重新扫描。doc_status 记录上的 `error_msg` 是诊断入口，§10 列出了常见的几种。注意引擎与处理选项都在入队时就已冻结——改 `LIGHTRAG_PARSER` 或改 hint 都不影响已有记录，要用新配置重跑就得删除文档后重新上传（§9.3）。想脱离服务器离线复现一次解析，用 `python -m lightrag.parser.cli`（[ParserDebugCLI-zh.md](./ParserDebugCLI-zh.md)）。
+**失败了怎么办：** 本地源文件**留在 `INPUT_DIR`**，改完配置可以重新扫描；object-backed 源文件留在对象存储中，重试会复用记录中的 object key。doc_status 记录上的 `error_msg` 是诊断入口，§10 列出了常见的几种。注意引擎与处理选项都在入队时就已冻结——改 `LIGHTRAG_PARSER` 或改 hint 都不影响已有记录，要用新配置重跑就得删除文档后重新上传（§9.3）。想脱离服务器离线复现一次解析，用 `python -m lightrag.parser.cli`（[ParserDebugCLI-zh.md](./ParserDebugCLI-zh.md)）。
 
 ## 2. 处理选项与配置语法
 
@@ -768,11 +768,13 @@ selector → 子字典映射：F → `fixed_token`，R → `recursive_character`
 | --- | --- |
 | `file_path` | 文件名 basename（不含目录），**保留用户提供的原始名（含中括号 hint）**，例如 `abc.[native-iet].docx` 原样写入。未提供有效来源时保存为 `unknown_source`。文件名 hint 不会被剥离，方便管理 UI 直接展示用户原本的命名意图。 |
 | `canonical_basename` | 去掉处理提示 hint 后的规范化 basename（例如 `abc.docx`）。文件名查重以此字段为索引 key，保证 `abc.docx` 与 `abc.[native-iet].docx` 视为同一逻辑文档。 |
-| `source_path` | 入队时提供的原始路径（仅当含目录分隔符或绝对路径时才写入），供 `native` / `mineru` / `docling` 解析器定位真实文件位置。 |
+| `source_path` | 入队时提供的本地原始路径（仅当含目录分隔符或绝对路径时才写入），供本地上传/扫描记录的 `native` / `mineru` / `docling` 解析器定位真实文件位置。object-backed 文档不会把 S3 key 写在这里。 |
+| `object_source` | 仅 object-backed 文档存在。保存 durable object source 合同，例如 `source_kind="s3_object"`、bucket、服务端生成的 object key、upload session id、size、content type、checksum、etag 与 parsed-artifact prefix。`file_path` 仍是用户可见来源名；对象 metadata 不会伪装成本地文件名。 |
 | `parse_format` | 内容格式：`pending_parse`, `raw`, `lightrag`。 |
 | `content` | `raw` 时保存抽取文本；`pending_parse` 时为空字符串；`lightrag` 时存储以 `{{LRdoc}}` 开头的**完整合并文本**（拼接 `.blocks.jsonl` 中所有 `type=="content"` 行的 body 段），解析阶段的 reuse handler（`ReuseParser`）会剥离前缀后再交给 chunking_func，与 `raw` 走完全相同的代码路径。 |
 | `content_hash` | 内容 MD5，用于跨文件名查重。`parse_format=raw` 取 `sanitize_text_for_encoding` 后文本的 hash；`parse_format=lightrag` 取 `*.blocks.jsonl` 文件 hash；`parse_format=pending_parse` 不写入，待抽取完成后补上。 |
-| `lightrag_document_path` | `parse_format=lightrag` 时保存结构化 LightRAG Document 的路径；新记录优先保存为相对 `INPUT_DIR` 的路径，例如 `__parsed__/report.docx.parsed/report.blocks.jsonl`。注意路径中的子目录与 blocks 文件名都使用规范化 basename（不含 hint）。 |
+| `lightrag_document_path` | `parse_format=lightrag` 时保存结构化 LightRAG Document 的路径；本地记录优先保存为相对 `INPUT_DIR` 的路径，例如 `__parsed__/report.docx.parsed/report.blocks.jsonl`。注意路径中的子目录与 blocks 文件名都使用规范化 basename（不含 hint）。 |
+| `sidecar_location` | 结构化解析产物的 base URI。本地文档保持现有 `file://...` 或相对 `INPUT_DIR/__parsed__` 位置；object-backed 文档保存远程 `s3://bucket/prefix/`，下游分析、分块与重试会在需要时 mirror 到本地 scratch。 |
 | `parse_engine` | 实际完成抽取的引擎：`legacy`, `native`, `mineru`, `docling`。对于待抽取文件，也可暂存目标引擎。 |
 | `process_options` | 入队时记录的原始处理选项串（不含引擎名和分隔 `-`），例如 `"iet"`、`"R!"`、`"C"`、`""`。下游各阶段以此字段为权威源，决定是否启用图像/表格/公式分析（`i/t/e`）、是否禁止知识图谱构建（`!`）以及分块方式（`F/R/V/P/C`）。空字符串等价于全部默认值。 |
 | `chunk_options` | 入队时**冻结**的分块器参数快照（精简字典：只保留 `process_options` 选中的那一路策略子字典，其它策略丢弃）。由 SDK 路径调用方传入或由 `resolve_chunk_options(self.addon_params, process_options=…)` 从实例字段（含 env 默认）兜底（见 §5.1）。`process_options` 选哪种分块策略（F/R/V/P/C），`chunk_options` 决定那一路分块器使用哪些参数；C 复用 `fixed_token` 子字典。下游 `process_single_document` 在分块前读取该快照；持久化保证 env 变化、续跑、重启后老文档行为可复现。重新解析时与 `process_options` 一同改写。 |
@@ -781,6 +783,7 @@ selector → 子字典映射：F → `fixed_token`，R → `recursive_character`
 
 > `doc_status` 中也同步保存原始 `file_path`（含 hint）、`canonical_basename` 与 `content_hash`，作为 `get_doc_by_file_basename` / `get_doc_by_content_hash` 的查重索引来源。`get_doc_by_file_basename` 内部把传入参数先经 `canonicalize_parser_hinted_basename` 规范化后再与 `canonical_basename` 比对，因此 `abc.docx` 与 `abc.[native-iet].docx` 总是命中同一文档。
 > `process_options` 同时镜像写入 `doc_status.metadata["process_options"]`，便于管理 UI 直接展示当前文件的处理策略。
+> 对 object-backed 文档，`doc_status.metadata["object_source"]` 也会镜像相同的 S3 source 合同，这样即使 `full_docs` 正被后续阶段改写，delete/retry 仍能恢复源对象信息。
 
 ### 6.2 `__parsed__` 目录结构
 
@@ -986,14 +989,14 @@ WebUI 入口是文档管理页「流水线状态」对话框里的**「中断」
 | 手段 | 做什么 | 什么时候用 |
 | --- | --- | --- |
 | `POST /documents/scan`（WebUI「扫描/重试」按钮） | 先把所有可恢复的 `FAILED` 重置为 `PENDING`，再扫描 `INPUT_DIR` 里的新文件；还能处理"从未成功抽取出内容"的失败记录（删记录 + 把文件当新文档重跑） | **首选**，覆盖面最广 |
-| `POST /documents/reprocess_failed` | 只按存储里的记录重试 `FAILED`，不做目录发现；但解析阶段就失败的文档会**重新解析**，那时仍要读取记录指向的源文件 | 不想顺带触发一次全目录扫描时 |
+| `POST /documents/reprocess_failed` | 只按存储里的记录重试 `FAILED`，不做目录发现；但解析阶段就失败的文档会**重新解析**。本地记录读取其记录指向的源文件；object-backed 记录读取对象存储中的已记录 object key。 | 不想顺带触发一次全目录扫描时 |
 | 删除 + 重新上传 | 彻底重来一遍 | 需要换引擎 / 换处理选项，或上面两种都救不回来 |
 
 四条必须知道的口径：
 
 1. **每次重试请求对每个文档只给一次机会。** 再失败就停在 `FAILED`，等下一次显式重试，不会自旋。
 2. **自动续跑不碰 `FAILED`。** 上传新文件触发的那一轮只会恢复中断态（`PENDING` / `PARSING` / `ANALYZING` / `PROCESSING`）；`FAILED` 只能靠上表前两个显式入口。
-3. **是否重新解析，取决于正文有没有抽取成功。** 已经抽出正文的文档不会重解析：重试从多模态分析阶段起跑，先清掉上一轮写进去的 chunks 与图谱贡献再重做（细节见 [§9.3](#93-分支-b已抽取)），所以"修好 VLM 配置 / 等限流恢复之后重试"是有效的。而**在解析阶段就失败的文档**（`full_docs` 里只留着 `pending_parse` 占位记录）会被重置为 `PENDING` 后重新进入解析阶段，再次读取 `INPUT_DIR` 里的源文件、再次调用对应引擎——修好 MinerU / Docling 后重试因此有效，但源文件已被删除时这类重试会再次失败。
+3. **是否重新解析，取决于正文有没有抽取成功。** 已经抽出正文的文档不会重解析：重试从多模态分析阶段起跑，先清掉上一轮写进去的 chunks 与图谱贡献再重做（细节见 [§9.3](#93-分支-b已抽取)），所以"修好 VLM 配置 / 等限流恢复之后重试"是有效的。而**在解析阶段就失败的文档**（`full_docs` 里只留着 `pending_parse` 占位记录）会被重置为 `PENDING` 后重新进入解析阶段，再次读取源文件、再次调用对应引擎。本地上传/扫描的来源是 `INPUT_DIR` 里的文件；object-backed 上传的来源是记录中的 S3-compatible object key，并会 materialize 到 worker 本地 scratch。源文件被删除时本地重试会再次失败；object key 缺失或不可读时 object-backed 重试会以对象存储错误 fail closed。
 4. **重试不会改引擎与处理选项。** `parse_engine`、`process_options`、`chunk_options` 在入队那一刻就冻结进记录了；改 `.env` 或改文件名 hint 只对新上传生效。
 
 哪些情况重试有效、哪些必须删除重传：
@@ -1017,7 +1020,7 @@ WebUI 入口是文档管理页「流水线状态」对话框里的**「中断」
 删除对话框里的两个复选框默认都不勾，它们决定磁盘上的东西是否一起清掉：
 
 - **都不勾**：只删存储里的状态——chunks、向量、图谱贡献、`doc_status`、`full_docs`。磁盘上的源文件、`__parsed__` 里的归档件与 `.parsed/` sidecar、外部引擎的原始产物缓存**全部保留**。
-- **勾「同时删除上传文件」**（API 参数 `delete_file=true`）：连同 `INPUT_DIR` 里的源文件、`__parsed__` 下的归档件与 `<base>.parsed/` sidecar，以及 `<base>.mineru_raw/` / `<base>.docling_raw/` / `<base>.native_raw/` 原始产物缓存一起删除。**想换引擎重跑、或想让外部引擎真的重新解析一次，必须勾这个**，否则重新上传会命中缓存拿回旧结果（[§3.7](#37-解析缓存与强制重解析)、§6.3）。
+- **勾「同时删除上传文件」**（API 参数 `delete_file=true`）：对本地上传/扫描，连同 `INPUT_DIR` 里的源文件、`__parsed__` 下的归档件与 `<base>.parsed/` sidecar，以及 `<base>.mineru_raw/` / `<base>.docling_raw/` / `<base>.native_raw/` 原始产物缓存一起删除。对 object-backed 文档，只删除记录中的服务端 owned 源对象与 parsed-artifact prefix，不会把 `file_path` 当作本地路径；清理失败会写入日志和删除任务历史，而不是伪报物理文件已完全清理。**想换引擎重跑、或想让外部引擎真的重新解析一次，必须勾这个**，否则重新上传会命中缓存拿回旧结果（[§3.7](#37-解析缓存与强制重解析)、§6.3）。
 - **勾「同时删除实体关系抽取 LLM 缓存」**：额外清掉该文档抽取阶段的 LLM 缓存，重传时会真实重跑 LLM 而不是命中缓存。想验证换了模型或提示词之后的效果，需要勾它。
 
 ### 8.5 所有接口都返回 503：`recovery_required` 栅栏

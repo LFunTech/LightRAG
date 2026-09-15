@@ -67,7 +67,9 @@ spec:
             - name: LIGHTRAG_DISTRIBUTED_WRITES
               value: "true"
             - name: LIGHTRAG_SHARED_STORAGE
-              value: "true"
+              value: "false"
+            - name: LIGHTRAG_OBJECT_STORAGE
+              value: s3
             - name: LIGHTRAG_DEPLOYMENT_ID
               value: lightrag_test
             - name: LIGHTRAG_COORDINATION_POOL_MODE
@@ -82,6 +84,16 @@ spec:
               value: /app/data/inputs
             - name: WORKING_DIR
               value: /app/data/rag_storage
+            - name: S3_OBJECT_PREFIX
+              value: lightrag/test-object-ingestion
+            - name: S3_FORCE_PATH_STYLE
+              value: "true"
+            - name: S3_PRESIGN_TTL_SECONDS
+              value: "900"
+            - name: S3_UPLOAD_SESSION_TTL_SECONDS
+              value: "3600"
+            - name: S3_SCRATCH_DIR
+              value: /app/data/object-scratch
             - name: WORKERS
               value: "1"
             - name: LIGHTRAG_KV_STORAGE
@@ -109,10 +121,15 @@ spec:
               mountPath: /app/data/rag_storage
             - name: inputs
               mountPath: /app/data/inputs
+            - name: object-scratch
+              mountPath: /app/data/object-scratch
       volumes:
         - name: rag-storage
           persistentVolumeClaim:
             claimName: lightrag-test-working-rwx
         - name: inputs
-          persistentVolumeClaim:
-            claimName: lightrag-test-inputs-rwx
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: object-scratch
+          emptyDir:
+            sizeLimit: 5Gi

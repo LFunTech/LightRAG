@@ -520,6 +520,18 @@ server {
    - `MAX_TEXTS_PER_REQUEST` 限制单个 `/documents/texts` 请求可携带的文本数量，在任何逐条存储查询之前就返回 **413**。它限制的是单个请求的扇出，因此与下面的容量上限不同，**不是**"稍后重试"类条件：超限的批次无论等多久都不会被接受，必须拆分。
    - `MAX_PENDING_DOCUMENTS` 限制可同时处于活跃状态（`PENDING`/`PARSING`/`ANALYZING`/`PROCESSING`）或被在飞请求预留的文档数。超容量时返回 **429**,带 `Retry-After` 头,detail 里给出当前数量、本次请求数量与容量——且**在 body 传输之前**就拒绝。`/documents/scan` 与人工重试按设计突破该上限;它们产生的文档会让普通上传排队等待。
 
+### S3-compatible 直传摄取
+
+对象存储摄取默认关闭，关闭时不会改变 `/documents/upload`、`/documents/scan`、`INPUT_DIR` 或文本写入。启用 `LIGHTRAG_OBJECT_STORAGE=s3` 后，已认证客户端可避免把大文件正文代理经过 LightRAG：
+
+1. 调用 `POST /documents/uploads/presign`，提交 `filename`、`content_type`、`size` 和可选 `checksum_sha256`。
+2. 按响应里的 method 和 headers，把字节直接上传到返回的 `upload_url`。
+3. 调用 `POST /documents/uploads/complete`，提交返回的 `upload_id` 与 `object_key`。
+
+服务端拥有 object key，签名前拒绝危险文件名和超大文件，complete 时用 `HEAD` 校验对象，并且只有签发 key、size、content type 和必需 checksum 全部匹配后才入队。持久化文档继续用 `file_path` 表示面向用户的规范来源名；S3 bucket/key/etag/size/session 写入显式 `object_source` metadata。
+
+启用时必填 `S3_ENDPOINT_URL`、`S3_BUCKET`、`S3_ACCESS_KEY_ID` 和 `S3_SECRET_ACCESS_KEY`；`S3_OBJECT_PREFIX`、`S3_FORCE_PATH_STYLE`、TTL 与 `S3_SCRATCH_DIR` 可选。凭据应来自 Secret 管理器或 Kubernetes Secret。启用后若 bucket 或凭据不可用，启动 preflight 会 fail closed。运维细节见 [S3ObjectStoreIngestion-zh.md](./S3ObjectStoreIngestion-zh.md)；面向第三方应用的公开对接页为 `/webui/docs/third-party-object-upload-integration/`，该页面不包含真实密钥或环境 Secret 信息。
+
 ### 离线部署
 
 官方的 LightRAG Docker 镜像完全兼容离线或隔离网络环境。如需搭建自己的离线部署环境，请参考 [离线部署指南](./OfflineDeployment.md)。

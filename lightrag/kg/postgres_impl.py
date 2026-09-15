@@ -1960,6 +1960,7 @@ class PostgreSQLDB:
             ("process_options", "TEXT NULL"),
             ("chunk_options", "JSONB NULL DEFAULT '{}'::jsonb"),
             ("parse_engine", "TEXT NULL"),
+            ("object_source", "JSONB NULL DEFAULT '{}'::jsonb"),
         ]
         try:
             existing = await self.query(
@@ -3284,6 +3285,29 @@ class PGKVStorage(BaseKVStorage):
                 chunk_options = {}
             response["chunk_options"] = chunk_options
 
+            object_source = response.get("object_source")
+            if isinstance(object_source, str):
+                try:
+                    object_source = json.loads(object_source)
+                except json.JSONDecodeError:
+                    object_source = {}
+            if not isinstance(object_source, dict):
+                object_source = {}
+            response["object_source"] = object_source
+
+        if response and is_namespace(
+            self.namespace, NameSpace.KV_STORE_UPLOAD_SESSIONS
+        ):
+            session = response.get("session")
+            if isinstance(session, str):
+                try:
+                    session = json.loads(session)
+                except json.JSONDecodeError:
+                    session = {}
+            if not isinstance(session, dict):
+                session = {}
+            response = {**session, "id": response.get("id")}
+
         # Special handling for LLM cache to ensure compatibility with _get_cached_extraction_results
         if response and is_namespace(
             self.namespace, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
@@ -3461,6 +3485,30 @@ class PGKVStorage(BaseKVStorage):
                     chunk_options = {}
                 result["chunk_options"] = chunk_options
 
+                object_source = result.get("object_source")
+                if isinstance(object_source, str):
+                    try:
+                        object_source = json.loads(object_source)
+                    except json.JSONDecodeError:
+                        object_source = {}
+                if not isinstance(object_source, dict):
+                    object_source = {}
+                result["object_source"] = object_source
+
+        if results and is_namespace(
+            self.namespace, NameSpace.KV_STORE_UPLOAD_SESSIONS
+        ):
+            for i, result in enumerate(results):
+                session = result.get("session")
+                if isinstance(session, str):
+                    try:
+                        session = json.loads(session)
+                    except json.JSONDecodeError:
+                        session = {}
+                if not isinstance(session, dict):
+                    session = {}
+                results[i] = {**session, "id": result.get("id")}
+
         # Special handling for LLM cache to ensure compatibility with _get_cached_extraction_results
         if results and is_namespace(
             self.namespace, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
@@ -3556,6 +3604,25 @@ class PGKVStorage(BaseKVStorage):
 
         return _order_results(results)
 
+    async def get_all(self) -> list[dict[str, Any]]:
+        """Return all rows for generic KV namespaces that need lifecycle scans."""
+        if not is_namespace(self.namespace, NameSpace.KV_STORE_UPLOAD_SESSIONS):
+            raise ValueError(f"get_all is not supported for namespace: {self.namespace}")
+        sql = SQL_TEMPLATES["get_all_upload_sessions"]
+        rows = await self.db.query(sql, [self.workspace], multirows=True)
+        records: list[dict[str, Any]] = []
+        for row in rows or []:
+            session = row.get("session")
+            if isinstance(session, str):
+                try:
+                    session = json.loads(session)
+                except json.JSONDecodeError:
+                    session = {}
+            if not isinstance(session, dict):
+                session = {}
+            records.append({**session, "id": row.get("id")})
+        return records
+
     async def filter_keys(self, keys: set[str]) -> set[str]:
         """Filter out duplicated content"""
         if not keys:
@@ -3643,7 +3710,7 @@ class PGKVStorage(BaseKVStorage):
             for i, (k, v) in enumerate(data.items(), start=1):
                 # Tuple order must match SQL: (id, content, doc_name, workspace,
                 #   sidecar_location, parse_format, content_hash, process_options,
-                #   chunk_options, parse_engine)
+                #   chunk_options, parse_engine, object_source)
                 #
                 # All pipeline-derived fields pass through untouched so the
                 # SQL-level COALESCE guard in upsert_doc_full can distinguish
@@ -3664,6 +3731,7 @@ class PGKVStorage(BaseKVStorage):
                         v.get("process_options"),
                         json.dumps(v.get("chunk_options") or {}),
                         v.get("parse_engine"),
+                        json.dumps(v.get("object_source") or {}),
                     )
                 )
                 await _cooperative_yield(i)
@@ -3683,6 +3751,20 @@ class PGKVStorage(BaseKVStorage):
                         json.dumps(v.get("queryparam"))
                         if v.get("queryparam")
                         else None,
+                    )
+                )
+                await _cooperative_yield(i)
+        elif is_namespace(self.namespace, NameSpace.KV_STORE_UPLOAD_SESSIONS):
+            upsert_sql = SQL_TEMPLATES["upsert_upload_session"]
+            current_time = datetime.datetime.now(timezone.utc).replace(tzinfo=None)
+            for i, (k, v) in enumerate(data.items(), start=1):
+                batch_values.append(
+                    (
+                        self.workspace,
+                        k,
+                        json.dumps(v),
+                        current_time,
+                        current_time,
                     )
                 )
                 await _cooperative_yield(i)
@@ -9672,6 +9754,7 @@ NAMESPACE_TABLE_MAP = {
     NameSpace.KV_STORE_FULL_RELATIONS: "LIGHTRAG_FULL_RELATIONS",
     NameSpace.KV_STORE_ENTITY_CHUNKS: "LIGHTRAG_ENTITY_CHUNKS",
     NameSpace.KV_STORE_RELATION_CHUNKS: "LIGHTRAG_RELATION_CHUNKS",
+    NameSpace.KV_STORE_UPLOAD_SESSIONS: "LIGHTRAG_UPLOAD_SESSIONS",
     NameSpace.KV_STORE_LLM_RESPONSE_CACHE: "LIGHTRAG_LLM_CACHE",
     NameSpace.VECTOR_STORE_CHUNKS: "LIGHTRAG_VDB_CHUNKS",
     NameSpace.VECTOR_STORE_ENTITIES: "LIGHTRAG_VDB_ENTITY",
@@ -9706,6 +9789,7 @@ TABLES = {
                     process_options TEXT NULL,
                     chunk_options JSONB NULL DEFAULT '{}'::jsonb,
                     parse_engine TEXT NULL,
+                    object_source JSONB NULL DEFAULT '{}'::jsonb,
                     create_time TIMESTAMP(0) DEFAULT CURRENT_TIMESTAMP,
                     update_time TIMESTAMP(0) DEFAULT CURRENT_TIMESTAMP,
 	                CONSTRAINT LIGHTRAG_DOC_FULL_PK PRIMARY KEY (workspace, id)
@@ -9784,6 +9868,16 @@ TABLES = {
                     create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 	                CONSTRAINT LIGHTRAG_LLM_CACHE_PK PRIMARY KEY (workspace, id)
+                    )"""
+    },
+    "LIGHTRAG_UPLOAD_SESSIONS": {
+        "ddl": """CREATE TABLE LIGHTRAG_UPLOAD_SESSIONS (
+	                workspace varchar(255) NOT NULL,
+	                id varchar(255) NOT NULL,
+                    session JSONB NOT NULL,
+                    create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	                CONSTRAINT LIGHTRAG_UPLOAD_SESSIONS_PK PRIMARY KEY (workspace, id)
                     )"""
     },
     "LIGHTRAG_DOC_STATUS": {
@@ -9865,7 +9959,8 @@ SQL_TEMPLATES = {
                                 content_hash,
                                 process_options,
                                 COALESCE(chunk_options, '{}'::jsonb) as chunk_options,
-                                parse_engine
+                                parse_engine,
+                                COALESCE(object_source, '{}'::jsonb) as object_source
                                 FROM LIGHTRAG_DOC_FULL WHERE workspace=$1 AND id=$2
                             """,
     "get_by_id_text_chunks": """SELECT id, tokens, COALESCE(content, '') as content,
@@ -9889,8 +9984,22 @@ SQL_TEMPLATES = {
                                  content_hash,
                                  process_options,
                                  COALESCE(chunk_options, '{}'::jsonb) as chunk_options,
-                                 parse_engine
+                                 parse_engine,
+                                 COALESCE(object_source, '{}'::jsonb) as object_source
                                  FROM LIGHTRAG_DOC_FULL WHERE workspace=$1 AND id = ANY($2)
+                            """,
+    "get_by_id_upload_sessions": """SELECT id, session
+                                FROM LIGHTRAG_UPLOAD_SESSIONS
+                                WHERE workspace=$1 AND id=$2
+                            """,
+    "get_by_ids_upload_sessions": """SELECT id, session
+                                 FROM LIGHTRAG_UPLOAD_SESSIONS
+                                 WHERE workspace=$1 AND id = ANY($2)
+                            """,
+    "get_all_upload_sessions": """SELECT id, session
+                                FROM LIGHTRAG_UPLOAD_SESSIONS
+                                WHERE workspace=$1
+                                ORDER BY id
                             """,
     "get_by_ids_text_chunks": """SELECT id, tokens, COALESCE(content, '') as content,
                                   chunk_order_index, full_doc_id, file_path,
@@ -9948,9 +10057,10 @@ SQL_TEMPLATES = {
                                 """,
     "filter_keys": "SELECT id FROM {table_name} WHERE workspace=$1 AND id IN ({ids})",
     # Pipeline-derived columns (sidecar_location / parse_format / content_hash /
-    # process_options / chunk_options / parse_engine) are guarded with COALESCE
-    # so a partial upsert (e.g. a caller writing only ``content`` + ``doc_name``)
-    # does not silently overwrite metadata recorded by _persist_parsed_full_docs.
+    # process_options / chunk_options / parse_engine / object_source) are guarded
+    # with COALESCE so a partial upsert (e.g. a caller writing only ``content`` +
+    # ``doc_name``) does not silently overwrite metadata recorded by
+    # _persist_parsed_full_docs.
     # ``content`` and ``doc_name`` themselves are always overwritten — they are
     # the primary payload, never a candidate for preservation.
     # For the string columns we use NULLIF('', ...) so that an empty string from
@@ -9959,8 +10069,9 @@ SQL_TEMPLATES = {
     # "no value, preserve existing".
     "upsert_doc_full": """INSERT INTO LIGHTRAG_DOC_FULL (id, content, doc_name, workspace,
                             sidecar_location, parse_format, content_hash,
-                            process_options, chunk_options, parse_engine)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                            process_options, chunk_options, parse_engine,
+                            object_source)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                         ON CONFLICT (workspace,id) DO UPDATE
                            SET content = EXCLUDED.content,
                                doc_name = EXCLUDED.doc_name,
@@ -9990,6 +10101,12 @@ SQL_TEMPLATES = {
                                    NULLIF(EXCLUDED.parse_engine, ''),
                                    LIGHTRAG_DOC_FULL.parse_engine
                                ),
+                               object_source = CASE
+                                   WHEN EXCLUDED.object_source IS NULL
+                                     OR EXCLUDED.object_source = '{}'::jsonb
+                                   THEN LIGHTRAG_DOC_FULL.object_source
+                                   ELSE EXCLUDED.object_source
+                               END,
                                update_time = CURRENT_TIMESTAMP
                        """,
     "upsert_llm_response_cache": """INSERT INTO LIGHTRAG_LLM_CACHE(workspace,id,original_prompt,return_value,chunk_id,cache_type,queryparam)
@@ -10001,6 +10118,13 @@ SQL_TEMPLATES = {
                                       cache_type=EXCLUDED.cache_type,
                                       queryparam=EXCLUDED.queryparam,
                                       update_time = CURRENT_TIMESTAMP
+                                     """,
+    "upsert_upload_session": """INSERT INTO LIGHTRAG_UPLOAD_SESSIONS(
+                                      workspace, id, session, create_time, update_time)
+                                      VALUES ($1, $2, $3, $4, $5)
+                                      ON CONFLICT (workspace,id) DO UPDATE
+                                      SET session = EXCLUDED.session,
+                                          update_time = EXCLUDED.update_time
                                      """,
     "upsert_text_chunk": """INSERT INTO LIGHTRAG_DOC_CHUNKS (workspace, id, tokens,
                       chunk_order_index, full_doc_id, content, file_path, llm_cache_list,

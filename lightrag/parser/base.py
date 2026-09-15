@@ -97,6 +97,47 @@ class ParseContext:
         )
         return ResolvedSource(source_path, document_name, parsed_dir)
 
+    async def sidecar_blocks_path(self) -> str:
+        """Resolve local or object-backed sidecar blocks for reuse parsing."""
+        from lightrag.object_storage import (
+            download_prefix_to_scratch,
+            parse_object_store_uri,
+        )
+        from lightrag.utils_pipeline import sidecar_blocks_path, sidecar_uri_for
+
+        sidecar_location = self.content_data.get("sidecar_location")
+        blocks_path = sidecar_blocks_path(sidecar_location)
+        if blocks_path:
+            return blocks_path
+        if not isinstance(sidecar_location, str) or not sidecar_location.startswith(
+            "s3://"
+        ):
+            return ""
+
+        store = getattr(self.rag, "object_store", None) or getattr(
+            self.rag, "object_storage", None
+        )
+        if store is None:
+            raise RuntimeError(
+                f"object-backed sidecar requires configured object store: {self.doc_id}"
+            )
+        bucket, prefix = parse_object_store_uri(sidecar_location)
+        store_bucket = str(getattr(getattr(store, "config", None), "bucket", "") or "")
+        if store_bucket and bucket != store_bucket:
+            raise RuntimeError(
+                f"object-backed sidecar bucket does not match configured store: {self.doc_id}"
+            )
+        configured = getattr(self.rag, "object_storage_scratch_dir", None) or getattr(
+            getattr(store, "config", None), "scratch_dir", None
+        )
+        scratch_root = Path(configured or ".") / "sidecars" / self.doc_id
+        mirror = await download_prefix_to_scratch(
+            store,
+            prefix,
+            scratch_dir=scratch_root,
+        )
+        return sidecar_blocks_path(sidecar_uri_for(mirror)) or ""
+
     async def archive_source(self, source_path: str) -> str | None:
         """Archive the source after a successful parse + full_docs sync.
 

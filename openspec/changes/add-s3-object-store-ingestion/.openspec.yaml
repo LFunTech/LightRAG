@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-09-15
+goal: Preserve existing local upload/scan behavior while adding presigned
+  direct-upload and object-backed document artifacts.

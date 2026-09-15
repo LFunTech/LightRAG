@@ -344,6 +344,13 @@ def physical_write_active() -> bool:
     return _write.get() is not None
 
 
+def _object_store_source_enabled_from_env() -> str | None:
+    raw = os.getenv("LIGHTRAG_OBJECT_STORAGE", "").strip().lower()
+    if raw in {"s3", "s3objectstore", "s3objectstorage"}:
+        return "s3"
+    return None
+
+
 @asynccontextmanager
 async def physical_write():
     descriptor = _write.get()
@@ -373,7 +380,12 @@ def configure_runtime(rag) -> DistributedRuntime | None:
     for key, expected in supported.items():
         if getattr(rag, key) != expected:
             raise ValueError(f"Distributed writes require {key}={expected}")
-    if os.getenv("LIGHTRAG_SHARED_STORAGE", "").lower() != "true":
+    object_storage_provider = _object_store_source_enabled_from_env()
+    shared_filesystem_required = object_storage_provider is None
+    if (
+        os.getenv("LIGHTRAG_SHARED_STORAGE", "").lower() != "true"
+        and shared_filesystem_required
+    ):
         raise ValueError(
             "Distributed writes require LIGHTRAG_SHARED_STORAGE=true and shared persistent paths"
         )
@@ -437,7 +449,10 @@ def configure_runtime(rag) -> DistributedRuntime | None:
                 ).resolve()
             ),
         },
+        "shared_filesystem_required": shared_filesystem_required,
     }
+    if object_storage_provider is not None:
+        manifest["object_storage"] = {"provider": object_storage_provider}
     runtime = DistributedRuntime(
         PostgresCoordinator(dsn, deployment, rag.workspace, manifest),
         workspace=rag.workspace,

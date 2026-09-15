@@ -213,6 +213,30 @@ class TestDualMount:
         assert ">workspace<" in workspace.text
         assert "window.__LIGHTRAG_CONFIG__" in workspace.text
 
+    def test_webui_serves_public_docs_subroutes_without_auth(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("LIGHTRAG_API_KEY", "test-control-plane-key")
+        _stage_build(tmp_path)
+        doc_dir = (
+            tmp_path
+            / "webui"
+            / "docs"
+            / "third-party-object-upload-integration"
+        )
+        doc_dir.mkdir(parents=True)
+        (doc_dir / "index.html").write_text(
+            "<!doctype html><title>LightRAG public integration guide</title>",
+            encoding="utf-8",
+        )
+        app = _build_app(tmp_path, monkeypatch)
+        client = TestClient(app)
+
+        resp = client.get("/webui/docs/third-party-object-upload-integration/")
+
+        assert resp.status_code == 200
+        assert "LightRAG public integration guide" in resp.text
+
     def test_runtime_config_identical_on_both_mounts(self, tmp_path, monkeypatch):
         client = _client(tmp_path, monkeypatch, "--api-prefix", "/site01")
 

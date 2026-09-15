@@ -520,6 +520,18 @@ server {
    - `MAX_TEXTS_PER_REQUEST` bounds how many texts one `/documents/texts` request may carry, answering **413** before any per-text storage lookup. It bounds the fan-out of a single request, so — unlike the capacity limit below — it is not a "retry later" condition: an oversized batch never fits and must be split.
    - `MAX_PENDING_DOCUMENTS` bounds how many documents may be active (`PENDING`/`PARSING`/`ANALYZING`/`PROCESSING`) or reserved by an in-flight request. Over capacity the server answers **429** with a `Retry-After` header and a detail naming the current count, the requested count and the capacity — refused *before* the body is transferred. `/documents/scan` and manual retries exceed the cap on purpose; the documents they create make ordinary uploads wait.
 
+### S3-compatible direct upload ingestion
+
+Object-store ingestion is disabled by default and does not change `/documents/upload`, `/documents/scan`, `INPUT_DIR`, or text insertion. When enabled with `LIGHTRAG_OBJECT_STORAGE=s3`, authenticated clients can avoid proxying large file bodies through LightRAG:
+
+1. `POST /documents/uploads/presign` with `filename`, `content_type`, `size`, and optional `checksum_sha256`.
+2. Upload the bytes directly to the returned `upload_url` using the returned method and headers.
+3. `POST /documents/uploads/complete` with the returned `upload_id` and `object_key`.
+
+The server owns the object key, rejects unsafe filenames and oversized files before signing, verifies the object with `HEAD` on completion, and enqueues the document only after the issued key, size, content type, and required checksum match. The persisted document keeps `file_path` as the canonical user-visible source name; the S3 bucket/key/etag/size/session live in explicit `object_source` metadata.
+
+Required runtime settings are `S3_ENDPOINT_URL`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY`; `S3_OBJECT_PREFIX`, `S3_FORCE_PATH_STYLE`, TTLs, and `S3_SCRATCH_DIR` are optional. Inject credentials from a secret manager or Kubernetes Secret. Startup preflight fails closed when object ingestion is enabled but the bucket or credentials are unusable. See [S3ObjectStoreIngestion.md](./S3ObjectStoreIngestion.md) for the operator runbook; the public third-party integration page is available at `/webui/docs/third-party-object-upload-integration/` and contains no real credentials or environment Secret details.
+
 ### Offline Deployment
 
 Official LightRAG Docker images are fully compatible with offline or air-gapped environments. If you want to build up your own offline environment, please refer to [Offline Deployment Guide](./OfflineDeployment.md).

@@ -307,6 +307,77 @@ def validate_bedrock_auth_configuration(args: argparse.Namespace) -> None:
             )
 
 
+
+def normalize_object_storage_provider(value: str | None) -> str:
+    """Normalize object-store provider names from env/CLI."""
+    raw = (value or "disabled").strip()
+    if not raw or raw.lower() in {"disabled", "none", "false", "0", "off"}:
+        return "disabled"
+    lowered = raw.lower()
+    if lowered in {"s3", "s3objectstore", "s3objectstorage"}:
+        return "s3"
+    if lowered == "fake":
+        return "fake"
+    return lowered
+
+
+def validate_object_storage_configuration(args: argparse.Namespace) -> None:
+    """Validate opt-in object-store document ingestion settings."""
+    provider = getattr(args, "object_storage", "disabled")
+    if provider in ("", "disabled", "none"):
+        return
+    if provider != "s3":
+        raise ValueError(f"Unsupported LIGHTRAG_OBJECT_STORAGE value: {provider!r}")
+    required = [
+        "S3_ENDPOINT_URL",
+        "S3_BUCKET",
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+    ]
+    attr_by_env = {
+        "S3_ENDPOINT_URL": "s3_endpoint_url",
+        "S3_BUCKET": "s3_bucket",
+        "S3_ACCESS_KEY_ID": "s3_access_key_id",
+        "S3_SECRET_ACCESS_KEY": "s3_secret_access_key",
+    }
+    missing = [
+        name
+        for name in required
+        if not (getattr(args, attr_by_env[name], None) or "").strip()
+    ]
+    if missing:
+        raise ValueError(
+            "LIGHTRAG_OBJECT_STORAGE=s3 requires " + ", ".join(missing)
+        )
+    for env_name, attr in (
+        ("S3_PRESIGN_TTL_SECONDS", "s3_presign_ttl_seconds"),
+        ("S3_UPLOAD_SESSION_TTL_SECONDS", "s3_upload_session_ttl_seconds"),
+    ):
+        value = getattr(args, attr, None)
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise ValueError(f"{env_name} must be a positive integer")
+
+
+def object_storage_config_summary(args: argparse.Namespace) -> dict:
+    """Return object-store config without credentials or presigned URLs."""
+    provider = getattr(args, "object_storage", "disabled")
+    if provider in ("", "disabled", "none"):
+        return {"enabled": False, "provider": "disabled"}
+    return {
+        "enabled": True,
+        "provider": provider,
+        "endpoint_url": getattr(args, "s3_endpoint_url", ""),
+        "bucket": getattr(args, "s3_bucket", ""),
+        "region": getattr(args, "s3_region", ""),
+        "force_path_style": getattr(args, "s3_force_path_style", False),
+        "object_prefix": getattr(args, "s3_object_prefix", ""),
+        "presign_ttl_seconds": getattr(args, "s3_presign_ttl_seconds", 900),
+        "upload_session_ttl_seconds": getattr(
+            args, "s3_upload_session_ttl_seconds", 3600
+        ),
+        "scratch_dir": getattr(args, "s3_scratch_dir", ""),
+    }
+
 def normalize_binding_name(binding: str | None) -> str | None:
     """Normalize environment-provided binding aliases to canonical names."""
     if binding == "aws_bedrock":
@@ -948,6 +1019,27 @@ def parse_args() -> argparse.Namespace:
         "MAX_UPLOAD_SIZE", 104857600, int, special_none=True
     )
 
+    # Object-store document ingestion is opt-in and additive. When disabled,
+    # no S3 client or credentials are required and local upload/scan behavior
+    # remains unchanged.
+    args.object_storage = normalize_object_storage_provider(
+        get_env_value("LIGHTRAG_OBJECT_STORAGE", "disabled")
+    )
+    args.object_storage_enabled = args.object_storage != "disabled"
+    args.s3_endpoint_url = get_env_value("S3_ENDPOINT_URL", "")
+    args.s3_bucket = get_env_value("S3_BUCKET", "")
+    args.s3_region = get_env_value("S3_REGION", "")
+    args.s3_force_path_style = get_env_value("S3_FORCE_PATH_STYLE", False, bool)
+    args.s3_access_key_id = get_env_value("S3_ACCESS_KEY_ID", "")
+    args.s3_secret_access_key = get_env_value("S3_SECRET_ACCESS_KEY", "")
+    args.s3_session_token = get_env_value("S3_SESSION_TOKEN", "")
+    args.s3_object_prefix = get_env_value("S3_OBJECT_PREFIX", "")
+    args.s3_presign_ttl_seconds = get_env_value("S3_PRESIGN_TTL_SECONDS", 900, int)
+    args.s3_upload_session_ttl_seconds = get_env_value(
+        "S3_UPLOAD_SESSION_TTL_SECONDS", 3600, int
+    )
+    args.s3_scratch_dir = get_env_value("S3_SCRATCH_DIR", "")
+
     # Embedding prefix configuration for context-aware embeddings. Empty prefixes
     # must be explicit via NO_PREFIX so missing config is distinguishable.
     (
@@ -983,6 +1075,7 @@ def parse_args() -> argparse.Namespace:
 
     validate_auth_configuration(args)
     validate_bedrock_auth_configuration(args)
+    validate_object_storage_configuration(args)
     return args
 
 
@@ -1039,6 +1132,7 @@ def initialize_config(args=None, force=False):
     validate_bedrock_auth_configuration(resolved_args)
     validate_scan_batch_configuration(resolved_args)
     validate_admission_configuration(resolved_args)
+    validate_object_storage_configuration(resolved_args)
     _global_args = resolved_args
     _initialized = True
     return _global_args

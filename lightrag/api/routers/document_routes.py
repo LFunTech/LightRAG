@@ -133,6 +133,19 @@ from lightrag.kg.shared_storage import append_pipeline_history
 from lightrag.utils_pipeline import count_active_documents, read_source_file_basename
 from lightrag.api.admission import adopt_admission_ticket
 from lightrag.api.utils_api import get_combined_auth_dependency
+from lightrag.object_storage import (
+    ObjectNotFoundError,
+    ObjectStore,
+    ObjectStoreError,
+    ObjectStoreUnavailableError,
+    object_store_uri,
+)
+from lightrag.object_storage.sessions import (
+    UploadSessionExpiredError,
+    UploadSessionManager,
+    UploadSessionMismatchError,
+    UploadSessionNotFoundError,
+)
 from ..config import global_args
 
 
@@ -1359,6 +1372,40 @@ class SupportedFileTypesResponse(BaseModel):
     )
 
 
+
+class ObjectUploadPresignRequest(BaseModel):
+    """Request to create a presigned object-upload session."""
+
+    filename: str = Field(min_length=1, description="Original document filename")
+    content_type: str = Field(min_length=1, description="Declared MIME type")
+    size: int = Field(ge=0, description="Declared object size in bytes")
+    checksum_sha256: Optional[
+        Annotated[str, StringConstraints(pattern=r"^[a-fA-F0-9]{64}$")]
+    ] = Field(default=None, description="Optional lowercase or uppercase SHA-256 hex digest")
+
+    model_config = ConfigDict(extra="ignore")
+
+
+class ObjectUploadPresignResponse(BaseModel):
+    """Presigned object-upload session response."""
+
+    upload_id: str
+    object_key: str
+    upload_url: str
+    method: str
+    headers: Dict[str, str]
+    expires_in: int
+    expires_at: str
+    max_size: Optional[int] = None
+
+
+class ObjectUploadCompleteRequest(BaseModel):
+    """Request to complete a direct object upload and enqueue the document."""
+
+    upload_id: str = Field(min_length=1)
+    object_key: str = Field(min_length=1)
+
+
 class PipelineStatusResponse(BaseModel):
     """Response model for pipeline status
 
@@ -2255,6 +2302,141 @@ def delete_file_variants_by_file_path(
                     )
 
     return deleted_files, errors
+
+
+def _owned_object_key(key: str, marker: str) -> str | None:
+    key = str(key or "").strip().strip("/")
+    if not key or "\x00" in key:
+        return None
+    if any(part in {"", ".", ".."} for part in key.split("/")):
+        return None
+    if marker:
+        stripped_marker = marker.strip("/")
+        if marker not in key and not key.startswith(f"{stripped_marker}/"):
+            return None
+    return key
+
+
+def _owned_artifact_prefix(
+    prefix: str, source_key: str | None, store_prefix: str
+) -> str | None:
+    candidate = _owned_object_key(prefix, "")
+    if not candidate:
+        return None
+    source_root = (
+        source_key.split("/uploads/", 1)[0]
+        if source_key and "/uploads/" in source_key
+        else ""
+    )
+    roots = [root for root in (source_root, store_prefix.strip("/")) if root]
+    if roots:
+        return (
+            candidate
+            if any(candidate.startswith(f"{root}/artifacts/") for root in roots)
+            else None
+        )
+    return candidate if candidate.startswith("artifacts/") else None
+
+
+async def delete_object_source_objects(
+    store: ObjectStore | None,
+    object_source: dict[str, Any] | None,
+    *,
+    delete_artifacts: bool = True,
+) -> tuple[list[str], list[str]]:
+    """Delete owned object-backed source/artifacts for delete_file=True."""
+    if (
+        not isinstance(object_source, dict)
+        or object_source.get("source_kind") != "s3_object"
+    ):
+        return [], []
+    if store is None:
+        return [], ["Object-store cleanup skipped: object store is not configured"]
+    bucket = str(object_source.get("bucket") or store.config.bucket)
+    deleted: list[str] = []
+    errors: list[str] = []
+
+    source_key = _owned_object_key(str(object_source.get("object_key") or ""), "/uploads/")
+    if source_key:
+        try:
+            await store.delete_object(source_key)
+            deleted.append(object_store_uri(bucket, source_key))
+        except ObjectStoreError as exc:
+            errors.append(f"Failed to delete object source {source_key}: {exc}")
+    elif object_source.get("object_key"):
+        errors.append("Refused to delete object source outside owned upload prefix")
+
+    store_prefix = str(getattr(store.config, "object_prefix", "") or "")
+    if delete_artifacts:
+        artifact_prefix = _owned_artifact_prefix(
+            str(object_source.get("artifact_prefix") or ""), source_key, store_prefix
+        )
+        if artifact_prefix:
+            try:
+                await store.delete_prefix(artifact_prefix)
+                deleted.append(object_store_uri(bucket, artifact_prefix) + "/")
+            except ObjectStoreError as exc:
+                errors.append(
+                    f"Failed to delete object artifact prefix {artifact_prefix}: {exc}"
+                )
+        elif object_source.get("artifact_prefix"):
+            errors.append(
+                "Refused to delete object artifacts outside owned artifact prefix"
+            )
+
+    return deleted, errors
+
+
+def _extract_object_source(record: Any) -> dict[str, Any] | None:
+    """Return object-source metadata from dict or DocProcessingStatus-like rows."""
+    if isinstance(record, dict):
+        direct = record.get("object_source")
+        metadata = record.get("metadata")
+    else:
+        direct = getattr(record, "object_source", None)
+        metadata = getattr(record, "metadata", None)
+    if isinstance(direct, dict):
+        return dict(direct)
+    if isinstance(metadata, dict) and isinstance(metadata.get("object_source"), dict):
+        return dict(metadata["object_source"])
+    return None
+
+
+async def read_doc_object_source(rag: LightRAG, doc_id: str) -> dict[str, Any] | None:
+    """Read object-source metadata before the document row is deleted."""
+    for storage_name in ("full_docs", "doc_status"):
+        storage = getattr(rag, storage_name, None)
+        get_by_id = getattr(storage, "get_by_id", None)
+        if get_by_id is None:
+            continue
+        record = await get_by_id(doc_id)
+        object_source = _extract_object_source(record)
+        if object_source is not None:
+            return object_source
+    return None
+
+
+async def read_workspace_object_sources(
+    rag: LightRAG,
+) -> list[tuple[str, dict[str, Any]]]:
+    """Read object-source metadata for clear before the doc rows are dropped."""
+    get_docs_by_statuses = getattr(
+        getattr(rag, "doc_status", None), "get_docs_by_statuses", None
+    )
+    if get_docs_by_statuses is None:
+        return []
+
+    try:
+        docs = await get_docs_by_statuses(list(DocStatus), strict=True)
+    except TypeError:
+        docs = await get_docs_by_statuses(list(DocStatus))
+
+    object_sources: list[tuple[str, dict[str, Any]]] = []
+    for doc_id, record in docs.items():
+        object_source = _extract_object_source(record)
+        if object_source is not None:
+            object_sources.append((doc_id, object_source))
+    return object_sources
 
 
 async def record_scan_warning(rag: LightRAG, message: str) -> None:
@@ -4271,6 +4453,9 @@ async def background_delete_documents(
             try:
                 delete_physical_file = delete_file
                 file_preservation_reason = None
+                object_source = (
+                    await read_doc_object_source(rag, doc_id) if delete_file else None
+                )
 
                 result = await rag.adelete_by_doc_id(
                     doc_id, delete_llm_cache=delete_llm_cache
@@ -4279,10 +4464,17 @@ async def background_delete_documents(
                     getattr(result, "file_path", "-") if "result" in locals() else "-"
                 )
                 if result.status == "success":
+                    if delete_file and object_source:
+                        delete_physical_file = False
+                        file_preservation_reason = (
+                            "object-backed source is managed in object storage"
+                        )
+
                     if (
                         delete_file
                         and result.file_path
                         and result.file_path != UNKNOWN_FILE_SOURCE
+                        and object_source is None
                     ):
                         try:
                             # Duplicate-attempt and source-conflict rows share a
@@ -4366,6 +4558,73 @@ async def background_delete_documents(
                         append_pipeline_history(pipeline_status, success_msg)
 
                     # Handle file deletion if requested and source information is available
+                    if delete_file and object_source:
+                        try:
+                            deleted_objects, object_delete_errors = (
+                                await delete_object_source_objects(
+                                    getattr(rag, "object_store", None),
+                                    object_source,
+                                )
+                            )
+                            for object_delete_error in object_delete_errors:
+                                logger.warning(object_delete_error)
+                                async with pipeline_status_lock:
+                                    pipeline_status["latest_message"] = (
+                                        object_delete_error
+                                    )
+                                    append_pipeline_history(
+                                        pipeline_status, object_delete_error
+                                    )
+
+                            if deleted_objects:
+                                object_delete_msg = (
+                                    "Successfully deleted object-store files: "
+                                    + ", ".join(deleted_objects)
+                                )
+                                logger.info(object_delete_msg)
+                                async with pipeline_status_lock:
+                                    pipeline_status["latest_message"] = (
+                                        object_delete_msg
+                                    )
+                                    append_pipeline_history(
+                                        pipeline_status, object_delete_msg
+                                    )
+                            elif not object_delete_errors:
+                                object_delete_msg = (
+                                    "Object-store file deletion skipped, "
+                                    f"no owned objects recorded for {doc_id}"
+                                )
+                                logger.info(object_delete_msg)
+                                async with pipeline_status_lock:
+                                    pipeline_status["latest_message"] = (
+                                        object_delete_msg
+                                    )
+                                    append_pipeline_history(
+                                        pipeline_status, object_delete_msg
+                                    )
+
+                            if object_delete_errors and get_runtime(rag) is not None:
+                                raise RuntimeError(
+                                    "Object-store cleanup failed: "
+                                    + "; ".join(object_delete_errors)
+                                )
+
+                        except CoordinationError:
+                            raise
+                        except Exception as object_error:
+                            if get_runtime(rag) is not None:
+                                raise
+                            object_error_msg = (
+                                "Failed to delete object-store files for "
+                                f"{doc_id}: {object_error}"
+                            )
+                            logger.error(object_error_msg)
+                            async with pipeline_status_lock:
+                                pipeline_status["latest_message"] = object_error_msg
+                                append_pipeline_history(
+                                    pipeline_status, object_error_msg
+                                )
+
                     if (
                         delete_physical_file
                         and result.file_path
@@ -4561,7 +4820,12 @@ async def background_delete_documents(
 
 
 def create_document_routes(
-    rag: LightRAG, doc_manager: DocumentManager, api_key: Optional[str] = None
+    rag: LightRAG,
+    doc_manager: DocumentManager,
+    api_key: Optional[str] = None,
+    *,
+    object_store: ObjectStore | None = None,
+    upload_session_manager: UploadSessionManager | None = None,
 ):
     # Fresh router per call — see the note above the temp_prefix constant.
     router = APIRouter(
@@ -4571,6 +4835,217 @@ def create_document_routes(
 
     # Create combined auth dependency for document routes
     combined_auth = get_combined_auth_dependency(api_key)
+
+    def _require_object_upload_components() -> tuple[ObjectStore, UploadSessionManager]:
+        if object_store is None or upload_session_manager is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Object-store document ingestion is not configured.",
+            )
+        return object_store, upload_session_manager
+
+    def _validate_object_upload_filename(filename: str) -> tuple[str, ParserDirectives]:
+        safe_filename = sanitize_filename(filename, doc_manager.input_dir)
+        try:
+            directives = resolve_parser_directives(safe_filename)
+        except FilenameParserHintError as hint_error:
+            raise HTTPException(status_code=400, detail=str(hint_error)) from hint_error
+        if not doc_manager.is_supported_file(safe_filename, directives=directives):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type. Supported types: {doc_manager.supported_extensions}",
+            )
+        try:
+            _validate_custom_chunking_available(directives.process_options, rag)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid chunking configuration: {exc}",
+            ) from exc
+        return safe_filename, directives
+
+    def _enforce_object_upload_size(size: int) -> None:
+        max_size = getattr(global_args, "max_upload_size", None)
+        if max_size is not None and max_size > 0 and size > max_size:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"File too large. Maximum size: {max_size / 1024 / 1024:.1f}MB, "
+                    f"uploaded: {size / 1024 / 1024:.1f}MB"
+                ),
+            )
+
+    @router.post(
+        "/uploads/presign",
+        response_model=ObjectUploadPresignResponse,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def presign_object_upload(request: ObjectUploadPresignRequest):
+        """Create a presigned URL for direct object-store document upload."""
+
+        store, sessions = _require_object_upload_components()
+        safe_filename, _directives = _validate_object_upload_filename(request.filename)
+        _enforce_object_upload_size(request.size)
+        ttl = getattr(global_args, "s3_presign_ttl_seconds", 900)
+        session_ttl = getattr(global_args, "s3_upload_session_ttl_seconds", ttl)
+        try:
+            session = await sessions.create_session(
+                workspace=getattr(rag, "workspace", "") or "",
+                filename=safe_filename,
+                content_type=request.content_type,
+                size=request.size,
+                checksum_sha256=request.checksum_sha256.lower()
+                if request.checksum_sha256
+                else None,
+                ttl_seconds=session_ttl,
+            )
+            signed = await store.presign_upload(
+                session.object_key,
+                content_type=request.content_type,
+                size=request.size,
+                checksum_sha256=session.checksum_sha256,
+                expires_in=ttl,
+            )
+        except ObjectStoreUnavailableError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ObjectStoreError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return ObjectUploadPresignResponse(
+            upload_id=session.upload_id,
+            object_key=session.object_key,
+            upload_url=signed.url,
+            method=signed.method,
+            headers=signed.headers,
+            expires_in=signed.expires_in,
+            expires_at=session.expires_at.isoformat(),
+            max_size=getattr(global_args, "max_upload_size", None),
+        )
+
+    @router.post(
+        "/uploads/complete",
+        response_model=InsertResponse,
+        dependencies=[Depends(combined_auth)],
+    )
+    async def complete_object_upload(request: ObjectUploadCompleteRequest):
+        """Verify a direct object upload and enqueue it as an object-backed document."""
+
+        store, sessions = _require_object_upload_components()
+        try:
+            issued = await sessions.get_session(request.upload_id)
+            if request.object_key != issued.object_key:
+                raise UploadSessionMismatchError(
+                    "object key does not match upload session"
+                )
+            if issued.status == "completed" and issued.track_id:
+                return InsertResponse(
+                    status="success",
+                    message=(
+                        f"Object '{issued.canonical_file_path}' was already "
+                        "uploaded. Processing continues under the original track."
+                    ),
+                    track_id=issued.track_id,
+                )
+            metadata = await store.head_object(request.object_key)
+            completed = await sessions.complete_session(
+                request.upload_id,
+                workspace=getattr(rag, "workspace", "") or "",
+                object_key=request.object_key,
+                metadata=metadata,
+            )
+        except ObjectNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Uploaded object does not exist") from exc
+        except UploadSessionNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Upload session does not exist") from exc
+        except UploadSessionExpiredError as exc:
+            raise HTTPException(status_code=409, detail="Upload session has expired") from exc
+        except UploadSessionMismatchError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ObjectStoreUnavailableError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ObjectStoreError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+        existing_doc_data = await get_existing_doc_by_file_path_candidates(
+            rag.doc_status, Path(completed.canonical_file_path)
+        )
+        if existing_doc_data:
+            status = get_doc_status_value(existing_doc_data) or "unknown"
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Document storage already contains '{completed.canonical_file_path}' "
+                    f"(Status: {status}). Delete the existing record before re-uploading."
+                ),
+            )
+
+        directives = resolve_parser_directives(completed.filename)
+        active_strategy = parse_process_options(directives.process_options).chunking
+        hint_chunk_options = None
+        hint_chunk_params = directives.chunk_params.get(active_strategy)
+        if hint_chunk_params:
+            try:
+                strategy_key = chunk_strategy_key(directives.process_options)
+                hint_chunk_options = resolve_chunk_options(
+                    rag.addon_params, process_options=directives.process_options
+                )
+                hint_chunk_options[strategy_key].update(hint_chunk_params)
+                _validate_effective_chunk_overlap(
+                    hint_chunk_options, strategy_key, strategy_key
+                )
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid chunking configuration: {exc}",
+                ) from exc
+        parse_engine_field = encode_parse_engine(
+            directives.engine, directives.engine_params
+        )
+        track_id = generate_track_id("upload")
+        object_source = {
+            "source_kind": "s3_object",
+            "bucket": completed.bucket,
+            "object_key": completed.object_key,
+            "etag": completed.object_etag,
+            "size": completed.object_size,
+            "content_type": completed.object_content_type or completed.content_type,
+            "checksum_sha256": completed.checksum_sha256,
+            "upload_id": completed.upload_id,
+        }
+        enqueue_kwargs: dict[str, Any] = {
+            "input": "",
+            "file_paths": completed.canonical_file_path,
+            "track_id": track_id,
+            "docs_format": FULL_DOCS_FORMAT_PENDING_PARSE,
+            "parse_engine": parse_engine_field,
+            "process_options": directives.process_options,
+            "object_source": object_source,
+        }
+        if hint_chunk_options is not None:
+            enqueue_kwargs["chunk_options"] = hint_chunk_options
+        await rag.apipeline_enqueue_documents(**enqueue_kwargs)
+        try:
+            await sessions.mark_enqueued(
+                completed.upload_id,
+                workspace=getattr(rag, "workspace", "") or "",
+                track_id=track_id,
+            )
+        except Exception as session_error:
+            logger.warning(
+                "Object upload session %s completed but its track_id could "
+                "not be recorded; repeated complete may need source dedup to "
+                "avoid duplicate enqueue: %s",
+                completed.upload_id,
+                session_error,
+            )
+        await drive_pipeline(rag)
+        return InsertResponse(
+            status="success",
+            message=(
+                f"Object '{completed.canonical_file_path}' uploaded successfully. "
+                "Processing will continue in background."
+            ),
+            track_id=track_id,
+        )
 
     @router.post(
         "/scan", response_model=ScanResponse, dependencies=[Depends(combined_auth)]
@@ -6183,6 +6658,13 @@ def create_document_routes(
                     f"evicted under capacity pressure: {job_clear_error}"
                 )
 
+            object_sources = await read_workspace_object_sources(rag)
+            if object_sources:
+                append_pipeline_history(
+                    pipeline_status,
+                    f"Found {len(object_sources)} object-backed documents to clean",
+                )
+
             # Use drop method to clear all data
             drop_tasks = []
             storages = [
@@ -6364,6 +6846,78 @@ def create_document_routes(
                     # channel too: the category goes here, the raw text only
                     # to the log above.
                     append_pipeline_history(pipeline_status, f"Error: {summary}")
+
+            object_deleted_count = 0
+            object_cleanup_error_count = 0
+            if object_sources:
+                append_pipeline_history(
+                    pipeline_status, "Starting object-store cleanup"
+                )
+                object_cleanup_errors: list[str] = []
+                for doc_id, object_source in object_sources:
+                    try:
+                        deleted_objects, object_delete_errors = (
+                            await delete_object_source_objects(
+                                getattr(rag, "object_store", None),
+                                object_source,
+                                delete_artifacts=delete_parsed_files,
+                            )
+                        )
+                    except CoordinationError:
+                        raise
+                    except Exception as object_error:
+                        if get_runtime(rag) is not None:
+                            raise
+                        deleted_objects = []
+                        object_delete_errors = [
+                            "Failed to delete object-store files for "
+                            f"{doc_id}: {object_error}"
+                        ]
+
+                    object_deleted_count += len(deleted_objects)
+                    for deleted_object in deleted_objects:
+                        logger.info(
+                            "/documents/clear deleted object-store file for %s: %s",
+                            doc_id,
+                            deleted_object,
+                        )
+                    for object_delete_error in object_delete_errors:
+                        object_cleanup_error_count += 1
+                        object_cleanup_errors.append(
+                            f"{doc_id}: {object_delete_error}"
+                        )
+                        logger.warning(
+                            "/documents/clear object-store cleanup failed for "
+                            "%s: %s",
+                            doc_id,
+                            object_delete_error,
+                        )
+
+                if object_deleted_count:
+                    append_pipeline_history(
+                        pipeline_status,
+                        f"Successfully deleted {object_deleted_count} object-store objects",
+                    )
+                if object_cleanup_errors:
+                    if get_runtime(rag) is not None:
+                        raise RuntimeError(
+                            "Object-store cleanup failed: "
+                            + "; ".join(object_cleanup_errors)
+                        )
+                    errors.extend(object_cleanup_errors)
+                    error_summaries.append(
+                        "object-store cleanup failed for "
+                        f"{object_cleanup_error_count} object references"
+                    )
+                    append_pipeline_history(
+                        pipeline_status,
+                        "Object-store cleanup incomplete; see server logs",
+                    )
+                elif not object_deleted_count:
+                    append_pipeline_history(
+                        pipeline_status,
+                        "Object-store cleanup found no owned objects to delete",
+                    )
 
             # Log file deletion start
             append_pipeline_history(

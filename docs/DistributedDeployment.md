@@ -25,7 +25,7 @@ pooling is incompatible with session witness lifetime.
 explain those connection lifetimes. Durable ownership/pending rows—not the
 session lock—retain abandoned work. No heartbeat or timeout grants takeover.
 
-All replicas and maintenance jobs mount the same persistent filesystem at
+All replicas and maintenance jobs normally mount the same persistent filesystem at
 `/app/data/inputs` and `/app/data/rag_storage`. The runtime fingerprints resolved
 paths, backend targets and embedding model/dimension. `LIGHTRAG_SHARED_STORAGE=true`
 is an operator assertion, **not a filesystem probe**. PVC access modes also do
@@ -34,6 +34,18 @@ supports simultaneous multi-node mounts and coherent file operations.
 [Kubernetes access modes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes)
 describe that distinction. EmptyDir, independent per-Pod claims, and file-backed
 business databases do not satisfy this profile.
+
+The object-store ingestion profile is the explicit exception for the input-file
+side of that rule. When `LIGHTRAG_OBJECT_STORAGE=s3` is configured and every
+document in the distributed acceptance path is created through
+`/documents/uploads/presign` + direct S3-compatible PUT + `/documents/uploads/complete`,
+`LIGHTRAG_SHARED_STORAGE=false` is allowed for the source/sidecar flow:
+workers materialize source objects and remote sidecars into per-Pod scratch
+(`S3_SCRATCH_DIR`, commonly an `emptyDir`) instead of relying on a shared
+`INPUT_DIR` PVC. This does not make object storage a substitute for PG/pgvector,
+HugeGraph, KV/doc-status, or any remaining file-backed business storage. Local
+`/documents/upload` and `/documents/scan` still require a filesystem visible to
+the Pod that will process those local files.
 
 Use UTC/NTP on application nodes and PG: one-shot retry selection compares
 `doc_status.updated_at` with the request's database timestamp. Future/newer

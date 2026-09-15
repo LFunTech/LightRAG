@@ -381,6 +381,11 @@ _DOC_STATUS_METADATA_CARRY_OVER_KEYS: tuple[str, ...] = (
     "parse_stage_skipped",
     "parse_format",
     "parse_engine",
+    # Object-backed source metadata is the durable pointer used by retry,
+    # delete and clear. It must survive every processing transition so a
+    # FAILED row remains diagnosable and a later cleanup never mistakes the
+    # canonical file_path for a local input file.
+    "object_source",
     # Parse-stage LLM cache keys (docx smart_heading); must survive
     # PARSING → ANALYZING → PROCESSING → PROCESSED/FAILED so document
     # deletion can purge them (delete_llm_cache=True).
@@ -596,6 +601,9 @@ def doc_status_transition_metadata(
 _DOC_STATUS_METADATA_DIRECTIVE_KEYS: tuple[str, ...] = (
     "process_options",
     "source_file",
+    # FAILED→PENDING retry must keep the object pointer. Per-attempt parse
+    # fields are regenerated, but the source object remains the retry input.
+    "object_source",
     # Defense in depth: journaled custom-chunk patch rows are excluded from
     # pipeline processing/reset entirely, but if one ever reaches a reset the
     # journal must survive — stripping it would orphan the operation's staged

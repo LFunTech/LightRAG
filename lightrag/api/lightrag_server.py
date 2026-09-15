@@ -22,6 +22,7 @@ import time
 import uuid
 import uvicorn
 import pipmaster as pm
+from dataclasses import dataclass
 from typing import Any
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
@@ -72,6 +73,8 @@ from lightrag.api.routers.query_routes import create_query_routes
 from lightrag.api.routers.graph_routes import create_graph_routes
 from lightrag.api.routers.ollama_api import OllamaAPI
 from lightrag.api.routers.ui_customization_routes import create_ui_customization_routes
+from lightrag.object_storage import ObjectStoreConfig, build_object_store
+from lightrag.object_storage.sessions import KVUploadSessionStore, UploadSessionManager
 from lightrag.api.ui_customization import (
     WEBUI_CHROME_LOCALES,
     locales_without_chrome_translation,
@@ -105,6 +108,62 @@ webui_description = os.getenv("WEBUI_DESCRIPTION")
 
 # Global authentication configuration
 auth_configured = bool(auth_handler.accounts)
+
+
+@dataclass(frozen=True)
+class _ObjectUploadComponents:
+    object_store: Any | None
+    upload_session_manager: UploadSessionManager | None
+    upload_session_storage: Any | None
+
+
+def _build_object_upload_components(args: Any, rag: Any) -> _ObjectUploadComponents:
+    """Build optional object-upload dependencies without touching the network."""
+    provider = str(getattr(args, "object_storage", "disabled") or "disabled").lower()
+    enabled = bool(
+        getattr(args, "object_storage_enabled", provider not in {"disabled", "none"})
+    )
+    if not enabled:
+        setattr(rag, "object_store", None)
+        return _ObjectUploadComponents(None, None, None)
+
+    config = ObjectStoreConfig(
+        provider=getattr(args, "object_storage", "s3"),
+        bucket=getattr(args, "s3_bucket", "") or "",
+        endpoint_url=getattr(args, "s3_endpoint_url", None),
+        region=getattr(args, "s3_region", None),
+        force_path_style=bool(getattr(args, "s3_force_path_style", False)),
+        access_key_id=getattr(args, "s3_access_key_id", None),
+        secret_access_key=getattr(args, "s3_secret_access_key", None),
+        session_token=getattr(args, "s3_session_token", None),
+        object_prefix=getattr(args, "s3_object_prefix", "") or "",
+        presign_ttl_seconds=int(getattr(args, "s3_presign_ttl_seconds", 900)),
+        upload_session_ttl_seconds=int(
+            getattr(args, "s3_upload_session_ttl_seconds", 3600)
+        ),
+        scratch_dir=getattr(args, "s3_scratch_dir", None),
+    )
+    object_store = build_object_store(config)
+    if object_store is None:
+        return _ObjectUploadComponents(None, None, None)
+
+    upload_session_storage = rag.key_string_value_json_storage_cls(
+        namespace="upload_sessions",
+        workspace=getattr(rag, "workspace", "") or "",
+        embedding_func=getattr(rag, "embedding_func", None),
+    )
+    upload_session_manager = UploadSessionManager(
+        KVUploadSessionStore(upload_session_storage),
+        bucket=config.bucket,
+        prefix=config.normalized_prefix(),
+    )
+    setattr(rag, "object_store", object_store)
+    setattr(rag, "object_storage_scratch_dir", config.scratch_dir)
+    return _ObjectUploadComponents(
+        object_store,
+        upload_session_manager,
+        upload_session_storage,
+    )
 
 
 def _inject_swagger_theme(html: str, theme: str) -> str:
@@ -1593,6 +1652,14 @@ def create_app(args):
             # Initialize database connections
             # Note: initialize_storages() now auto-initializes pipeline_status for rag.workspace
             await rag.initialize_storages()
+            if object_upload_components.upload_session_storage is not None:
+                await object_upload_components.upload_session_storage.initialize()
+            if object_upload_components.object_store is not None:
+                await object_upload_components.object_store.preflight()
+                logger.info(
+                    "Object-store ingestion enabled for bucket %r",
+                    object_upload_components.object_store.config.bucket,
+                )
 
             # Distributed replicas verify only; operators provision/migrate
             # through explicit maintenance before starting writer processes.
@@ -1651,6 +1718,9 @@ def create_app(args):
                 shutdown_cancel = await drain_reserved_background_tasks(
                     app.state.background_tasks
                 )
+
+            if object_upload_components.upload_session_storage is not None:
+                await object_upload_components.upload_session_storage.finalize()
 
             # Clean up database connections
             await rag.finalize_storages()
@@ -2561,14 +2631,28 @@ def create_app(args):
         )
     )
 
+    object_upload_components = _build_object_upload_components(args, rag)
+
     # Add routes
     # root_path is set on the app for reverse proxy support;
     # routes stay at their natural paths and are prefixed by the proxy or uvicorn --root-path
     # Supported operator bootstrap surface: construction has no backend I/O.
     # Use app.state.rag.distributed_maintenance() before any app lifespan starts.
     app.state.rag = rag
+    app.state.object_store = object_upload_components.object_store
+    app.state.upload_session_manager = (
+        object_upload_components.upload_session_manager
+    )
 
-    app.include_router(create_document_routes(rag, doc_manager, api_key))
+    app.include_router(
+        create_document_routes(
+            rag,
+            doc_manager,
+            api_key,
+            object_store=object_upload_components.object_store,
+            upload_session_manager=object_upload_components.upload_session_manager,
+        )
+    )
     app.include_router(create_query_routes(rag, api_key, args.top_k))
     app.include_router(create_graph_routes(rag, api_key))
     # Public read-only customization surface — registered unconditionally:

@@ -27,10 +27,7 @@ class ReuseParser(BaseParser):
     engine_name = "reuse"
 
     async def parse(self, ctx: ParseContext) -> ParseResult:
-        from lightrag.utils_pipeline import (
-            sidecar_blocks_path,
-            strip_lightrag_doc_prefix,
-        )
+        from lightrag.utils_pipeline import strip_lightrag_doc_prefix
 
         doc_format = ctx.content_data.get("parse_format", FULL_DOCS_FORMAT_LIGHTRAG)
         merged_text = strip_lightrag_doc_prefix(
@@ -38,9 +35,7 @@ class ReuseParser(BaseParser):
         )
         # ``sidecar_location`` may be absent on historical/abnormal rows; tolerate
         # it (blocks_path="") rather than failing or re-routing to extraction.
-        blocks_path = (
-            sidecar_blocks_path(ctx.content_data.get("sidecar_location")) or ""
-        )
+        blocks_path = await ctx.sidecar_blocks_path()
         return ParseResult(
             doc_id=ctx.doc_id,
             file_path=ctx.file_path,

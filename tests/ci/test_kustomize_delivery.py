@@ -21,8 +21,22 @@ def test_deploy_workflow_uses_kubectl_apply_k_not_helm():
     assert "kubeconfig_test" in text
     assert "LIGHTRAG_TEST_KUBECONFIG" in step["environment"]
     assert "LIGHTRAG_TEST_PUBLIC_HOST" in step["environment"]
+    assert (
+        step["environment"]["LIGHTRAG_TEST_S3_ENDPOINT_URL"]["from_secret"]
+        == "cos_storage_endpoint"
+    )
+    assert (
+        step["environment"]["LIGHTRAG_TEST_S3_ACCESS_KEY_ID"]["from_secret"]
+        == "cos_storage_secret_id"
+    )
     assert "verify_public_ingress" in script
     assert "/webui" in script
+    assert "wait_for_pvc_bound lightrag-test-inputs-rwx" not in script
+    assert '"/documents/uploads/presign"' in script
+    assert '"/documents/uploads/complete"' in script
+    assert '"/documents/reprocess_failed"' in script
+    assert '"/documents/delete_document"' in script
+    assert "LIGHTRAG_TEST_S3_ENDPOINT_URL" in script
 
 
 def test_kustomize_overlay_declares_test_namespace_and_digest_patch():
@@ -86,6 +100,10 @@ def test_kustomize_deployment_preserves_distributed_profile_without_plaintext_se
     assert spec["containers"][0]["envFrom"] == [{"secretRef": {"name": "lightrag-runtime"}}]
     env = {item["name"]: item["value"] for item in spec["containers"][0]["env"]}
     assert env["WORKERS"] == "1"
+    assert env["LIGHTRAG_SHARED_STORAGE"] == "false"
+    assert env["LIGHTRAG_OBJECT_STORAGE"] == "s3"
+    assert env["S3_OBJECT_PREFIX"] == "lightrag/test-object-ingestion"
+    assert env["S3_SCRATCH_DIR"] == "/app/data/object-scratch"
     assert env["LIGHTRAG_GRAPH_STORAGE"] == "HugeGraphStorage"
     assert env["EMBEDDING_MODEL"] == "text-embedding-v4"
     assert env["EMBEDDING_DIM"] == "1024"
@@ -101,6 +119,11 @@ def test_kustomize_deployment_preserves_distributed_profile_without_plaintext_se
         "HUGEGRAPH_USERNAME",
         "HUGEGRAPH_PASSWORD",
         "LIGHTRAG_API_KEY",
+        "S3_ENDPOINT_URL",
+        "S3_BUCKET",
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+        "S3_SESSION_TOKEN",
         "LLM_BINDING_API_KEY",
         "LLM_BINDING_HOST",
         "EMBEDDING_BINDING_API_KEY",

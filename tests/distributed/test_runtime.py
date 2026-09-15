@@ -170,6 +170,7 @@ def valid_profile(monkeypatch, tmp_path):
     monkeypatch.setenv("HUGEGRAPH_URI", "http://localhost:8080")
     monkeypatch.setenv("POSTGRES_PASSWORD", "pg-secret")
     monkeypatch.delenv("POSTGRES_WORKSPACE", raising=False)
+    monkeypatch.delenv("LIGHTRAG_OBJECT_STORAGE", raising=False)
     return SimpleNamespace(
         distributed_writes=True,
         workspace="test",
@@ -202,6 +203,27 @@ def test_profile_rejects_unsafe_environment(monkeypatch, tmp_path, key, value):
     monkeypatch.setenv(key, value)
     with pytest.raises(ValueError):
         module.configure_runtime(rag)
+
+
+def test_object_store_profile_allows_ephemeral_input_path(monkeypatch, tmp_path):
+    module = runtime_module()
+    rag = valid_profile(monkeypatch, tmp_path)
+    monkeypatch.setenv("LIGHTRAG_SHARED_STORAGE", "false")
+    monkeypatch.setenv("LIGHTRAG_OBJECT_STORAGE", "s3")
+    captured = []
+
+    def coordinator(dsn, deployment, workspace, manifest):
+        captured.append(manifest)
+        return Coordinator()
+
+    monkeypatch.setattr(module, "PostgresCoordinator", coordinator)
+
+    runtime = module.configure_runtime(rag)
+
+    assert runtime is not None
+    assert captured[0]["paths"]["input"] == str(tmp_path / "inputs")
+    assert captured[0]["object_storage"]["provider"] == "s3"
+    assert captured[0]["shared_filesystem_required"] is False
 
 
 def test_manifest_includes_actual_input_path_and_not_credentials(monkeypatch, tmp_path):
