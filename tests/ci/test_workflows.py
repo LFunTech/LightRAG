@@ -416,6 +416,16 @@ def test_deploy_test_script_preflights_storage_before_draining_service():
     )
 
 
+def test_deploy_test_route_restore_removes_pause_selector():
+    script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
+    restore_line = next(
+        line for line in script.splitlines() if line.startswith("ROUTE_RESTORE_PATCH=")
+    )
+    assert '"app.kubernetes.io/name":"lightrag"' in restore_line
+    assert '"app.kubernetes.io/instance":"lightrag"' in restore_line
+    assert '"lightrag.openai.com/routing-paused":null' in restore_line
+
+
 def test_deploy_test_script_uses_posix_shell_and_prints_kubernetes_status():
     script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
     assert script.startswith("#!/usr/bin/env sh\n")
