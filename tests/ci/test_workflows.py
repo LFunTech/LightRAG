@@ -216,9 +216,12 @@ def test_downstream_workflows_skip_clone_and_download_source_from_minio():
 
 def test_downstream_source_extraction_stays_off_nfs_workspace():
     for workflow_name, consumer_steps in {
-        "build-image.yml": ("build-image",),
-        "pre-deploy.yml": ("verify-image",),
-        "deploy-test.yml": ("resolve-image", "deploy-test"),
+        "build-image.yml": {"build-image": "/kaniko/lightrag-source"},
+        "pre-deploy.yml": {"verify-image": "/tmp/lightrag-source"},
+        "deploy-test.yml": {
+            "resolve-image": "/tmp/lightrag-source",
+            "deploy-test": "/tmp/lightrag-source",
+        },
     }.items():
         workflow = load(workflow_name)
         all_commands = "\n".join(
@@ -228,12 +231,19 @@ def test_downstream_source_extraction_stays_off_nfs_workspace():
         )
         assert "tar -xzf /tmp/lightrag-source/source.tar.gz -C ." not in all_commands
         assert "find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +" not in all_commands
-        for step_name in consumer_steps:
+        for step_name, source_dir in consumer_steps.items():
             command_text = "\n".join(workflow["steps"][step_name]["commands"])
             assert 'SOURCE_ARCHIVE_DIR="$${LIGHTRAG_SOURCE_ARCHIVE_DIR:-build/source-artifact}"' in command_text
-            assert 'SOURCE_DIR="$${LIGHTRAG_SOURCE_DIR:-/tmp/lightrag-source}"' in command_text
+            assert f'SOURCE_DIR="$${{LIGHTRAG_SOURCE_DIR:-{source_dir}}}"' in command_text
             assert 'tar -xzf "$SOURCE_ARCHIVE_DIR/source.tar.gz" -C "$SOURCE_DIR"' in command_text
             assert 'cd "$SOURCE_DIR"' in command_text
+
+
+def test_kaniko_build_context_uses_preserved_local_dir_not_tmp():
+    build = load("build-image.yml")
+    command_text = "\n".join(build["steps"]["build-image"]["commands"])
+    assert 'SOURCE_DIR="$${LIGHTRAG_SOURCE_DIR:-/kaniko/lightrag-source}"' in command_text
+    assert 'SOURCE_DIR="$${LIGHTRAG_SOURCE_DIR:-/tmp/lightrag-source}"' not in command_text
 
 
 def test_release_workflows_are_tag_only_and_ordered_from_source_artifact():

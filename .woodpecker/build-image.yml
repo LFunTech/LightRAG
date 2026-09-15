@@ -95,7 +95,7 @@ steps:
           set -o pipefail
         fi
         SOURCE_ARCHIVE_DIR="$${LIGHTRAG_SOURCE_ARCHIVE_DIR:-build/source-artifact}"
-        SOURCE_DIR="$${LIGHTRAG_SOURCE_DIR:-/tmp/lightrag-source}"
+        SOURCE_DIR="$${LIGHTRAG_SOURCE_DIR:-/kaniko/lightrag-source}"
         test -s "$SOURCE_ARCHIVE_DIR/source.tar.gz"
         test -s "$SOURCE_ARCHIVE_DIR/source.tar.gz.sha256"
         rm -rf "$SOURCE_DIR"
