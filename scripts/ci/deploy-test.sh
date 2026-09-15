@@ -185,17 +185,35 @@ PY
 
 normalize_http_url_secret() {
   name="$1"
+  default_path="${LIGHTRAG_TEST_OPENAI_COMPATIBLE_PATH:-/compatible-mode/v1}"
+  case "$default_path" in
+    /*) ;;
+    *) default_path="/$default_path" ;;
+  esac
   eval "value=\${$name:-}"
   case "$value" in
     http://* | https://*)
-      printf '%s\n' "$value"
+      url="$value"
       ;;
     *://*)
       echo "required environment variable must be an http(s) URL: $name" >&2
       return 64
       ;;
     *)
-      printf 'https://%s\n' "$value"
+      url="https://$value"
+      ;;
+  esac
+
+  canonical_url="$url"
+  while [ "${canonical_url%/}" != "$canonical_url" ]; do
+    canonical_url="${canonical_url%/}"
+  done
+  case "$canonical_url" in
+    http://*/* | https://*/*)
+      printf '%s\n' "$url"
+      ;;
+    *)
+      printf '%s%s\n' "$canonical_url" "$default_path"
       ;;
   esac
 }

@@ -481,11 +481,13 @@ def test_deploy_test_script_normalizes_openai_compatible_binding_hosts(tmp_path)
         "set -eu\n"
         "cd \"$(dirname \"$0\")\"\n"
         f"{helper}\n"
-        "LIGHTRAG_TEST_LLM_BINDING_HOST=llm.example.test/compatible-mode/v1\n"
+        "LIGHTRAG_TEST_LLM_BINDING_HOST=llm.example.test\n"
         "LIGHTRAG_TEST_EMBEDDING_BINDING_HOST=https://embedding.example.test/v1\n"
+        "LIGHTRAG_TEST_EXISTING_BAILIAN_HOST=llm.example.test/compatible-mode/v1\n"
         "FTP_STYLE=ftp://embedding.example.test/v1\n"
         "normalize_http_url_secret LIGHTRAG_TEST_LLM_BINDING_HOST\n"
         "normalize_http_url_secret LIGHTRAG_TEST_EMBEDDING_BINDING_HOST\n"
+        "normalize_http_url_secret LIGHTRAG_TEST_EXISTING_BAILIAN_HOST\n"
         "if normalize_http_url_secret FTP_STYLE >/dev/null 2>error.txt; then\n"
         "  echo unexpected-success\n"
         "  exit 1\n"
@@ -501,7 +503,8 @@ def test_deploy_test_script_normalizes_openai_compatible_binding_hosts(tmp_path)
     lines = result.stdout.splitlines()
     assert lines[0] == "https://llm.example.test/compatible-mode/v1"
     assert lines[1] == "https://embedding.example.test/v1"
-    assert lines[2] == (
+    assert lines[2] == "https://llm.example.test/compatible-mode/v1"
+    assert lines[3] == (
         "required environment variable must be an http(s) URL: FTP_STYLE"
     )
     assert 'LLM_BINDING_HOST="$LIGHTRAG_TEST_LLM_BINDING_HOST"' in script
