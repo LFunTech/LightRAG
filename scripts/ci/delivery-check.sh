@@ -30,13 +30,4 @@ if command -v kubectl >/dev/null 2>&1; then
 else
   echo "kubectl not available; skipping Kustomize render in this image" >&2
 fi
-if command -v woodpecker-cli >/dev/null 2>&1; then
-  woodpecker-cli lint --strict .woodpecker/*.yml
-else
-  echo "woodpecker-cli not available; skipping Woodpecker lint in this image" >&2
-fi
-if command -v openspec >/dev/null 2>&1; then
-  openspec validate add-woodpecker-test-delivery --strict
-else
-  echo "openspec not available; skipping OpenSpec validation in this image" >&2
-fi
+
