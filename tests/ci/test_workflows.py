@@ -1,4 +1,5 @@
 import re
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -466,6 +467,45 @@ def test_deploy_test_script_derives_hugegraph_auth_method_from_credentials():
     assert "require_env LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD" not in script
     assert 'HUGEGRAPH_AUTH_METHOD="${LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD:-basic}"' in script
     assert '--from-literal=HUGEGRAPH_AUTH_METHOD="$HUGEGRAPH_AUTH_METHOD"' in script
+
+
+def test_deploy_test_script_normalizes_openai_compatible_binding_hosts(tmp_path):
+    script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
+    assert "normalize_http_url_secret()" in script
+    start = script.index("normalize_http_url_secret()")
+    end = script.index("\nstorage_profile_env_yaml()", start)
+    helper = script[start:end]
+    probe = tmp_path / "probe.sh"
+    probe.write_text(
+        "#!/usr/bin/env sh\n"
+        "set -eu\n"
+        "cd \"$(dirname \"$0\")\"\n"
+        f"{helper}\n"
+        "LIGHTRAG_TEST_LLM_BINDING_HOST=llm.example.test/compatible-mode/v1\n"
+        "LIGHTRAG_TEST_EMBEDDING_BINDING_HOST=https://embedding.example.test/v1\n"
+        "FTP_STYLE=ftp://embedding.example.test/v1\n"
+        "normalize_http_url_secret LIGHTRAG_TEST_LLM_BINDING_HOST\n"
+        "normalize_http_url_secret LIGHTRAG_TEST_EMBEDDING_BINDING_HOST\n"
+        "if normalize_http_url_secret FTP_STYLE >/dev/null 2>error.txt; then\n"
+        "  echo unexpected-success\n"
+        "  exit 1\n"
+        "fi\n"
+        "cat error.txt\n"
+    )
+    result = subprocess.run(
+        ["sh", str(probe)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    lines = result.stdout.splitlines()
+    assert lines[0] == "https://llm.example.test/compatible-mode/v1"
+    assert lines[1] == "https://embedding.example.test/v1"
+    assert lines[2] == (
+        "required environment variable must be an http(s) URL: FTP_STYLE"
+    )
+    assert 'LLM_BINDING_HOST="$LIGHTRAG_TEST_LLM_BINDING_HOST"' in script
+    assert 'EMBEDDING_BINDING_HOST="$LIGHTRAG_TEST_EMBEDDING_BINDING_HOST"' in script
 
 
 def test_deploy_test_script_reports_failed_jobs_without_waiting_for_timeout():

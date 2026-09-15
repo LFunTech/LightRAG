@@ -183,6 +183,23 @@ print(
 PY
 }
 
+normalize_http_url_secret() {
+  name="$1"
+  eval "value=\${$name:-}"
+  case "$value" in
+    http://* | https://*)
+      printf '%s\n' "$value"
+      ;;
+    *://*)
+      echo "required environment variable must be an http(s) URL: $name" >&2
+      return 64
+      ;;
+    *)
+      printf 'https://%s\n' "$value"
+      ;;
+  esac
+}
+
 storage_profile_env_yaml() {
   cat <<YAML
           env:
@@ -268,6 +285,8 @@ apply_runtime_secret() {
   require_env LIGHTRAG_TEST_S3_SECRET_ACCESS_KEY
 
   LIGHTRAG_COORDINATION_DSN="$(make_coordination_dsn)"
+  LIGHTRAG_TEST_LLM_BINDING_HOST="$(normalize_http_url_secret LIGHTRAG_TEST_LLM_BINDING_HOST)"
+  LIGHTRAG_TEST_EMBEDDING_BINDING_HOST="$(normalize_http_url_secret LIGHTRAG_TEST_EMBEDDING_BINDING_HOST)"
   HUGEGRAPH_AUTH_METHOD="${LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD:-basic}"
 
   kubectl -n "$NAMESPACE" create secret generic lightrag-runtime \
