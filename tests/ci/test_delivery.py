@@ -423,7 +423,7 @@ def test_release_source_rejects_unprovable_master_ancestry():
 def test_environment_snapshot_requires_test_namespace_initialized_profile_and_no_pending_writes():
     snapshot = {
         "cluster": "test",
-        "namespace": "lightrag-test",
+        "namespace": "lightrag-test-01",
         "initialized": True,
         "profile": {
             "replicas": 2,
@@ -432,14 +432,18 @@ def test_environment_snapshot_requires_test_namespace_initialized_profile_and_no
             "doc_status_storage": "PGDocStatusStorage",
             "vector_storage": "PGVectorStorage",
             "graph_storage": "HugeGraphStorage",
-            "workspace": "lightrag-test",
-            "postgres_workspace": "lightrag-test",
+            "workspace": "lightrag_test_01",
+            "postgres_workspace": "lightrag_test_01",
         },
         "storage_state": {"fenced": False, "active_operations": 0, "pending_mutations": 0, "orphaned_claims": 0},
     }
-    assert delivery.validate_test_environment_snapshot(snapshot)["namespace"] == "lightrag-test"
+    assert delivery.validate_test_environment_snapshot(snapshot)["namespace"] == "lightrag-test-01"
     bad = dict(snapshot, namespace="default")
     with pytest.raises(delivery.DeployStateError, match="namespace"):
+        delivery.validate_test_environment_snapshot(bad)
+    bad = dict(snapshot)
+    bad["profile"] = dict(snapshot["profile"], workspace="lightrag_test_02", postgres_workspace="lightrag_test_02")
+    with pytest.raises(delivery.DeployStateError, match="workspace"):
         delivery.validate_test_environment_snapshot(bad)
     bad = dict(snapshot, initialized=False)
     with pytest.raises(delivery.DeployStateError, match="initialized"):

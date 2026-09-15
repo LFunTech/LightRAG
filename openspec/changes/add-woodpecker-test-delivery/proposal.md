@@ -2,7 +2,7 @@
 
 当前 fork 没有 Woodpecker 发布链路；直接复制 `../ai-center` 或 `../haier-demo` 的单实例部署会与 HugeGraph 分布式写入和维护合同冲突，但镜像构建与发布应复用 haier-demo 已验证的 Kaniko/registry/cache 组织模式。需要一条从不运行仓库测试套件的交付静态校验、源码归档、镜像发布到 Kubernetes 测试部署的可追溯链路。
 
-用户已确认包含 `*-test` 标签后的自动部署，目标为 ai-center 所在 **test 集群**，使用独立 **`lightrag-test` namespace**。用户另外明确授权先在本机完成基础镜像同步和 Dockerfile 引用替换，并要求测试环境所需 Kubernetes namespace、运行 Secret、pull Secret、PVC 和环境快照由流水线处理；数据库、HugeGraph 与百炼连接值来自仓库本地 `.secrets/test.secrets` 同步到 Woodpecker repo secrets 后再被部署步骤引用。
+用户已确认包含 `*-test` 标签后的自动部署，目标为 ai-center 所在 **test 集群**，默认发布 5 套编号实例（`lightrag-test-01` 至 `lightrag-test-05` namespace）。用户另外明确授权先在本机完成基础镜像同步和 Dockerfile 引用替换，并要求测试环境所需 Kubernetes namespace、运行 Secret、pull Secret、PVC 和环境快照由流水线处理；数据库、HugeGraph 与百炼连接值来自仓库本地 `.secrets/test.secrets` 同步到 Woodpecker repo secrets 后再被部署步骤引用。
 
 ## What Changes
 
@@ -12,8 +12,8 @@
 - 使用内部 digest-pinned Kaniko 构建现有完整 Dockerfile，目标 `linux/amd64`、镜像仓库 `docker-hub.f123.pub/lfun/lightrag`，并将 Dockerfile/Dockerfile.lite 改为不依赖 BuildKit-only `RUN --mount` 或 `$BUILDPLATFORM`。唯一源码工作流 clone 后将源码包、校验和与记录上传到独立 COS/MinIO 路径，后续工作流 `skip_clone` 并从该路径下载源码；源码与发布记录绑定 commit、pipeline 身份和校验和；部署使用已校验的镜像 digest。
 - 全部 Dockerfile 的外部基础镜像先由本机同步到 `docker-hub.f123.pub/base/`，验证完整多架构 manifest 与 digest 后再替换引用，包括外部 `COPY --from`；Kaniko 构建路径不再保留 Dockerfile frontend parser directive。使用独立标签及 digest pin，不覆盖其他项目共享标签，不由流水线自动补镜像或回退公网镜像源。
 - 新增测试环境 Kustomize overlay 和命名空间级发布配套，复用现有分布式部署合同，运行两个 Pod、每 Pod 一个进程；使用 `.secrets/test.secrets` 派生的 Woodpecker repo secrets 生成运行配置，目标为 PG/pgvector、HugeGraph 和真实共享持久存储，不使用本机测试模型替身。
-- 自动发布先执行幂等测试环境准备：创建/更新 `lightrag-test` namespace、registry pull Secret、包含 `LIGHTRAG_COORDINATION_DSN` 的 `lightrag-runtime`、使用同一 PostgreSQL 连接执行显式 coordination schema migration、运行显式 storage bootstrap Job 准备 PG/vector/status 与 HugeGraph profile、写入 profile snapshot 和创建两个 `syno-nfs` RWX PVC；应用 workspace/deployment id 使用合法的 `lightrag_test`。随后再串行发布、旧副本优雅退出、持久化状态检查、新副本启动及验收。故障恢复和回滚仍是显式维护操作，不加入发布自动补偿。
-- 测试环境 Service 仍为 ClusterIP，但由流水线创建 test-only nginx Ingress 对外暴露 API、`/webui` 与 `/workspace` 以便调试；默认 host 为 `lightrag-test.f123.pub`，可通过 Woodpecker secret `lightrag_test_public_host` 覆盖。明确 API 鉴权、Ingress controller 来源放行及数据库/模型受控出站要求，不创建 NodePort/LoadBalancer。
+- 自动发布对 `LIGHTRAG_TEST_INSTANCES` 中的每个编号实例执行幂等测试环境准备：创建/更新 `lightrag-test-$ID` namespace、registry pull Secret、包含该实例 `LIGHTRAG_API_KEY` 和 `LIGHTRAG_COORDINATION_DSN` 的 `lightrag-runtime`、使用同一 PostgreSQL 连接执行显式 coordination schema migration、运行显式 storage bootstrap Job 准备 PG/vector/status 与 HugeGraph profile、写入 profile snapshot 和创建 `syno-nfs` RWX 工作目录 PVC；应用 workspace/deployment id 使用合法的 `lightrag_test_$ID`，对象存储前缀使用 `lightrag/test-$ID/object-ingestion`。随后再串行发布、旧副本优雅退出、持久化状态检查、新副本启动及验收。故障恢复和回滚仍是显式维护操作，不加入发布自动补偿。
+- 测试环境 Service 仍为 ClusterIP，但由流水线为每套编号实例创建 test-only nginx Ingress 对外暴露 API、`/webui` 与 `/workspace` 以便调试；默认 host 为 `rag-test-$ID.f123.pub`（当前 `01` 至 `05`），可通过实例级环境变量 `LIGHTRAG_TEST_${ID}_PUBLIC_HOST` / `LIGHTRAG_TEST_${ID}_PUBLIC_BASE_URL` 覆盖。每套实例拥有独立 Kubernetes runtime Secret 和独立 API key，API key 字段 `lightrag_test_01_api_key` 至 `lightrag_test_05_api_key` 由本地 `.secrets/test.secrets` 生成脚本补齐后同步到 Woodpecker。明确 API 鉴权、Ingress controller 来源放行及数据库/模型受控出站要求，不创建 NodePort/LoadBalancer。
 - 增加工作流、发布脚本及 Kustomize manifest 本地回归覆盖；全量非 integration 后端测试和完整前端检查仅作为本地/外部 CI 验证责任，不在 Woodpecker 流水线执行，也不作为 Woodpecker 发布门禁。
 - 提供首次接入、Secret/RBAC 配置、测试基础设施初始化、正常发布、失败处理及受控回滚文档。真实远端发布验收与静态检查分别记录，不以 YAML lint 代替部署成功。
 

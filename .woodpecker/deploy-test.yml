@@ -123,14 +123,21 @@ steps:
     environment:
       LIGHTRAG_TEST_KUBECONFIG:
         from_secret: kubeconfig_test
-      LIGHTRAG_TEST_PUBLIC_HOST:
-        from_secret: lightrag_test_public_host
+      LIGHTRAG_TEST_INSTANCES: "01,02,03,04,05"
       DOCKER_USERNAME:
         from_secret: DOCKER_USERNAME
       DOCKER_PASSWORD:
         from_secret: DOCKER_PASSWORD
-      LIGHTRAG_TEST_API_KEY:
-        from_secret: lightrag_test_api_key
+      LIGHTRAG_TEST_01_API_KEY:
+        from_secret: lightrag_test_01_api_key
+      LIGHTRAG_TEST_02_API_KEY:
+        from_secret: lightrag_test_02_api_key
+      LIGHTRAG_TEST_03_API_KEY:
+        from_secret: lightrag_test_03_api_key
+      LIGHTRAG_TEST_04_API_KEY:
+        from_secret: lightrag_test_04_api_key
+      LIGHTRAG_TEST_05_API_KEY:
+        from_secret: lightrag_test_05_api_key
       LIGHTRAG_TEST_LLM_API_KEY:
         from_secret: lightrag_test_bailian_api_key
       LIGHTRAG_TEST_EMBEDDING_API_KEY:

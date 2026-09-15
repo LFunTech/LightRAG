@@ -30,7 +30,7 @@ The delivery system SHALL run only for supported release tag events and MUST NOT
 
 #### Scenario: Test release from master
 - **WHEN** a protected `vX.Y.Z-test` tag resolves to the event commit in fork master history
-- **THEN** the release is eligible for source upload, quality checks, image publishing, and deployment to `lightrag-test` after every preceding gate succeeds
+- **THEN** the release is eligible for source upload, quality checks, image publishing, and deployment to the configured numbered test instances after every preceding gate succeeds
 
 #### Scenario: Downstream release workflows consume uploaded source
 - **WHEN** build, image verification or test deployment workflows run after source validation
@@ -86,14 +86,14 @@ The delivery system SHALL bind source archives and release records to repository
 
 ### Requirement: The test environment preserves the supported distributed profile
 
-The delivery system SHALL target the confirmed test cluster and lightrag-test namespace, run two application replicas with one process per replica, and preserve shared PostgreSQL/vector/status, HugeGraph, workspace and filesystem configuration. The application workspace and PostgreSQL workspace SHALL use the valid identifier `lightrag_test` while the Kubernetes namespace remains `lightrag-test`. The deployment pipeline SHALL prepare Kubernetes-side test environment resources from scoped Woodpecker secrets, including namespace, registry pull Secret, runtime Secret, coordination DSN, coordination schema migration Job, storage bootstrap Job, profile snapshot and shared PVCs. It MUST reject missing secret values, incompatible profiles, unsafe storage state and unverified shared storage rather than fall back to local storage or an unauthenticated single replica.
+The delivery system SHALL target the confirmed test cluster and configurable numbered test instances, defaulting to `01,02,03,04,05`. Each instance SHALL run in namespace `lightrag-test-$ID`, expose host `rag-test-$ID.f123.pub` by default, run two application replicas with one process per replica, and preserve shared PostgreSQL/vector/status and HugeGraph backends while isolating application workspace, PostgreSQL workspace, object prefix, runtime Secret and API key per instance. The application workspace and PostgreSQL workspace SHALL use the valid identifier `lightrag_test_$ID` while the Kubernetes namespace remains `lightrag-test-$ID`. The deployment pipeline SHALL prepare Kubernetes-side test environment resources from scoped Woodpecker secrets, including namespace, registry pull Secret, runtime Secret, per-instance API key, coordination DSN, coordination schema migration Job, storage bootstrap Job, profile snapshot and shared working PVC. It MUST reject missing secret values, incompatible profiles, unsafe storage state and unverified shared storage rather than fall back to local storage or an unauthenticated single replica.
 
 #### Scenario: Pipeline prepares Kubernetes test resources
 - **WHEN** a valid `vX.Y.Z-test` deployment starts and all required Woodpecker secrets have been populated from `.secrets/test.secrets`
-- **THEN** the deploy step creates or updates `lightrag-test`, `lightrag-registry-pull`, `lightrag-runtime`, runs the `lightrag-coordination-migrate` Job and `lightrag-storage-bootstrap` Job from the verified release image, creates or updates `lightrag-test-environment`, and applies the Kustomize-managed RWX PVCs before rolling out the application
+- **THEN** the deploy step creates or updates each configured `lightrag-test-$ID` namespace, `lightrag-registry-pull`, the per-instance `lightrag-runtime`, runs the `lightrag-coordination-migrate` Job and `lightrag-storage-bootstrap` Job from the verified release image, creates or updates `lightrag-test-environment`, and applies the Kustomize-managed RWX working PVC before rolling out the application
 
 #### Scenario: Runtime connection secrets are missing
-- **WHEN** a required Bailian, PostgreSQL, HugeGraph, application API or registry secret is absent or empty
+- **WHEN** a required Bailian, PostgreSQL, HugeGraph, numbered application API or registry secret is absent or empty
 - **THEN** automatic deployment fails before rollout without printing the secret value or falling back to public/default storage
 
 #### Scenario: Real shared storage acceptance
@@ -102,11 +102,11 @@ The delivery system SHALL target the confirmed test cluster and lightrag-test na
 
 ### Requirement: Test services expose a test-only authenticated debug ingress
 
-The delivery system MUST keep the application Service as ClusterIP and MUST NOT create NodePort or application LoadBalancer exposure for the test application. It SHALL create one test-only nginx Ingress for the configured public debug host, routing the API, `/webui` and `/workspace` to the verified test release. The test environment SHALL require API authentication for protected endpoints and declared NetworkPolicy controls while allowing the explicitly configured backend, DNS, model-service outbound connections and the RKE2 nginx Ingress controller source.
+The delivery system MUST keep each application Service as ClusterIP and MUST NOT create NodePort or application LoadBalancer exposure for the test application. It SHALL create one test-only nginx Ingress per numbered instance for the configured public debug host, routing the API, `/webui` and `/workspace` to the verified test release. The test environment SHALL require API authentication for protected endpoints, SHALL verify wrong keys are rejected, and SHALL use declared NetworkPolicy controls while allowing the explicitly configured backend, DNS, model-service outbound connections and the RKE2 nginx Ingress controller source.
 
 #### Scenario: Public debug ingress test deployment
 - **WHEN** a test release is deployed
-- **THEN** the Service remains ClusterIP, the Ingress host and class match the pipeline entrypoint configuration, `/health` and `/webui` are reachable through the public debug host, and protected endpoints reject unauthenticated clients
+- **THEN** the Service remains ClusterIP, each Ingress host and class match that instance's pipeline entrypoint configuration, `/health` and `/webui` are reachable through the public debug host, and protected endpoints reject unauthenticated clients and wrong API keys while accepting the instance API key
 
 ### Requirement: Automatic upgrades cannot mix writers or erase uncertainty
 

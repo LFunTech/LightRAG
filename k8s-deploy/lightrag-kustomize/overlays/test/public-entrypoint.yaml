@@ -3,5 +3,5 @@ kind: ConfigMap
 metadata:
   name: lightrag-test-public-entrypoint
 data:
-  host: lightrag-test.f123.pub
+  host: rag-test-01.f123.pub
   ingressClassName: nginx

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lightrag-test-workspace-profile
+data:
+  deploymentId: lightrag_test_01
+  workspace: lightrag_test_01
+  postgresWorkspace: lightrag_test_01
+  s3ObjectPrefix: lightrag/test-01/object-ingestion

@@ -111,15 +111,21 @@ def test_kustomize_pvcs_do_not_include_shared_input_dir():
 
 def test_runbook_records_pipeline_managed_initialization_and_remote_verification_boundary():
     text = RUNBOOK.read_text()
-    assert "lightrag-test" in text
+    assert "lightrag-test-01" in text
+    assert "lightrag-test-05" in text
+    assert "rag-test-01.f123.pub" in text
+    assert "rag-test-05.f123.pub" in text
     assert "test.secrets" in text
+    assert "scripts/ci/generate-test-instance-api-keys.py" in text
     assert "Woodpecker repo secrets" in text
     assert "lightrag_test_hugegraph_gremlin" in text
+    assert "lightrag_test_01_api_key" in text
+    assert "lightrag_test_05_api_key" in text
     assert "auth-method metadata defaults to `basic`" in text
     assert "coordination migration Job" in text
     assert "lightrag-storage-preflight" in text
     assert "storage bootstrap Job" in text
-    assert "lightrag_test_public_host" in text
+    assert "LIGHTRAG_TEST_01_PUBLIC_HOST" in text
     assert "Ingress" in text
     assert "/webui" in text
     assert "creates or updates Kubernetes runtime Secrets" in text

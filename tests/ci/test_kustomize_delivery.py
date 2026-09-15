@@ -13,14 +13,15 @@ def test_deploy_workflow_uses_kubectl_apply_k_not_helm():
     assert "helm" not in text.lower()
     assert "scripts/ci/deploy-test.sh" in text
     script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
-    assert "kubectl apply -k" in script
+    assert 'kubectl -n "$NAMESPACE" apply -k "$OVERLAY"' in script
     assert 'wait --for=condition=Ready pod' in script
     assert "imageID" in script
     workflow = yaml.safe_load(text)
     step = workflow["steps"]["deploy-test"]
     assert "kubeconfig_test" in text
     assert "LIGHTRAG_TEST_KUBECONFIG" in step["environment"]
-    assert "LIGHTRAG_TEST_PUBLIC_HOST" in step["environment"]
+    assert step["environment"]["LIGHTRAG_TEST_INSTANCES"] == "01,02,03,04,05"
+    assert "LIGHTRAG_TEST_PUBLIC_HOST" not in step["environment"]
     assert (
         step["environment"]["LIGHTRAG_TEST_S3_ENDPOINT_URL"]["from_secret"]
         == "cos_storage_endpoint"
@@ -41,8 +42,9 @@ def test_deploy_workflow_uses_kubectl_apply_k_not_helm():
 
 def test_kustomize_overlay_declares_test_namespace_and_digest_patch():
     kustomization = yaml.safe_load((OVERLAY / "kustomization.yaml").read_text())
-    assert kustomization["namespace"] == "lightrag-test"
+    assert kustomization["namespace"] == "lightrag-test-01"
     assert "../../base" in kustomization["resources"]
+    assert "workspace-profile.yaml" in kustomization["resources"]
     replacements = kustomization["replacements"]
     assert any(r["source"]["fieldPath"] == "data.digest" for r in replacements)
     assert any(
@@ -59,6 +61,27 @@ def test_kustomize_overlay_declares_test_namespace_and_digest_patch():
         and any(
             "Ingress" == target["select"]["kind"]
             and "spec.ingressClassName" in target["fieldPaths"]
+            for target in r["targets"]
+        )
+        for r in replacements
+    )
+
+    assert any(
+        r["source"]["fieldPath"] == "data.workspace"
+        and any(
+            "Deployment" == target["select"]["kind"]
+            and "spec.template.spec.containers.[name=lightrag].env.[name=WORKSPACE].value"
+            in target["fieldPaths"]
+            for target in r["targets"]
+        )
+        for r in replacements
+    )
+    assert any(
+        r["source"]["fieldPath"] == "data.s3ObjectPrefix"
+        and any(
+            "Deployment" == target["select"]["kind"]
+            and "spec.template.spec.containers.[name=lightrag].env.[name=S3_OBJECT_PREFIX].value"
+            in target["fieldPaths"]
             for target in r["targets"]
         )
         for r in replacements

@@ -365,7 +365,6 @@ def test_deploy_test_workflow_injects_repo_runtime_secrets_from_test_secret_file
     deploy = load("deploy-test.yml")
     env = deploy["steps"]["deploy-test"]["environment"]
     expected = {
-        "LIGHTRAG_TEST_API_KEY": "lightrag_test_api_key",
         "LIGHTRAG_TEST_LLM_API_KEY": "lightrag_test_bailian_api_key",
         "LIGHTRAG_TEST_EMBEDDING_API_KEY": "lightrag_test_bailian_api_key",
         "LIGHTRAG_TEST_DASHSCOPE_WORKSPACE_ID": "lightrag_test_dashscope_workspace_id",
@@ -386,6 +385,18 @@ def test_deploy_test_workflow_injects_repo_runtime_secrets_from_test_secret_file
     for variable, secret_name in expected.items():
         assert env[variable]["from_secret"] == secret_name
     assert "LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD" not in env
+
+
+def test_deploy_test_workflow_declares_numbered_instances_and_api_key_secrets():
+    deploy = load("deploy-test.yml")
+    env = deploy["steps"]["deploy-test"]["environment"]
+    assert env["LIGHTRAG_TEST_INSTANCES"] == "01,02,03,04,05"
+    assert "LIGHTRAG_TEST_PUBLIC_HOST" not in env
+    assert "LIGHTRAG_TEST_API_KEY" not in env
+    for index in ("01", "02", "03", "04", "05"):
+        variable = f"LIGHTRAG_TEST_{index}_API_KEY"
+        secret_name = f"lightrag_test_{index}_api_key"
+        assert env[variable]["from_secret"] == secret_name
 
 
 def test_deploy_test_script_bootstraps_namespace_secrets_migration_and_snapshot_in_pipeline():
@@ -419,6 +430,35 @@ def test_deploy_test_script_bootstraps_namespace_secrets_migration_and_snapshot_
     assert "secretRef:" in script
     assert "name: lightrag-runtime" in script
     assert "create configmap lightrag-test-environment" in script
+
+
+def test_deploy_test_script_loops_over_configurable_numbered_instances():
+    script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
+    assert 'LIGHTRAG_TEST_INSTANCES="${LIGHTRAG_TEST_INSTANCES:-01,02,03,04,05}"' in script
+    assert "deploy_all_instances()" in script
+    assert "deploy_one_instance()" in script
+    assert "configure_instance()" in script
+    assert 'NAMESPACE="lightrag-test-$INSTANCE_ID"' in script
+    assert 'LIGHTRAG_INSTANCE_WORKSPACE="lightrag_test_$INSTANCE_ID"' in script
+    assert 'LIGHTRAG_TEST_DOMAIN="${LIGHTRAG_TEST_DOMAIN:-f123.pub}"' in script
+    assert 'LIGHTRAG_TEST_PUBLIC_HOST="rag-test-$INSTANCE_ID.$LIGHTRAG_TEST_DOMAIN"' in script
+    assert 'LIGHTRAG_INSTANCE_S3_OBJECT_PREFIX="lightrag/test-$INSTANCE_ID/object-ingestion"' in script
+    assert 'api_key_var="LIGHTRAG_TEST_${INSTANCE_ID}_API_KEY"' in script
+
+
+def test_deploy_test_script_generates_per_instance_kustomize_overlay_profile():
+    script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
+    assert "write_instance_kustomize_overlay()" in script
+    assert 'cat > "$OVERLAY/workspace-profile.yaml"' in script
+    assert "lightrag-test-workspace-profile" in script
+    assert "fieldPath: data.workspace" in script
+    assert "env.[name=WORKSPACE].value" in script
+    assert "fieldPath: data.postgresWorkspace" in script
+    assert "env.[name=POSTGRES_WORKSPACE].value" in script
+    assert "fieldPath: data.deploymentId" in script
+    assert "env.[name=LIGHTRAG_DEPLOYMENT_ID].value" in script
+    assert "fieldPath: data.s3ObjectPrefix" in script
+    assert "env.[name=S3_OBJECT_PREFIX].value" in script
 
 
 def test_deploy_test_script_derives_hugegraph_auth_method_from_credentials():
@@ -506,6 +546,7 @@ def test_woodpecker_static_delivery_does_not_run_repository_test_suites():
     ):
         assert forbidden not in delivery_check
     assert "py_compile" in delivery_check
+    assert "scripts/ci/generate-test-instance-api-keys.py" in delivery_check
     assert "json.tool" in delivery_check
     assert "bash -n" in delivery_check
 

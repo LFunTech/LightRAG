@@ -16,7 +16,7 @@ if [ -z "$PYTHON" ]; then
     PYTHON=python
   fi
 fi
-"$PYTHON" -m py_compile scripts/ci/__init__.py scripts/ci/delivery.py scripts/ci/k8s_deploy.py
+"$PYTHON" -m py_compile scripts/ci/__init__.py scripts/ci/delivery.py scripts/ci/k8s_deploy.py scripts/ci/generate-test-instance-api-keys.py
 "$PYTHON" -m json.tool scripts/ci/base-images.lock.json >/dev/null
 "$PYTHON" -m json.tool scripts/ci/tool-images.lock.json >/dev/null
 bash -n scripts/ci/delivery-check.sh

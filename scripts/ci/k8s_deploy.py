@@ -1,4 +1,4 @@
-"""Conservative Kustomize deployment helpers for the LightRAG test namespace."""
+"""Conservative Kustomize helpers for numbered LightRAG test namespaces."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ import yaml
 from scripts.ci.delivery import DeployStateError, validate_test_environment_snapshot
 
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+DEFAULT_NAMESPACE = "lightrag-test-01"
 
 
 class DeploymentError(RuntimeError):
@@ -36,8 +37,10 @@ def inject_digest(overlay: Path, digest: str) -> None:
     path.write_text(yaml.safe_dump(data, sort_keys=False))
 
 
-def _kubectl(kubeconfig: str, *args: str) -> list[str]:
-    return ["kubectl", *args, "--kubeconfig", kubeconfig, "-n", "lightrag-test"]
+def _kubectl(
+    kubeconfig: str, *args: str, namespace: str = DEFAULT_NAMESPACE
+) -> list[str]:
+    return ["kubectl", *args, "--kubeconfig", kubeconfig, "-n", namespace]
 
 
 def _restore_selector_patch() -> str:
@@ -58,7 +61,10 @@ def _pause_selector_patch() -> str:
 
 
 def collect_environment_snapshot(
-    *, kubeconfig: str, runner: Callable[..., str] = _run
+    *,
+    kubeconfig: str,
+    namespace: str = DEFAULT_NAMESPACE,
+    runner: Callable[..., str] = _run,
 ) -> dict[str, Any]:
     raw = runner(
         _kubectl(
@@ -68,6 +74,7 @@ def collect_environment_snapshot(
             "lightrag-test-environment",
             "-o",
             "jsonpath={.data.snapshot}",
+            namespace=namespace,
         )
     )
     return json.loads(raw)
@@ -97,14 +104,26 @@ def deploy_test(
     kubeconfig: str,
     digest: str,
     overlay: Path,
+    namespace: str = DEFAULT_NAMESPACE,
     runner: Callable[..., str] = _run,
 ) -> None:
     if not DIGEST_RE.fullmatch(digest):
         raise DeploymentError("invalid digest")
     # Stop new business traffic before touching writers.
-    runner(_kubectl(kubeconfig, "patch", "service", "lightrag", "--type=merge", "-p", _pause_selector_patch()))
+    runner(
+        _kubectl(
+            kubeconfig,
+            "patch",
+            "service",
+            "lightrag",
+            "--type=merge",
+            "-p",
+            _pause_selector_patch(),
+            namespace=namespace,
+        )
+    )
     # Gracefully drain old writers; do not force delete on timeout.
-    runner(_kubectl(kubeconfig, "scale", "deployment/lightrag", "--replicas=0"))
+    runner(_kubectl(kubeconfig, "scale", "deployment/lightrag", "--replicas=0", namespace=namespace))
     runner(
         _kubectl(
             kubeconfig,
@@ -114,18 +133,19 @@ def deploy_test(
             "-l",
             "app.kubernetes.io/name=lightrag,app.kubernetes.io/instance=lightrag",
             "--timeout=600s",
+            namespace=namespace,
         )
     )
     try:
         validate_test_environment_snapshot(
-            collect_environment_snapshot(kubeconfig=kubeconfig, runner=runner)
+            collect_environment_snapshot(kubeconfig=kubeconfig, namespace=namespace, runner=runner)
         )
     except DeployStateError as exc:
         raise DeploymentError(str(exc)) from exc
     inject_digest(overlay, digest)
-    runner(["kubectl", "apply", "-k", str(overlay), "--kubeconfig", kubeconfig])
-    runner(_kubectl(kubeconfig, "rollout", "status", "deployment/lightrag", "--timeout=600s"))
-    runner(_kubectl(kubeconfig, "get", "pods", "-l", "app.kubernetes.io/name=lightrag", "-o", "json"))
+    runner(["kubectl", "apply", "-k", str(overlay), "--kubeconfig", kubeconfig, "-n", namespace])
+    runner(_kubectl(kubeconfig, "rollout", "status", "deployment/lightrag", "--timeout=600s", namespace=namespace))
+    runner(_kubectl(kubeconfig, "get", "pods", "-l", "app.kubernetes.io/name=lightrag", "-o", "json", namespace=namespace))
 
 
 def accept_and_restore(
@@ -133,10 +153,22 @@ def accept_and_restore(
     kubeconfig: str,
     digest: str,
     report: dict[str, Any],
+    namespace: str = DEFAULT_NAMESPACE,
     runner: Callable[..., str] = _run,
 ) -> None:
     validate_acceptance(report, expected_digest=digest)
-    runner(_kubectl(kubeconfig, "patch", "service", "lightrag", "--type=merge", "-p", _restore_selector_patch()))
+    runner(
+        _kubectl(
+            kubeconfig,
+            "patch",
+            "service",
+            "lightrag",
+            "--type=merge",
+            "-p",
+            _restore_selector_patch(),
+            namespace=namespace,
+        )
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -145,6 +177,7 @@ def main(argv: list[str] | None = None) -> int:
     deploy = sub.add_parser("deploy-test")
     deploy.add_argument("--kubeconfig", required=True)
     deploy.add_argument("--digest", required=True)
+    deploy.add_argument("--namespace", default=DEFAULT_NAMESPACE)
     deploy.add_argument(
         "--overlay",
         type=Path,
@@ -153,16 +186,23 @@ def main(argv: list[str] | None = None) -> int:
     accept = sub.add_parser("accept-and-restore")
     accept.add_argument("--kubeconfig", required=True)
     accept.add_argument("--digest", required=True)
+    accept.add_argument("--namespace", default=DEFAULT_NAMESPACE)
     accept.add_argument("--report", type=Path, required=True)
 
     args = parser.parse_args(argv)
     if args.cmd == "deploy-test":
-        deploy_test(kubeconfig=args.kubeconfig, digest=args.digest, overlay=args.overlay)
+        deploy_test(
+            kubeconfig=args.kubeconfig,
+            digest=args.digest,
+            overlay=args.overlay,
+            namespace=args.namespace,
+        )
     elif args.cmd == "accept-and-restore":
         accept_and_restore(
             kubeconfig=args.kubeconfig,
             digest=args.digest,
             report=json.loads(args.report.read_text()),
+            namespace=args.namespace,
         )
     return 0
 

@@ -27,7 +27,7 @@ def test_deploy_sequence_pauses_scales_checks_applies_accepts_then_restores():
         if args[:3] == ["kubectl", "get", "configmap"]:
             return json.dumps({
                 "cluster": "test",
-                "namespace": "lightrag-test",
+                "namespace": "lightrag-test-01",
                 "initialized": True,
                 "profile": {
                     "replicas": 2,
@@ -36,8 +36,8 @@ def test_deploy_sequence_pauses_scales_checks_applies_accepts_then_restores():
                     "doc_status_storage": "PGDocStatusStorage",
                     "vector_storage": "PGVectorStorage",
                     "graph_storage": "HugeGraphStorage",
-                    "workspace": "lightrag-test",
-                    "postgres_workspace": "lightrag-test",
+                    "workspace": "lightrag_test_01",
+                    "postgres_workspace": "lightrag_test_01",
                 },
                 "storage_state": {"fenced": False, "active_operations": 0, "pending_mutations": 0, "orphaned_claims": 0},
             })
@@ -55,6 +55,7 @@ def test_deploy_sequence_pauses_scales_checks_applies_accepts_then_restores():
     assert any("wait --for=delete pod" in c for c in joined)
     assert any("apply -k k8s-deploy/lightrag-kustomize/overlays/test" in c for c in joined)
     assert any("rollout status deployment/lightrag" in c for c in joined)
+    assert any("-n lightrag-test-01" in c for c in joined)
     assert not any("patch service lightrag" in c and "app.kubernetes.io/name" in c for c in joined)
 
 
@@ -101,7 +102,7 @@ def test_deploy_sequence_rejects_unsafe_storage_before_apply():
     def runner(args, *, input_text=None):
         calls.append(args)
         if args[:3] == ["kubectl", "get", "configmap"]:
-            return json.dumps({"cluster": "test", "namespace": "lightrag-test", "initialized": False})
+            return json.dumps({"cluster": "test", "namespace": "lightrag-test-01", "initialized": False})
         return ""
 
     with pytest.raises(k8s_deploy.DeploymentError, match="initialized"):

@@ -21,6 +21,7 @@ from typing import Any, Callable, Iterable
 
 RELEASE_TAG_RE = re.compile(r"^v(?P<version>\d+\.\d+\.\d+)(?P<suffix>-test|-pre)?$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+TEST_NAMESPACE_RE = re.compile(r"^lightrag-test-(?P<instance>[0-9]{2})$")
 IMAGE_ACCEPT = ", ".join(
     [
         "application/vnd.oci.image.index.v1+json",
@@ -565,15 +566,16 @@ class FileReleaseRecordStore:
 
 
 def validate_test_environment_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    """Validate pre-deploy facts collected from the test namespace.
-
-    The caller supplies already-sanitized facts from kubectl/Kustomize/storage checks;
-    this function only decides whether an automatic tag deployment may proceed.
-    """
+    """Validate pre-deploy facts collected from a numbered test instance."""
     if snapshot.get("cluster") != "test":
         raise DeployStateError("target cluster must be test")
-    if snapshot.get("namespace") != "lightrag-test":
-        raise DeployStateError("target namespace must be lightrag-test")
+    namespace = str(snapshot.get("namespace") or "")
+    match = TEST_NAMESPACE_RE.fullmatch(namespace)
+    if not match:
+        raise DeployStateError("target namespace must be numbered lightrag-test-NN")
+    instance = match.group("instance")
+    if snapshot.get("instance") not in (None, instance):
+        raise DeployStateError("snapshot instance must match namespace suffix")
     if snapshot.get("initialized") is not True:
         raise DeployStateError("test environment is not initialized")
     profile = snapshot.get("profile") or {}
@@ -588,10 +590,13 @@ def validate_test_environment_snapshot(snapshot: dict[str, Any]) -> dict[str, An
     for key, expected in required_profile.items():
         if profile.get(key) != expected:
             raise DeployStateError(f"incompatible profile: {key}")
-    if not profile.get("workspace") or profile.get("workspace") != profile.get(
-        "postgres_workspace"
-    ):
+    expected_workspace = f"lightrag_test_{instance}"
+    workspace = profile.get("workspace")
+    postgres_workspace = profile.get("postgres_workspace")
+    if not workspace or workspace != postgres_workspace:
         raise DeployStateError("workspace and postgres workspace must match")
+    if workspace != expected_workspace:
+        raise DeployStateError("workspace must match numbered test namespace")
     storage = snapshot.get("storage_state") or {}
     unsafe = {
         "fenced": bool(storage.get("fenced")),

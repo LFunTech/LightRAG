@@ -11,7 +11,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: lightrag-test.f123.pub
+    - host: rag-test-01.f123.pub
       http:
         paths:
           - path: /

@@ -1,10 +1,11 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: lightrag-test
+namespace: lightrag-test-01
 resources:
   - ../../base
   - release-image.yaml
   - public-entrypoint.yaml
+  - workspace-profile.yaml
   - deployer-rbac.yaml
 replacements:
   - source:
@@ -40,3 +41,43 @@ replacements:
           name: lightrag
         fieldPaths:
           - spec.ingressClassName
+  - source:
+      kind: ConfigMap
+      name: lightrag-test-workspace-profile
+      fieldPath: data.deploymentId
+    targets:
+      - select:
+          kind: Deployment
+          name: lightrag
+        fieldPaths:
+          - spec.template.spec.containers.[name=lightrag].env.[name=LIGHTRAG_DEPLOYMENT_ID].value
+  - source:
+      kind: ConfigMap
+      name: lightrag-test-workspace-profile
+      fieldPath: data.workspace
+    targets:
+      - select:
+          kind: Deployment
+          name: lightrag
+        fieldPaths:
+          - spec.template.spec.containers.[name=lightrag].env.[name=WORKSPACE].value
+  - source:
+      kind: ConfigMap
+      name: lightrag-test-workspace-profile
+      fieldPath: data.postgresWorkspace
+    targets:
+      - select:
+          kind: Deployment
+          name: lightrag
+        fieldPaths:
+          - spec.template.spec.containers.[name=lightrag].env.[name=POSTGRES_WORKSPACE].value
+  - source:
+      kind: ConfigMap
+      name: lightrag-test-workspace-profile
+      fieldPath: data.s3ObjectPrefix
+    targets:
+      - select:
+          kind: Deployment
+          name: lightrag
+        fieldPaths:
+          - spec.template.spec.containers.[name=lightrag].env.[name=S3_OBJECT_PREFIX].value

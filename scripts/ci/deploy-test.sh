@@ -15,20 +15,29 @@ case "$LIGHTRAG_IMAGE_DIGEST" in
   *) echo "invalid image digest: $LIGHTRAG_IMAGE_DIGEST" >&2; exit 1 ;;
 esac
 
-NAMESPACE="${LIGHTRAG_TEST_NAMESPACE:-lightrag-test}"
 DEPLOYMENT="${LIGHTRAG_TEST_DEPLOYMENT:-lightrag}"
 SERVICE="${LIGHTRAG_TEST_SERVICE:-lightrag}"
 CONTAINER="${LIGHTRAG_TEST_CONTAINER:-lightrag}"
 OVERLAY="${LIGHTRAG_KUSTOMIZE_OVERLAY:-k8s-deploy/lightrag-kustomize/overlays/test}"
 BASE_NETWORK_POLICY="${LIGHTRAG_BASE_NETWORK_POLICY:-k8s-deploy/lightrag-kustomize/base/networkpolicy.yaml}"
-LIGHTRAG_TEST_PUBLIC_HOST="${LIGHTRAG_TEST_PUBLIC_HOST:-lightrag-test.f123.pub}"
+LIGHTRAG_TEST_INSTANCES="${LIGHTRAG_TEST_INSTANCES:-01,02,03,04,05}"
+LIGHTRAG_TEST_DOMAIN="${LIGHTRAG_TEST_DOMAIN:-f123.pub}"
 LIGHTRAG_TEST_INGRESS_CLASS="${LIGHTRAG_TEST_INGRESS_CLASS:-nginx}"
 LIGHTRAG_TEST_PUBLIC_SCHEME="${LIGHTRAG_TEST_PUBLIC_SCHEME:-http}"
-LIGHTRAG_TEST_PUBLIC_BASE_URL="${LIGHTRAG_TEST_PUBLIC_BASE_URL:-$LIGHTRAG_TEST_PUBLIC_SCHEME://$LIGHTRAG_TEST_PUBLIC_HOST}"
 LABEL_SELECTOR="app.kubernetes.io/name=lightrag,app.kubernetes.io/instance=lightrag"
 KUBECONFIG_FILE="${KUBECONFIG_FILE:-/tmp/lightrag-test-kubeconfig}"
 ROUTE_PAUSE_PATCH='{"spec":{"selector":{"lightrag.openai.com/routing-paused":"true"}}}'
 ROUTE_RESTORE_PATCH='{"spec":{"selector":{"app.kubernetes.io/name":"lightrag","app.kubernetes.io/instance":"lightrag","lightrag.openai.com/routing-paused":null}}}'
+INSTANCE_ID=""
+NAMESPACE=""
+LIGHTRAG_INSTANCE_WORKSPACE=""
+LIGHTRAG_INSTANCE_POSTGRES_WORKSPACE=""
+LIGHTRAG_INSTANCE_DEPLOYMENT_ID=""
+LIGHTRAG_INSTANCE_S3_OBJECT_PREFIX=""
+LIGHTRAG_INSTANCE_API_KEY=""
+LIGHTRAG_TEST_PUBLIC_HOST=""
+LIGHTRAG_TEST_PUBLIC_BASE_URL=""
+INSTANCE_RELEASE_DIR=""
 
 require_env() {
   name="$1"
@@ -37,6 +46,49 @@ require_env() {
     echo "required environment variable is not set: $name" >&2
     exit 1
   fi
+}
+
+validate_instance_id() {
+  case "$1" in
+    [0-9][0-9]) ;;
+    *)
+      echo "invalid LightRAG test instance id: $1" >&2
+      exit 1
+      ;;
+  esac
+}
+
+configure_instance() {
+  INSTANCE_ID="$1"
+  validate_instance_id "$INSTANCE_ID"
+  NAMESPACE="lightrag-test-$INSTANCE_ID"
+  LIGHTRAG_INSTANCE_WORKSPACE="lightrag_test_$INSTANCE_ID"
+  LIGHTRAG_INSTANCE_POSTGRES_WORKSPACE="$LIGHTRAG_INSTANCE_WORKSPACE"
+  LIGHTRAG_INSTANCE_DEPLOYMENT_ID="$LIGHTRAG_INSTANCE_WORKSPACE"
+  LIGHTRAG_INSTANCE_S3_OBJECT_PREFIX="lightrag/test-$INSTANCE_ID/object-ingestion"
+  LIGHTRAG_TEST_PUBLIC_HOST="rag-test-$INSTANCE_ID.$LIGHTRAG_TEST_DOMAIN"
+  public_host_var="LIGHTRAG_TEST_${INSTANCE_ID}_PUBLIC_HOST"
+  public_base_url_var="LIGHTRAG_TEST_${INSTANCE_ID}_PUBLIC_BASE_URL"
+  api_key_var="LIGHTRAG_TEST_${INSTANCE_ID}_API_KEY"
+  eval "configured_host=\${$public_host_var:-}"
+  eval "configured_base_url=\${$public_base_url_var:-}"
+  eval "LIGHTRAG_INSTANCE_API_KEY=\${$api_key_var:-}"
+  if [ -n "$configured_host" ]; then
+    LIGHTRAG_TEST_PUBLIC_HOST="$configured_host"
+  fi
+  LIGHTRAG_TEST_PUBLIC_BASE_URL="${LIGHTRAG_TEST_PUBLIC_SCHEME}://$LIGHTRAG_TEST_PUBLIC_HOST"
+  if [ -n "$configured_base_url" ]; then
+    LIGHTRAG_TEST_PUBLIC_BASE_URL="$configured_base_url"
+  fi
+  if [ -z "$LIGHTRAG_INSTANCE_API_KEY" ]; then
+    echo "required environment variable is not set: $api_key_var" >&2
+    exit 1
+  fi
+  echo "Configured LightRAG test instance $INSTANCE_ID: namespace=$NAMESPACE workspace=$LIGHTRAG_INSTANCE_WORKSPACE host=$LIGHTRAG_TEST_PUBLIC_HOST"
+}
+
+instance_list() {
+  printf '%s\n' "$LIGHTRAG_TEST_INSTANCES" | tr ',;' '  '
 }
 
 show_kubectl_status() {
@@ -132,7 +184,7 @@ PY
 }
 
 storage_profile_env_yaml() {
-  cat <<'YAML'
+  cat <<YAML
           env:
             - name: HOST
               value: 0.0.0.0
@@ -145,21 +197,21 @@ storage_profile_env_yaml() {
             - name: LIGHTRAG_OBJECT_STORAGE
               value: s3
             - name: LIGHTRAG_DEPLOYMENT_ID
-              value: lightrag_test
+              value: ${LIGHTRAG_INSTANCE_DEPLOYMENT_ID}
             - name: LIGHTRAG_COORDINATION_POOL_MODE
               value: direct
             - name: LIGHTRAG_DISTRIBUTED_POLL_INTERVAL
               value: "1"
             - name: WORKSPACE
-              value: lightrag_test
+              value: ${LIGHTRAG_INSTANCE_WORKSPACE}
             - name: POSTGRES_WORKSPACE
-              value: lightrag_test
+              value: ${LIGHTRAG_INSTANCE_POSTGRES_WORKSPACE}
             - name: INPUT_DIR
               value: /app/data/inputs
             - name: WORKING_DIR
               value: /app/data/rag_storage
             - name: S3_OBJECT_PREFIX
-              value: lightrag/test-object-ingestion
+              value: ${LIGHTRAG_INSTANCE_S3_OBJECT_PREFIX}
             - name: S3_FORCE_PATH_STYLE
               value: "true"
             - name: S3_PRESIGN_TTL_SECONDS
@@ -194,7 +246,7 @@ YAML
 }
 
 apply_runtime_secret() {
-  require_env LIGHTRAG_TEST_API_KEY
+  require_env LIGHTRAG_INSTANCE_API_KEY
   require_env LIGHTRAG_TEST_LLM_API_KEY
   require_env LIGHTRAG_TEST_EMBEDDING_API_KEY
   require_env LIGHTRAG_TEST_LLM_BINDING_HOST
@@ -219,7 +271,7 @@ apply_runtime_secret() {
   HUGEGRAPH_AUTH_METHOD="${LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD:-basic}"
 
   kubectl -n "$NAMESPACE" create secret generic lightrag-runtime \
-    --from-literal=LIGHTRAG_API_KEY="$LIGHTRAG_TEST_API_KEY" \
+    --from-literal=LIGHTRAG_API_KEY="$LIGHTRAG_INSTANCE_API_KEY" \
     --from-literal=LIGHTRAG_COORDINATION_DSN="$LIGHTRAG_COORDINATION_DSN" \
     --from-literal=LLM_BINDING_API_KEY="$LIGHTRAG_TEST_LLM_API_KEY" \
     --from-literal=EMBEDDING_BINDING_API_KEY="$LIGHTRAG_TEST_EMBEDDING_API_KEY" \
@@ -418,11 +470,11 @@ YAML
 }
 
 apply_environment_snapshot() {
-  cat > build/release/environment-snapshot.json <<JSON
-{"cluster":"test","namespace":"$NAMESPACE","initialized":true,"profile":{"replicas":2,"workers":1,"kv_storage":"PGKVStorage","doc_status_storage":"PGDocStatusStorage","vector_storage":"PGVectorStorage","graph_storage":"HugeGraphStorage","workspace":"lightrag_test","postgres_workspace":"lightrag_test","object_storage":"s3","shared_filesystem_required":false},"storage_state":{"fenced":false,"active_operations":0,"pending_mutations":0,"orphaned_claims":0}}
+  cat > "$INSTANCE_RELEASE_DIR/environment-snapshot.json" <<JSON
+{"cluster":"test","namespace":"$NAMESPACE","instance":"$INSTANCE_ID","initialized":true,"profile":{"replicas":2,"workers":1,"kv_storage":"PGKVStorage","doc_status_storage":"PGDocStatusStorage","vector_storage":"PGVectorStorage","graph_storage":"HugeGraphStorage","workspace":"$LIGHTRAG_INSTANCE_WORKSPACE","postgres_workspace":"$LIGHTRAG_INSTANCE_POSTGRES_WORKSPACE","object_storage":"s3","s3_object_prefix":"$LIGHTRAG_INSTANCE_S3_OBJECT_PREFIX","shared_filesystem_required":false},"storage_state":{"fenced":false,"active_operations":0,"pending_mutations":0,"orphaned_claims":0}}
 JSON
   kubectl -n "$NAMESPACE" create configmap lightrag-test-environment \
-    --from-file=snapshot=build/release/environment-snapshot.json \
+    --from-file=snapshot="$INSTANCE_RELEASE_DIR/environment-snapshot.json" \
     --dry-run=client -o yaml | kubectl apply -f -
 }
 
@@ -469,12 +521,166 @@ data:
 YAML
 }
 
+write_instance_kustomize_overlay() {
+  cat > "$OVERLAY/release-image.yaml" <<YAML
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lightrag-release-image
+data:
+  digest: $LIGHTRAG_IMAGE_DIGEST
+YAML
+  cat > "$OVERLAY/workspace-profile.yaml" <<YAML
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lightrag-test-workspace-profile
+data:
+  deploymentId: $LIGHTRAG_INSTANCE_DEPLOYMENT_ID
+  workspace: $LIGHTRAG_INSTANCE_WORKSPACE
+  postgresWorkspace: $LIGHTRAG_INSTANCE_POSTGRES_WORKSPACE
+  s3ObjectPrefix: $LIGHTRAG_INSTANCE_S3_OBJECT_PREFIX
+YAML
+  cat > "$OVERLAY/deployer-rbac.yaml" <<YAML
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: $NAMESPACE
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lightrag-test-deployer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lightrag-test-deployer
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services", "endpoints", "persistentvolumeclaims", "configmaps", "secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lightrag-test-deployer
+subjects:
+  - kind: ServiceAccount
+    name: lightrag-test-deployer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: lightrag-test-deployer
+YAML
+  cat > "$OVERLAY/kustomization.yaml" <<YAML
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: $NAMESPACE
+resources:
+  - ../../base
+  - release-image.yaml
+  - public-entrypoint.yaml
+  - workspace-profile.yaml
+  - deployer-rbac.yaml
+replacements:
+  - source:
+      kind: ConfigMap
+      name: lightrag-release-image
+      fieldPath: data.digest
+    targets:
+      - select:
+          kind: Deployment
+          name: lightrag
+        fieldPaths:
+          - spec.template.spec.containers.[name=lightrag].image
+        options:
+          delimiter: "@"
+          index: 1
+  - source:
+      kind: ConfigMap
+      name: lightrag-test-public-entrypoint
+      fieldPath: data.host
+    targets:
+      - select:
+          kind: Ingress
+          name: lightrag
+        fieldPaths:
+          - spec.rules.0.host
+  - source:
+      kind: ConfigMap
+      name: lightrag-test-public-entrypoint
+      fieldPath: data.ingressClassName
+    targets:
+      - select:
+          kind: Ingress
+          name: lightrag
+        fieldPaths:
+          - spec.ingressClassName
+  - source:
+      kind: ConfigMap
+      name: lightrag-test-workspace-profile
+      fieldPath: data.deploymentId
+    targets:
+      - select:
+          kind: Deployment
+          name: lightrag
+        fieldPaths:
+          - spec.template.spec.containers.[name=lightrag].env.[name=LIGHTRAG_DEPLOYMENT_ID].value
+  - source:
+      kind: ConfigMap
+      name: lightrag-test-workspace-profile
+      fieldPath: data.workspace
+    targets:
+      - select:
+          kind: Deployment
+          name: lightrag
+        fieldPaths:
+          - spec.template.spec.containers.[name=lightrag].env.[name=WORKSPACE].value
+  - source:
+      kind: ConfigMap
+      name: lightrag-test-workspace-profile
+      fieldPath: data.postgresWorkspace
+    targets:
+      - select:
+          kind: Deployment
+          name: lightrag
+        fieldPaths:
+          - spec.template.spec.containers.[name=lightrag].env.[name=POSTGRES_WORKSPACE].value
+  - source:
+      kind: ConfigMap
+      name: lightrag-test-workspace-profile
+      fieldPath: data.s3ObjectPrefix
+    targets:
+      - select:
+          kind: Deployment
+          name: lightrag
+        fieldPaths:
+          - spec.template.spec.containers.[name=lightrag].env.[name=S3_OBJECT_PREFIX].value
+YAML
+}
+
 verify_public_ingress() {
   expected_host="$LIGHTRAG_TEST_PUBLIC_HOST"
   expected_class="$LIGHTRAG_TEST_INGRESS_CLASS"
   base_url="${LIGHTRAG_TEST_PUBLIC_BASE_URL%/}"
 
-  kubectl -n "$NAMESPACE" get ingress "$SERVICE" -o json > build/release/ingress.json
+  kubectl -n "$NAMESPACE" get ingress "$SERVICE" -o json > "$INSTANCE_RELEASE_DIR/ingress.json"
   actual_host="$(kubectl -n "$NAMESPACE" get ingress "$SERVICE" -o jsonpath='{.spec.rules[0].host}')"
   actual_class="$(kubectl -n "$NAMESPACE" get ingress "$SERVICE" -o jsonpath='{.spec.ingressClassName}')"
   if [ "$actual_host" != "$expected_host" ]; then
@@ -487,17 +693,22 @@ verify_public_ingress() {
   fi
 
   echo "Verifying public LightRAG test ingress at $base_url"
-  python3 - "$base_url" <<'PY'
+  LIGHTRAG_VERIFY_API_KEY="$LIGHTRAG_INSTANCE_API_KEY" python3 - "$base_url" <<'PY'
+import os
 import sys
 import time
 import urllib.error
 import urllib.request
 
 base_url = sys.argv[1].rstrip("/")
+api_key = os.environ["LIGHTRAG_VERIFY_API_KEY"]
 
 
-def status_for(path: str) -> int:
-    request = urllib.request.Request(base_url + path, method="GET")
+def status_for(path: str, key: str | None = None) -> int:
+    headers = {}
+    if key is not None:
+        headers["X-API-Key"] = key
+    request = urllib.request.Request(base_url + path, headers=headers, method="GET")
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
             response.read(1024)
@@ -508,15 +719,17 @@ def status_for(path: str) -> int:
 
 
 checks = (
-    ("/health", {200}, "public health"),
-    ("/webui", {200}, "public WebUI"),
-    ("/documents/pipeline_status", {401, 403}, "public protected API"),
+    ("/health", None, {200}, "public health"),
+    ("/webui", None, {200}, "public WebUI"),
+    ("/documents/pipeline_status", None, {401, 403}, "public protected API unauthenticated"),
+    ("/documents/pipeline_status", "definitely-not-the-lightrag-api-key", {403}, "public protected API wrong key"),
+    ("/documents/pipeline_status", api_key, {200}, "public protected API authenticated"),
 )
 
 last = {}
 for _ in range(30):
-    last = {label: status_for(path) for path, _, label in checks}
-    if all(last[label] in expected for _, expected, label in checks):
+    last = {label: status_for(path, key) for path, key, _, label in checks}
+    if all(last[label] in expected for _, _, expected, label in checks):
         print(f"public ingress verified: {last}")
         break
     time.sleep(5)
@@ -525,21 +738,11 @@ else:
 PY
 }
 
-mkdir -p "$(dirname "$KUBECONFIG_FILE")" build/release
-cleanup() {
-  rm -f "$KUBECONFIG_FILE"
-}
-trap cleanup EXIT INT TERM
-
-if printf '%s' "$LIGHTRAG_TEST_KUBECONFIG" | grep -q '^apiVersion:'; then
-  printf '%s' "$LIGHTRAG_TEST_KUBECONFIG" > "$KUBECONFIG_FILE"
-else
-  printf '%s' "$LIGHTRAG_TEST_KUBECONFIG" | base64 -d > "$KUBECONFIG_FILE"
-fi
-chmod 600 "$KUBECONFIG_FILE"
-export KUBECONFIG="$KUBECONFIG_FILE"
-
-kubectl cluster-info >/dev/null
+deploy_one_instance() {
+  configure_instance "$1"
+  INSTANCE_RELEASE_DIR="build/release/instances/$INSTANCE_ID"
+  mkdir -p "$INSTANCE_RELEASE_DIR"
+  echo "Starting LightRAG test deployment for instance $INSTANCE_ID"
 ensure_namespace
 apply_registry_pull_secret
 apply_runtime_secret
@@ -569,30 +772,24 @@ bootstrap_storage_profile
 apply_environment_snapshot
 
 SNAPSHOT="$(kubectl -n "$NAMESPACE" get configmap lightrag-test-environment -o jsonpath='{.data.snapshot}')"
-printf '%s\n' "$SNAPSHOT" > build/release/environment-snapshot.json
+printf '%s\n' "$SNAPSHOT" > "$INSTANCE_RELEASE_DIR/environment-snapshot.json"
 printf '%s' "$SNAPSHOT" | grep -Eq '"cluster"[[:space:]]*:[[:space:]]*"test"'
-printf '%s' "$SNAPSHOT" | grep -Eq '"namespace"[[:space:]]*:[[:space:]]*"lightrag-test"'
+printf '%s' "$SNAPSHOT" | grep -Eq '"namespace"[[:space:]]*:[[:space:]]*"'"$NAMESPACE"'"'
+printf '%s' "$SNAPSHOT" | grep -Eq '"workspace"[[:space:]]*:[[:space:]]*"'"$LIGHTRAG_INSTANCE_WORKSPACE"'"'
 printf '%s' "$SNAPSHOT" | grep -Eq '"initialized"[[:space:]]*:[[:space:]]*true'
 printf '%s' "$SNAPSHOT" | grep -Eq '"graph_storage"[[:space:]]*:[[:space:]]*"HugeGraphStorage"'
 printf '%s' "$SNAPSHOT" | grep -Eq '"vector_storage"[[:space:]]*:[[:space:]]*"PGVectorStorage"'
 printf '%s' "$SNAPSHOT" | grep -Eq '"object_storage"[[:space:]]*:[[:space:]]*"s3"'
 printf '%s' "$SNAPSHOT" | grep -Eq '"shared_filesystem_required"[[:space:]]*:[[:space:]]*false'
 
-cat > "$OVERLAY/release-image.yaml" <<YAML
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: lightrag-release-image
-data:
-  digest: $LIGHTRAG_IMAGE_DIGEST
-YAML
 apply_public_entrypoint_config
+write_instance_kustomize_overlay
 
-kubectl apply -k "$OVERLAY"
+kubectl -n "$NAMESPACE" apply -k "$OVERLAY"
 wait_for_pvc_bound lightrag-test-working-rwx
 kubectl -n "$NAMESPACE" rollout status "deployment/$DEPLOYMENT" --timeout=600s
 kubectl -n "$NAMESPACE" wait --for=condition=Ready pod -l "$LABEL_SELECTOR" --timeout=600s
-kubectl -n "$NAMESPACE" get pods -l "$LABEL_SELECTOR" -o json > build/release/pods.json
+kubectl -n "$NAMESPACE" get pods -l "$LABEL_SELECTOR" -o json > "$INSTANCE_RELEASE_DIR/pods.json"
 
 POD_NAMES="$(kubectl -n "$NAMESPACE" get pods -l "$LABEL_SELECTOR" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')"
 POD_COUNT="$(printf '%s\n' "$POD_NAMES" | sed '/^$/d' | wc -l | tr -d ' ')"
@@ -602,19 +799,19 @@ if [ "$POD_COUNT" != "2" ]; then
 fi
 
 POD_IMAGES="$(kubectl -n "$NAMESPACE" get pods -l "$LABEL_SELECTOR" -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.containerStatuses[*]}{.imageID}{"\n"}{end}{end}')"
-printf '%s\n' "$POD_IMAGES" > build/release/pod-images.txt
+printf '%s\n' "$POD_IMAGES" > "$INSTANCE_RELEASE_DIR/pod-images.txt"
 IMAGE_MATCHES="$(printf '%s\n' "$POD_IMAGES" | grep -c "$LIGHTRAG_IMAGE_DIGEST" || true)"
 if [ "$IMAGE_MATCHES" != "2" ]; then
   echo "not all pods are running verified digest $LIGHTRAG_IMAGE_DIGEST" >&2
-  cat build/release/pod-images.txt >&2
+  cat "$INSTANCE_RELEASE_DIR/pod-images.txt" >&2
   exit 1
 fi
 
 FIRST_POD="$(printf '%s\n' "$POD_NAMES" | sed -n '1p')"
 SECOND_POD="$(printf '%s\n' "$POD_NAMES" | sed -n '2p')"
-MARKER="woodpecker-${CI_COMMIT_TAG}-${CI_COMMIT_SHA}-${CI_PIPELINE_NUMBER:-manual}-$(date +%s)"
+MARKER="woodpecker-${INSTANCE_ID}-${CI_COMMIT_TAG}-${CI_COMMIT_SHA}-${CI_PIPELINE_NUMBER:-manual}-$(date +%s)"
 
-kubectl -n "$NAMESPACE" exec "$FIRST_POD" -c "$CONTAINER" -- python - "$MARKER" <<'PY' > build/release/acceptance-insert.json
+kubectl -n "$NAMESPACE" exec "$FIRST_POD" -c "$CONTAINER" -- python - "$MARKER" <<'PY' > "$INSTANCE_RELEASE_DIR/acceptance-upload.json"
 import hashlib
 import json
 import os
@@ -775,15 +972,15 @@ if not retry_doc_ids:
 print(json.dumps({"marker": marker, "doc_ids": doc_ids + retry_doc_ids, "object_key": presign["object_key"], "track_id": track_id, "retry_track_id": retry_track_id, "status_summary": summary, "retry_failed_summary": retry_failed_summary, "retry_status_summary": retry_summary}, sort_keys=True))
 PY
 
-ACCEPTANCE_TRACK_ID="$(sed -n 's/.*"track_id": *"\([^"]*\)".*/\1/p' build/release/acceptance-upload.json | head -n 1)"
-ACCEPTANCE_RETRY_TRACK_ID="$(sed -n 's/.*"retry_track_id": *"\([^"]*\)".*/\1/p' build/release/acceptance-upload.json | head -n 1)"
+ACCEPTANCE_TRACK_ID="$(sed -n 's/.*"track_id": *"\([^"]*\)".*/\1/p' "$INSTANCE_RELEASE_DIR/acceptance-upload.json" | head -n 1)"
+ACCEPTANCE_RETRY_TRACK_ID="$(sed -n 's/.*"retry_track_id": *"\([^"]*\)".*/\1/p' "$INSTANCE_RELEASE_DIR/acceptance-upload.json" | head -n 1)"
 if [ -z "$ACCEPTANCE_TRACK_ID" ] || [ -z "$ACCEPTANCE_RETRY_TRACK_ID" ]; then
   echo "acceptance upload result did not include required track ids" >&2
-  cat build/release/acceptance-upload.json >&2 || true
+  cat "$INSTANCE_RELEASE_DIR/acceptance-upload.json" >&2 || true
   exit 1
 fi
 
-kubectl -n "$NAMESPACE" exec "$SECOND_POD" -c "$CONTAINER" -- python - "$MARKER" "$ACCEPTANCE_TRACK_ID" "$ACCEPTANCE_RETRY_TRACK_ID" <<'PY' > build/release/acceptance-query.json
+kubectl -n "$NAMESPACE" exec "$SECOND_POD" -c "$CONTAINER" -- python - "$MARKER" "$ACCEPTANCE_TRACK_ID" "$ACCEPTANCE_RETRY_TRACK_ID" <<'PY' > "$INSTANCE_RELEASE_DIR/acceptance-query.json"
 import json
 import os
 import sys
@@ -915,7 +1112,42 @@ show_kubectl_status "Service status" \
 show_kubectl_status "Ingress status" \
   kubectl -n "$NAMESPACE" get ingress "$SERVICE" -o wide
 
-cat > build/release/deployment-result.json <<JSON
-{"tag":"$CI_COMMIT_TAG","commit":"$CI_COMMIT_SHA","digest":"$LIGHTRAG_IMAGE_DIGEST","pods":2,"service_endpoints":"present","public_base_url":"$LIGHTRAG_TEST_PUBLIC_BASE_URL","ingress_host":"$LIGHTRAG_TEST_PUBLIC_HOST"}
+cat > "$INSTANCE_RELEASE_DIR/deployment-result.json" <<JSON
+{"instance":"$INSTANCE_ID","namespace":"$NAMESPACE","workspace":"$LIGHTRAG_INSTANCE_WORKSPACE","tag":"$CI_COMMIT_TAG","commit":"$CI_COMMIT_SHA","digest":"$LIGHTRAG_IMAGE_DIGEST","pods":2,"service_endpoints":"present","public_base_url":"$LIGHTRAG_TEST_PUBLIC_BASE_URL","ingress_host":"$LIGHTRAG_TEST_PUBLIC_HOST"}
 JSON
-cat build/release/deployment-result.json
+cat "$INSTANCE_RELEASE_DIR/deployment-result.json"
+cat "$INSTANCE_RELEASE_DIR/deployment-result.json" >> build/release/deployment-results.jsonl
+}
+
+deploy_all_instances() {
+  rm -f build/release/deployment-results.jsonl
+  seen=" "
+  for instance in $(instance_list); do
+    validate_instance_id "$instance"
+    case "$seen" in
+      *" $instance "*)
+        echo "duplicate LightRAG test instance id: $instance" >&2
+        exit 1
+        ;;
+    esac
+    seen="$seen$instance "
+    deploy_one_instance "$instance"
+  done
+}
+
+mkdir -p "$(dirname "$KUBECONFIG_FILE")" build/release
+cleanup() {
+  rm -f "$KUBECONFIG_FILE"
+}
+trap cleanup EXIT INT TERM
+
+if printf '%s' "$LIGHTRAG_TEST_KUBECONFIG" | grep -q '^apiVersion:'; then
+  printf '%s' "$LIGHTRAG_TEST_KUBECONFIG" > "$KUBECONFIG_FILE"
+else
+  printf '%s' "$LIGHTRAG_TEST_KUBECONFIG" | base64 -d > "$KUBECONFIG_FILE"
+fi
+chmod 600 "$KUBECONFIG_FILE"
+export KUBECONFIG="$KUBECONFIG_FILE"
+
+kubectl cluster-info >/dev/null
+deploy_all_instances
