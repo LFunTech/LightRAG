@@ -21,6 +21,10 @@ SERVICE="${LIGHTRAG_TEST_SERVICE:-lightrag}"
 CONTAINER="${LIGHTRAG_TEST_CONTAINER:-lightrag}"
 OVERLAY="${LIGHTRAG_KUSTOMIZE_OVERLAY:-k8s-deploy/lightrag-kustomize/overlays/test}"
 BASE_NETWORK_POLICY="${LIGHTRAG_BASE_NETWORK_POLICY:-k8s-deploy/lightrag-kustomize/base/networkpolicy.yaml}"
+LIGHTRAG_TEST_PUBLIC_HOST="${LIGHTRAG_TEST_PUBLIC_HOST:-lightrag-test.f123.pub}"
+LIGHTRAG_TEST_INGRESS_CLASS="${LIGHTRAG_TEST_INGRESS_CLASS:-nginx}"
+LIGHTRAG_TEST_PUBLIC_SCHEME="${LIGHTRAG_TEST_PUBLIC_SCHEME:-http}"
+LIGHTRAG_TEST_PUBLIC_BASE_URL="${LIGHTRAG_TEST_PUBLIC_BASE_URL:-$LIGHTRAG_TEST_PUBLIC_SCHEME://$LIGHTRAG_TEST_PUBLIC_HOST}"
 LABEL_SELECTOR="app.kubernetes.io/name=lightrag,app.kubernetes.io/instance=lightrag"
 KUBECONFIG_FILE="${KUBECONFIG_FILE:-/tmp/lightrag-test-kubeconfig}"
 ROUTE_PAUSE_PATCH='{"spec":{"selector":{"lightrag.openai.com/routing-paused":"true"}}}'
@@ -408,6 +412,97 @@ wait_for_pvc_bound() {
     --timeout=600s
 }
 
+validate_public_entrypoint() {
+  case "$LIGHTRAG_TEST_PUBLIC_HOST" in
+    ""|*"://"*|*/*|*" "*)
+      echo "invalid LIGHTRAG_TEST_PUBLIC_HOST: $LIGHTRAG_TEST_PUBLIC_HOST" >&2
+      exit 1
+      ;;
+  esac
+  case "$LIGHTRAG_TEST_INGRESS_CLASS" in
+    ""|*"://"*|*/*|*" "*)
+      echo "invalid LIGHTRAG_TEST_INGRESS_CLASS: $LIGHTRAG_TEST_INGRESS_CLASS" >&2
+      exit 1
+      ;;
+  esac
+  case "$LIGHTRAG_TEST_PUBLIC_BASE_URL" in
+    http://*|https://*) ;;
+    *)
+      echo "invalid LIGHTRAG_TEST_PUBLIC_BASE_URL: $LIGHTRAG_TEST_PUBLIC_BASE_URL" >&2
+      exit 1
+      ;;
+  esac
+}
+
+apply_public_entrypoint_config() {
+  validate_public_entrypoint
+  cat > "$OVERLAY/public-entrypoint.yaml" <<YAML
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lightrag-test-public-entrypoint
+data:
+  host: $LIGHTRAG_TEST_PUBLIC_HOST
+  ingressClassName: $LIGHTRAG_TEST_INGRESS_CLASS
+YAML
+}
+
+verify_public_ingress() {
+  expected_host="$LIGHTRAG_TEST_PUBLIC_HOST"
+  expected_class="$LIGHTRAG_TEST_INGRESS_CLASS"
+  base_url="${LIGHTRAG_TEST_PUBLIC_BASE_URL%/}"
+
+  kubectl -n "$NAMESPACE" get ingress "$SERVICE" -o json > build/release/ingress.json
+  actual_host="$(kubectl -n "$NAMESPACE" get ingress "$SERVICE" -o jsonpath='{.spec.rules[0].host}')"
+  actual_class="$(kubectl -n "$NAMESPACE" get ingress "$SERVICE" -o jsonpath='{.spec.ingressClassName}')"
+  if [ "$actual_host" != "$expected_host" ]; then
+    echo "ingress host mismatch: expected $expected_host got $actual_host" >&2
+    exit 1
+  fi
+  if [ "$actual_class" != "$expected_class" ]; then
+    echo "ingress class mismatch: expected $expected_class got $actual_class" >&2
+    exit 1
+  fi
+
+  echo "Verifying public LightRAG test ingress at $base_url"
+  python3 - "$base_url" <<'PY'
+import sys
+import time
+import urllib.error
+import urllib.request
+
+base_url = sys.argv[1].rstrip("/")
+
+
+def status_for(path: str) -> int:
+    request = urllib.request.Request(base_url + path, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            response.read(1024)
+            return response.status
+    except urllib.error.HTTPError as exc:
+        exc.read(1024)
+        return exc.code
+
+
+checks = (
+    ("/health", {200}, "public health"),
+    ("/webui", {200}, "public WebUI"),
+    ("/documents/pipeline_status", {401, 403}, "public protected API"),
+)
+
+last = {}
+for _ in range(30):
+    last = {label: status_for(path) for path, _, label in checks}
+    if all(last[label] in expected for _, expected, label in checks):
+        print(f"public ingress verified: {last}")
+        break
+    time.sleep(5)
+else:
+    raise SystemExit(f"public ingress verification failed: {last}")
+PY
+}
+
 mkdir -p "$(dirname "$KUBECONFIG_FILE")" build/release
 cleanup() {
   rm -f "$KUBECONFIG_FILE"
@@ -467,6 +562,7 @@ metadata:
 data:
   digest: $LIGHTRAG_IMAGE_DIGEST
 YAML
+apply_public_entrypoint_config
 
 kubectl apply -k "$OVERLAY"
 wait_for_pvc_bound lightrag-test-working-rwx
@@ -631,6 +727,7 @@ if [ -z "$ENDPOINTS" ]; then
   echo "service $SERVICE has no endpoints after routing restore" >&2
   exit 1
 fi
+verify_public_ingress
 
 show_kubectl_status "Deployment status" \
   kubectl -n "$NAMESPACE" get deployment "$DEPLOYMENT" -o wide
@@ -638,8 +735,10 @@ show_kubectl_status "Pod status" \
   kubectl -n "$NAMESPACE" get pods -l "$LABEL_SELECTOR" -o wide
 show_kubectl_status "Service status" \
   kubectl -n "$NAMESPACE" get service "$SERVICE" -o wide
+show_kubectl_status "Ingress status" \
+  kubectl -n "$NAMESPACE" get ingress "$SERVICE" -o wide
 
 cat > build/release/deployment-result.json <<JSON
-{"tag":"$CI_COMMIT_TAG","commit":"$CI_COMMIT_SHA","digest":"$LIGHTRAG_IMAGE_DIGEST","pods":2,"service_endpoints":"present"}
+{"tag":"$CI_COMMIT_TAG","commit":"$CI_COMMIT_SHA","digest":"$LIGHTRAG_IMAGE_DIGEST","pods":2,"service_endpoints":"present","public_base_url":"$LIGHTRAG_TEST_PUBLIC_BASE_URL","ingress_host":"$LIGHTRAG_TEST_PUBLIC_HOST"}
 JSON
 cat build/release/deployment-result.json

@@ -4,6 +4,7 @@ namespace: lightrag-test
 resources:
   - ../../base
   - release-image.yaml
+  - public-entrypoint.yaml
   - deployer-rbac.yaml
 replacements:
   - source:
@@ -19,3 +20,23 @@ replacements:
         options:
           delimiter: "@"
           index: 1
+  - source:
+      kind: ConfigMap
+      name: lightrag-test-public-entrypoint
+      fieldPath: data.host
+    targets:
+      - select:
+          kind: Ingress
+          name: lightrag
+        fieldPaths:
+          - spec.rules.0.host
+  - source:
+      kind: ConfigMap
+      name: lightrag-test-public-entrypoint
+      fieldPath: data.ingressClassName
+    targets:
+      - select:
+          kind: Ingress
+          name: lightrag
+        fieldPaths:
+          - spec.ingressClassName

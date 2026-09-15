@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lightrag-test-public-entrypoint
+data:
+  host: lightrag-test.f123.pub
+  ingressClassName: nginx

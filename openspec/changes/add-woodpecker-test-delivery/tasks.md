@@ -13,6 +13,7 @@
   - 2026-09-14 追加核对：按用户指定从本仓库 `.secrets/test.secrets` 同步了 LightRAG repo runtime secrets，仅记录名称：`lightrag_test_bailian_api_key`、`lightrag_test_bailian_api_host`、`lightrag_test_bailian_region`、`lightrag_test_dashscope_workspace_id`、`lightrag_test_postgres_host`、`lightrag_test_postgres_port`、`lightrag_test_postgres_user`、`lightrag_test_postgres_database`、`lightrag_test_postgres_password`、`lightrag_test_hugegraph_uri`、`lightrag_test_hugegraph_gremlin`、`lightrag_test_hugegraph_graph`、`lightrag_test_hugegraph_graphspace`、`lightrag_test_hugegraph_username`、`lightrag_test_hugegraph_password`；`lightrag_test_api_key` 是应用访问密钥，不在 `.secrets/test.secrets` 中。事件范围为 `tag`，CLI 当前对带点 tag 的镜像限制校验不兼容，未设置 image 限制。受保护 tag/ruleset 仍待管理员确认。
   - 2026-09-15 复核：再次从 `.secrets/test.secrets` 更新上述 15 个 Woodpecker repo secrets；独立 `lightrag_test_hugegraph_auth_method` 已移除，部署脚本由用户名/密码存在默认写入 `HUGEGRAPH_AUTH_METHOD=basic`，避免保留一份可过期的认证方式 secret。随后对 test 集群既有 `lightrag-runtime` 做无明文逐字段比对，运行字段均与当时的 `.secrets/test.secrets` 派生值一致；当前失败不再是 secret 来源错误。
   - 2026-09-15 用户填充最新 HugeGraph 账号与密码后，再次同步 `.secrets/test.secrets` 中 15 个连接字段到 `LFunTech/LightRAG` repo secrets；Woodpecker secret 列表确认仅有这 15 个运行连接 secret 加独立 `lightrag_test_api_key`，无旧的 auth-method secret。本地使用当前 `.secrets/test.secrets`、`HUGEGRAPH_AUTH_METHOD=basic` 和真实 distributed profile 执行 `python -m lightrag.distributed preflight`，返回 `{"preflight":"verified"}`；下一次 `deploy-test` 会在集群内刷新 `lightrag-runtime` 并重新运行同一 preflight Job。
+  - 2026-09-15 新增测试调试入口要求：test 集群只读检查确认 IngressClass 为 `nginx`，RKE2 nginx controller 在 `kube-system` 且 Pod 标签为 `app.kubernetes.io/name=rke2-ingress-nginx`、`app.kubernetes.io/component=controller`；部署脚本默认 host 为 `lightrag-test.f123.pub`，可用 repo secret `lightrag_test_public_host` 覆盖，管理员仍需确保该 DNS 指向 test 集群 Ingress LB。
 - [x] 1.3 验证 Kaniko 构建探针：内部工具镜像 digest、registry auth、amd64 构建参数、cache-repo 和临时存储预算；失败不自动提权或挂载宿主 Docker socket。
 
 ## 2. 本地回归基线与流水线静态门禁
@@ -51,7 +52,7 @@
 
 - [x] 5.1 先补 Kustomize 回归测试，再增加 digest replacement 及全程 Service 路由暂停能力；保留既有 Helm chart 默认 local 模式不作为 Woodpecker 部署入口。
 - [x] 5.2 提供 test 专用分布式 values：两 Pod、每 Pod 一个进程、共享 PG/HugeGraph/工作区与路径、非 root、显式 Secret、连接池预算及足够的退出宽限期。
-- [x] 5.3 提供命名空间级发布 RBAC、内部访问控制配套与前置检查，禁止公网 Service/Ingress，避免将模型/数据库凭据放入构建步骤或日志。
+- [x] 5.3 提供命名空间级发布 RBAC、测试入口访问控制配套与前置检查，保持 Service 为 ClusterIP，通过 test-only nginx Ingress 暴露 API/WebUI 方便调试，并避免将模型/数据库凭据放入构建步骤或日志。
 - [x] 5.4 提供流水线托管的测试环境准备与显式维护边界文档，覆盖 `.secrets/test.secrets` 到 Woodpecker repo secrets 的同步、专属数据库/图域、两个 RWX PVC、真实百炼配置、鉴权、受控出站和既有 bootstrap/recover 不进入普通 tag 部署的边界。
 
 ## 6. 保守自动升级与验收
@@ -88,6 +89,7 @@
   - 2026-09-15 用户执行目标 DB `CREATE EXTENSION vector` 后，`v1.5.41-test` / pipeline #48 已通过 source archive、Kaniko build、pre-deploy image verification 和 deploy image resolution，构建 digest 为 `sha256:0f5c76f8ce3989afad05d1a7596865c1a262e32780ba173ead4de1d3047b35d6`。deploy-test 随后按新顺序先运行 `lightrag-storage-preflight`，在 Service patch / Deployment scale 前失败于 HugeGraph 鉴权/图权限预检；只读探针显示 `/versions` 200，但 graph/schema 路径用 `.secrets/test.secrets` 的 Basic 凭据返回 401。失败后 inspect 显示 `fenced=false` 且无 locks/claims/mutations/orphaned operations。完整远端成功仍需要更新 `.secrets/test.secrets` 中的 HugeGraph REST 图访问凭据/权限。
   - 2026-09-15 用户更新 HugeGraph 账号与密码后，本地等价 preflight 已验证通过；完整远端成功仍待新测试 tag 让 Woodpecker 在 test 集群中重新创建 `lightrag-runtime`、运行 `lightrag-storage-preflight`、coordination migration、storage bootstrap、rollout 和双 Pod 验收。
   - 2026-09-15 `v1.5.42-test` / pipeline #49 使用最新 HugeGraph repo secrets 后，已通过 source archive、Kaniko build、pre-deploy image verification、in-cluster storage preflight、coordination migration、storage bootstrap、PVC Bound、Deployment rollout 和两个 Pod Ready；构建 digest 为 `sha256:80656ec9cf54e90adf15d46c9f7242e01ed030a83261d672c2eeea0babbcc79a`。最后失败于 Service 路由恢复：`kubectl patch --type=merge` 对 `spec.selector` 做 map 合并，未删除旧的 `lightrag.openai.com/routing-paused=true`，导致恢复后 selector 同时包含 app labels 与暂停 label，endpoints 仍为空。已补回归测试并改为在 restore patch 中将暂停 selector 置为 `null`，下一 tag 需验证 ClusterIP endpoint 恢复与部署成功记录。
+  - 2026-09-15 按用户追加调试要求增加 test-only nginx Ingress：新增 Kustomize Ingress、public entrypoint ConfigMap replacement、RKE2 nginx controller NetworkPolicy 来源、命名空间级 Ingress RBAC、deploy-test 中 `/health`、`/webui` 和受保护 API 的公网验收；Service 仍保持 ClusterIP。
 - [ ] 7.4 在获得触发授权后用测试 tag 跑通真实 Woodpecker 构建、镜像验证和初次双 Pod 部署，保存 pipeline/tag/commit/digest、imageID 及业务验收结果。
   - 2026-09-14 `v1.5.31-test` / pipeline #41 已跑通真实 Woodpecker 源码归档、镜像构建和 pre-deploy 镜像验证；`deploy-test` 已进入真实部署步骤，但因 `image.env` 未 export 导致脚本入参缺失而失败。修复后仍需新测试 tag 验证初次双 Pod 部署。
   - 2026-09-14 `v1.5.32-test` / pipeline #42 已跑通真实 Woodpecker 源码归档、镜像构建、pre-deploy 镜像验证和 deploy-test 的 image env 传播；构建 digest 为 `sha256:575beb3cf5c93be229b94cc00d0f7cbf581a33d96fe73cbfe58f187242da296f`。deploy-test 随后按前置检查失败于 `namespaces "lightrag-test" not found`，说明下一步阻塞在首次 test 环境初始化，而不是 CI 构建/变量传递。

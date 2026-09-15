@@ -13,7 +13,7 @@
 - 全部 Dockerfile 的外部基础镜像先由本机同步到 `docker-hub.f123.pub/base/`，验证完整多架构 manifest 与 digest 后再替换引用，包括外部 `COPY --from`；Kaniko 构建路径不再保留 Dockerfile frontend parser directive。使用独立标签及 digest pin，不覆盖其他项目共享标签，不由流水线自动补镜像或回退公网镜像源。
 - 新增测试环境 Kustomize overlay 和命名空间级发布配套，复用现有分布式部署合同，运行两个 Pod、每 Pod 一个进程；使用 `.secrets/test.secrets` 派生的 Woodpecker repo secrets 生成运行配置，目标为 PG/pgvector、HugeGraph 和真实共享持久存储，不使用本机测试模型替身。
 - 自动发布先执行幂等测试环境准备：创建/更新 `lightrag-test` namespace、registry pull Secret、包含 `LIGHTRAG_COORDINATION_DSN` 的 `lightrag-runtime`、使用同一 PostgreSQL 连接执行显式 coordination schema migration、运行显式 storage bootstrap Job 准备 PG/vector/status 与 HugeGraph profile、写入 profile snapshot 和创建两个 `syno-nfs` RWX PVC；应用 workspace/deployment id 使用合法的 `lightrag_test`。随后再串行发布、旧副本优雅退出、持久化状态检查、新副本启动及验收。故障恢复和回滚仍是显式维护操作，不加入发布自动补偿。
-- 默认仅 ClusterIP，无公网 Ingress/NodePort/LoadBalancer；明确内部访问控制、API 鉴权及数据库/模型受控出站要求。
+- 测试环境 Service 仍为 ClusterIP，但由流水线创建 test-only nginx Ingress 对外暴露 API、`/webui` 与 `/workspace` 以便调试；默认 host 为 `lightrag-test.f123.pub`，可通过 Woodpecker secret `lightrag_test_public_host` 覆盖。明确 API 鉴权、Ingress controller 来源放行及数据库/模型受控出站要求，不创建 NodePort/LoadBalancer。
 - 增加工作流、发布脚本及 Kustomize manifest 本地回归覆盖；全量非 integration 后端测试和完整前端检查仅作为本地/外部 CI 验证责任，不在 Woodpecker 流水线执行，也不作为 Woodpecker 发布门禁。
 - 提供首次接入、Secret/RBAC 配置、测试基础设施初始化、正常发布、失败处理及受控回滚文档。真实远端发布验收与静态检查分别记录，不以 YAML lint 代替部署成功。
 

@@ -123,6 +123,8 @@ steps:
     environment:
       LIGHTRAG_TEST_KUBECONFIG:
         from_secret: kubeconfig_test
+      LIGHTRAG_TEST_PUBLIC_HOST:
+        from_secret: lightrag_test_public_host
       DOCKER_USERNAME:
         from_secret: DOCKER_USERNAME
       DOCKER_PASSWORD:

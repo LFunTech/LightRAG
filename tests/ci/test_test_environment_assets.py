@@ -50,15 +50,33 @@ def test_kustomize_deployer_rbac_is_namespace_scoped():
     resources = {resource for rule in role["rules"] for resource in rule.get("resources", [])}
     assert "clusterroles" not in resources
     assert "secrets" in resources
-    assert "ingresses" not in resources
+    assert "ingresses" in resources
 
 
-def test_kustomize_network_policy_keeps_application_private_with_explicit_internal_callers():
+def test_kustomize_network_policy_allows_only_internal_callers_and_rke2_ingress():
     policy = yaml.safe_load((BASE / "networkpolicy.yaml").read_text())
     assert policy["kind"] == "NetworkPolicy"
     assert policy["spec"]["policyTypes"] == ["Ingress", "Egress"]
     assert policy["spec"]["ingress"]
     assert all("ipBlock" not in peer for rule in policy["spec"]["ingress"] for peer in rule.get("from", []))
+    ingress_peers = [
+        peer
+        for rule in policy["spec"]["ingress"]
+        for peer in rule.get("from", [])
+        if peer.get("podSelector", {}).get("matchLabels", {}).get("app.kubernetes.io/name")
+        == "rke2-ingress-nginx"
+    ]
+    assert ingress_peers == [
+        {
+            "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}},
+            "podSelector": {
+                "matchLabels": {
+                    "app.kubernetes.io/name": "rke2-ingress-nginx",
+                    "app.kubernetes.io/component": "controller",
+                }
+            },
+        }
+    ]
     backend_rule = next(
         rule
         for rule in policy["spec"]["egress"]
@@ -86,6 +104,9 @@ def test_runbook_records_pipeline_managed_initialization_and_remote_verification
     assert "coordination migration Job" in text
     assert "lightrag-storage-preflight" in text
     assert "storage bootstrap Job" in text
+    assert "lightrag_test_public_host" in text
+    assert "Ingress" in text
+    assert "/webui" in text
     assert "creates or updates Kubernetes runtime Secrets" in text
     assert "Remote acceptance not yet run" in text
     assert "Do not claim YAML lint, Kustomize render, or local test results as deployment success" in text

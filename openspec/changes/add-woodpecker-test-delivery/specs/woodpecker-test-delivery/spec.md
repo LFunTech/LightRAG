@@ -1,6 +1,6 @@
 ## Purpose
 
-为 LightRAG fork 提供可追溯且不运行仓库测试套件的 Woodpecker 交付静态校验、可信源码与镜像交付，以及遵守 HugeGraph 分布式写入和显式维护合同的 Kubernetes 内网测试环境自动部署，防止错误分支发布、凭据泄漏、未验证产物上线和不安全混合版本写入。
+为 LightRAG fork 提供可追溯且不运行仓库测试套件的 Woodpecker 交付静态校验、可信源码与镜像交付，以及遵守 HugeGraph 分布式写入和显式维护合同的 Kubernetes 测试环境自动部署；测试环境通过受控 Ingress 暴露 API 与 WebUI 方便调试，同时防止错误分支发布、凭据泄漏、未验证产物上线和不安全混合版本写入。
 
 ## ADDED Requirements
 
@@ -100,13 +100,13 @@ The delivery system SHALL target the confirmed test cluster and lightrag-test na
 - **WHEN** the test environment is first enabled for automatic deployment
 - **THEN** shared filesystem operations by the application UID on different cluster nodes are verified and recorded rather than inferred from PVC access modes
 
-### Requirement: Test services are private and authenticated
+### Requirement: Test services expose a test-only authenticated debug ingress
 
-The delivery system MUST NOT create public ingress, NodePort or LoadBalancer exposure for the test application. The test environment SHALL require API authentication and declared internal access controls while allowing the explicitly configured backend, DNS and model-service outbound connections.
+The delivery system MUST keep the application Service as ClusterIP and MUST NOT create NodePort or application LoadBalancer exposure for the test application. It SHALL create one test-only nginx Ingress for the configured public debug host, routing the API, `/webui` and `/workspace` to the verified test release. The test environment SHALL require API authentication for protected endpoints and declared NetworkPolicy controls while allowing the explicitly configured backend, DNS, model-service outbound connections and the RKE2 nginx Ingress controller source.
 
-#### Scenario: Private test deployment
+#### Scenario: Public debug ingress test deployment
 - **WHEN** a test release is deployed
-- **THEN** the service remains internally routed, protected endpoints reject unauthenticated clients, and no public entry point is added
+- **THEN** the Service remains ClusterIP, the Ingress host and class match the pipeline entrypoint configuration, `/health` and `/webui` are reachable through the public debug host, and protected endpoints reject unauthenticated clients
 
 ### Requirement: Automatic upgrades cannot mix writers or erase uncertainty
 

@@ -94,7 +94,7 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 
 目标为 `~/.kube/test-config` 对应的 test 集群；所有工具命令显式指定 kubeconfig/context，不改变本机默认上下文。namespace 为 `lightrag-test`，应用 release/deployment 为 `lightrag`。
 
-使用 Kustomize 测试 overlay：两副本、`WORKERS=1`、PGKV/PGDocStatus/PGVector/HugeGraph、稳定且一致的 deployment ID/workspace、两条共同 RWX 路径、非 root UID/GID 1000，禁用 Service links。HugeGraph 连接池按整个两副本部署预算配置，测试起点为每 Pod 1 个连接。Kubernetes 执行方式参考 haier 的 `deploy-test.sh`/`deploy.sh`/`status.sh`：从全局 `kubeconfig_test` 注入 kubeconfig、脚本化前置检查、在停流量前运行 storage preflight Job、在维护窗口内运行 coordination schema migration Job 和 storage bootstrap Job、应用受审 manifest、等待 rollout，并在步骤结尾输出 Deployment/Pod/Service 状态；LightRAG 不创建公网 Ingress，也不在发布脚本里执行故障 recover。
+使用 Kustomize 测试 overlay：两副本、`WORKERS=1`、PGKV/PGDocStatus/PGVector/HugeGraph、稳定且一致的 deployment ID/workspace、两条共同 RWX 路径、非 root UID/GID 1000，禁用 Service links。HugeGraph 连接池按整个两副本部署预算配置，测试起点为每 Pod 1 个连接。Kubernetes 执行方式参考 haier 的 `deploy-test.sh`/`deploy.sh`/`status.sh`：从全局 `kubeconfig_test` 注入 kubeconfig、脚本化前置检查、在停流量前运行 storage preflight Job、在维护窗口内运行 coordination schema migration Job 和 storage bootstrap Job、应用受审 manifest、等待 rollout，并在步骤结尾输出 Deployment/Pod/Service/Ingress 状态；LightRAG 的 Service 仍为 ClusterIP，但测试 overlay 创建一个 test-only nginx Ingress 暴露 API、`/webui` 与 `/workspace` 方便调试，host 默认 `lightrag-test.f123.pub` 且可由 Woodpecker `lightrag_test_public_host` 覆盖。发布脚本不执行故障 recover。
 
 首次接入由流水线执行 Kubernetes 侧幂等准备，不要求人工预先创建 namespace、运行 Secret、pull Secret、profile ConfigMap 或 PVC：
 
@@ -106,7 +106,7 @@ COS 使用 `lightrag/ci-source/<commit>/<pipeline-id>/` 和对应 release-record
 6. 随后创建 `lightrag-storage-bootstrap` Job，使用同一个 release image、runtime Secret 和与 Deployment 一致的非敏感 profile env 执行 `python -m lightrag.distributed bootstrap --actor woodpecker --confirm-writers-stopped --confirm-inflight-finished`。该命令在打开 durable maintenance 操作前重复同一存储预检，避免竞态或环境漂移留下 fence。该步骤在旧 Pod 已停止、Service 已暂停的显式维护窗口内准备 PG/vector/status 表、vector extension、索引与 HugeGraph schema；失败保留现场，不触发 recover。
 7. Kustomize overlay 创建 ServiceAccount/RBAC、ClusterIP Service、NetworkPolicy 和两个 `syno-nfs` RWX PVC；发布脚本在 rollout 前等待 PVC Bound，并在验收阶段通过双 Pod 行为验证共享存储和分布式后端。数据库底层存储按其自身要求选择，不把应用 RWX 文件卷充当数据库持久化方案。
 8. 使用经授权的 test 基础设施中 LightRAG 专属 PG/pgvector 数据库、协调库/权限及 HugeGraph 数据域，不共享其他应用的数据。普通 tag 部署可让 HugeGraphStorage 补齐自己的兼容 schema，但不会创建 HugeGraph 服务、清空图、执行故障 recover 或 rollback。
-9. 配置内部访问控制：Service 为 ClusterIP，不创建公网入口；DNS、数据库、HugeGraph 端口和模型 HTTPS 出站分别放行。不能宣称 ClusterIP 本身提供访问控制，也不能把 HTTPS 任意出站称为域名级白名单。对可创建 Pod/Job 的发布身份，不能声称 namespace 内的 Secret 对该身份不可读：其命名空间级权限边界必须在接入文档中明示。
+9. 配置测试入口与访问控制：Service 为 ClusterIP，test-only Ingress 使用 test 集群 `nginx` IngressClass，经 NetworkPolicy 仅放行 RKE2 nginx controller 与内部验收 Job 到应用 Pod；DNS、数据库、HugeGraph 端口和模型 HTTPS 出站分别放行。不能宣称 ClusterIP 本身提供访问控制，也不能把 HTTPS 任意出站称为域名级白名单。公网调试入口只改变网络可达性，不能绕过 API 鉴权；验收必须验证 `/health`、`/webui` 可达以及受保护 API 匿名访问仍为 401/403。对可创建 Pod/Job/Ingress 的发布身份，不能声称 namespace 内的 Secret 对该身份不可读：其命名空间级权限边界必须在接入文档中明示。
 
 CI 会取得部署所需模型/数据库明文以生成 Kubernetes Secret，但仅限 `deploy-test` 步骤；源码归档、镜像构建和镜像校验步骤不接收这些运行时 secret。
 

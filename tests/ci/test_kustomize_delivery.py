@@ -20,6 +20,9 @@ def test_deploy_workflow_uses_kubectl_apply_k_not_helm():
     step = workflow["steps"]["deploy-test"]
     assert "kubeconfig_test" in text
     assert "LIGHTRAG_TEST_KUBECONFIG" in step["environment"]
+    assert "LIGHTRAG_TEST_PUBLIC_HOST" in step["environment"]
+    assert "verify_public_ingress" in script
+    assert "/webui" in script
 
 
 def test_kustomize_overlay_declares_test_namespace_and_digest_patch():
@@ -28,12 +31,51 @@ def test_kustomize_overlay_declares_test_namespace_and_digest_patch():
     assert "../../base" in kustomization["resources"]
     replacements = kustomization["replacements"]
     assert any(r["source"]["fieldPath"] == "data.digest" for r in replacements)
+    assert any(
+        r["source"]["fieldPath"] == "data.host"
+        and any(
+            "Ingress" == target["select"]["kind"]
+            and "spec.rules.0.host" in target["fieldPaths"]
+            for target in r["targets"]
+        )
+        for r in replacements
+    )
+    assert any(
+        r["source"]["fieldPath"] == "data.ingressClassName"
+        and any(
+            "Ingress" == target["select"]["kind"]
+            and "spec.ingressClassName" in target["fieldPaths"]
+            for target in r["targets"]
+        )
+        for r in replacements
+    )
 
 
 def test_kustomize_base_keeps_service_private_and_routing_paused():
     service = yaml.safe_load((OVERLAY.parent.parent / "base/service.yaml").read_text())
     assert service["spec"]["type"] == "ClusterIP"
     assert service["spec"]["selector"] == {"lightrag.openai.com/routing-paused": "true"}
+
+
+def test_kustomize_base_exposes_test_api_and_webui_through_ingress():
+    ingress = yaml.safe_load((OVERLAY.parent.parent / "base/ingress.yaml").read_text())
+    assert ingress["kind"] == "Ingress"
+    assert ingress["metadata"]["name"] == "lightrag"
+    assert ingress["spec"]["ingressClassName"] == "nginx"
+    paths = ingress["spec"]["rules"][0]["http"]["paths"]
+    assert paths == [
+        {
+            "path": "/",
+            "pathType": "Prefix",
+            "backend": {
+                "service": {
+                    "name": "lightrag",
+                    "port": {"name": "http"},
+                }
+            },
+        }
+    ]
+    assert ingress["metadata"]["annotations"]["nginx.ingress.kubernetes.io/proxy-body-size"] == "50m"
 
 
 def test_kustomize_deployment_preserves_distributed_profile_without_plaintext_secrets():
