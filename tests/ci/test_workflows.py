@@ -341,10 +341,10 @@ def test_deploy_test_workflow_injects_repo_runtime_secrets_from_test_secret_file
         "LIGHTRAG_TEST_HUGEGRAPH_GRAPHSPACE": "lightrag_test_hugegraph_graphspace",
         "LIGHTRAG_TEST_HUGEGRAPH_USERNAME": "lightrag_test_hugegraph_username",
         "LIGHTRAG_TEST_HUGEGRAPH_PASSWORD": "lightrag_test_hugegraph_password",
-        "LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD": "lightrag_test_hugegraph_auth_method",
     }
     for variable, secret_name in expected.items():
         assert env[variable]["from_secret"] == secret_name
+    assert "LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD" not in env
 
 
 def test_deploy_test_script_bootstraps_namespace_secrets_migration_and_snapshot_in_pipeline():
@@ -378,6 +378,13 @@ def test_deploy_test_script_bootstraps_namespace_secrets_migration_and_snapshot_
     assert "secretRef:" in script
     assert "name: lightrag-runtime" in script
     assert "create configmap lightrag-test-environment" in script
+
+
+def test_deploy_test_script_derives_hugegraph_auth_method_from_credentials():
+    script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
+    assert "require_env LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD" not in script
+    assert 'HUGEGRAPH_AUTH_METHOD="${LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD:-basic}"' in script
+    assert '--from-literal=HUGEGRAPH_AUTH_METHOD="$HUGEGRAPH_AUTH_METHOD"' in script
 
 
 def test_deploy_test_script_reports_failed_jobs_without_waiting_for_timeout():

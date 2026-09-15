@@ -134,5 +134,3 @@ steps:
         from_secret: lightrag_test_hugegraph_username
       LIGHTRAG_TEST_HUGEGRAPH_PASSWORD:
         from_secret: lightrag_test_hugegraph_password
-      LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD:
-        from_secret: lightrag_test_hugegraph_auth_method

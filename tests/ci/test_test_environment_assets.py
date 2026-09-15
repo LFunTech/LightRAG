@@ -82,7 +82,7 @@ def test_runbook_records_pipeline_managed_initialization_and_remote_verification
     assert "test.secrets" in text
     assert "Woodpecker repo secrets" in text
     assert "lightrag_test_hugegraph_gremlin" in text
-    assert "lightrag_test_hugegraph_auth_method" in text
+    assert "auth-method metadata defaults to `basic`" in text
     assert "coordination migration Job" in text
     assert "lightrag-storage-preflight" in text
     assert "storage bootstrap Job" in text

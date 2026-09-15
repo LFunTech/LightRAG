@@ -194,9 +194,9 @@ apply_runtime_secret() {
   require_env LIGHTRAG_TEST_HUGEGRAPH_GRAPHSPACE
   require_env LIGHTRAG_TEST_HUGEGRAPH_USERNAME
   require_env LIGHTRAG_TEST_HUGEGRAPH_PASSWORD
-  require_env LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD
 
   LIGHTRAG_COORDINATION_DSN="$(make_coordination_dsn)"
+  HUGEGRAPH_AUTH_METHOD="${LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD:-basic}"
 
   kubectl -n "$NAMESPACE" create secret generic lightrag-runtime \
     --from-literal=LIGHTRAG_API_KEY="$LIGHTRAG_TEST_API_KEY" \
@@ -219,7 +219,7 @@ apply_runtime_secret() {
     --from-literal=HUGEGRAPH_GRAPHSPACE="$LIGHTRAG_TEST_HUGEGRAPH_GRAPHSPACE" \
     --from-literal=HUGEGRAPH_USERNAME="$LIGHTRAG_TEST_HUGEGRAPH_USERNAME" \
     --from-literal=HUGEGRAPH_PASSWORD="$LIGHTRAG_TEST_HUGEGRAPH_PASSWORD" \
-    --from-literal=HUGEGRAPH_AUTH_METHOD="$LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD" \
+    --from-literal=HUGEGRAPH_AUTH_METHOD="$HUGEGRAPH_AUTH_METHOD" \
     --dry-run=client -o yaml | kubectl apply -f -
 }
 
