@@ -830,7 +830,7 @@ FIRST_POD="$(printf '%s\n' "$POD_NAMES" | sed -n '1p')"
 SECOND_POD="$(printf '%s\n' "$POD_NAMES" | sed -n '2p')"
 MARKER="woodpecker-${INSTANCE_ID}-${CI_COMMIT_TAG}-${CI_COMMIT_SHA}-${CI_PIPELINE_NUMBER:-manual}-$(date +%s)"
 
-kubectl -n "$NAMESPACE" exec "$FIRST_POD" -c "$CONTAINER" -- python - "$MARKER" <<'PY' > "$INSTANCE_RELEASE_DIR/acceptance-upload.json"
+kubectl -n "$NAMESPACE" exec -i "$FIRST_POD" -c "$CONTAINER" -- python - "$MARKER" <<'PY' > "$INSTANCE_RELEASE_DIR/acceptance-upload.json"
 import hashlib
 import json
 import os
@@ -999,7 +999,7 @@ if [ -z "$ACCEPTANCE_TRACK_ID" ] || [ -z "$ACCEPTANCE_RETRY_TRACK_ID" ]; then
   exit 1
 fi
 
-kubectl -n "$NAMESPACE" exec "$SECOND_POD" -c "$CONTAINER" -- python - "$MARKER" "$ACCEPTANCE_TRACK_ID" "$ACCEPTANCE_RETRY_TRACK_ID" <<'PY' > "$INSTANCE_RELEASE_DIR/acceptance-query.json"
+kubectl -n "$NAMESPACE" exec -i "$SECOND_POD" -c "$CONTAINER" -- python - "$MARKER" "$ACCEPTANCE_TRACK_ID" "$ACCEPTANCE_RETRY_TRACK_ID" <<'PY' > "$INSTANCE_RELEASE_DIR/acceptance-query.json"
 import json
 import os
 import sys

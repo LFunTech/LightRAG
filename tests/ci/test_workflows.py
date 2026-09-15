@@ -547,6 +547,20 @@ def test_deploy_test_route_restore_removes_pause_selector():
     assert '"lightrag.openai.com/routing-paused":null' in restore_line
 
 
+def test_deploy_test_acceptance_exec_passes_heredoc_over_stdin():
+    script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
+    assert (
+        'kubectl -n "$NAMESPACE" exec -i "$FIRST_POD" -c "$CONTAINER" '
+        '-- python - "$MARKER"'
+    ) in script
+    assert (
+        'kubectl -n "$NAMESPACE" exec -i "$SECOND_POD" -c "$CONTAINER" '
+        '-- python - "$MARKER" "$ACCEPTANCE_TRACK_ID" "$ACCEPTANCE_RETRY_TRACK_ID"'
+    ) in script
+    assert 'kubectl -n "$NAMESPACE" exec "$FIRST_POD" -c "$CONTAINER" -- python -' not in script
+    assert 'kubectl -n "$NAMESPACE" exec "$SECOND_POD" -c "$CONTAINER" -- python -' not in script
+
+
 def test_deploy_test_script_uses_posix_shell_and_prints_kubernetes_status():
     script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
     assert script.startswith("#!/usr/bin/env sh\n")
