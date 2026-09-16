@@ -76,6 +76,7 @@ const backend = {
   deletionInFlight: false,
   /** Keeps /health reporting busy, so the activity probe keeps its burst going. */
   scanInFlight: false,
+  localFileIngestionEnabled: true,
   /** Status filters requested while `recordFilters` is on. */
   requestedFilters: [] as (string | null)[],
   recordFilters: false,
@@ -94,6 +95,7 @@ const resetBackend = () => {
   backend.requestedFilters = []
   backend.recordFilters = false
   backend.scanInFlight = false
+  backend.localFileIngestionEnabled = true
   backend.paginatedCalls = 0
   backend.healthCalls = 0
   backend.deleteCalls = 0
@@ -144,7 +146,10 @@ const backendAdapter = async (config: any) => {
     return respond(config, {
       status: 'healthy',
       pipeline_busy: backend.deletionInFlight || backend.scanInFlight,
-      pipeline_active: backend.deletionInFlight || backend.scanInFlight
+      pipeline_active: backend.deletionInFlight || backend.scanInFlight,
+      configuration: {
+        local_file_ingestion_enabled: backend.localFileIngestionEnabled
+      }
     })
   }
 
@@ -200,7 +205,8 @@ describe('DocumentManager post-action refreshes', () => {
     useBackendState.setState({
       health: true,
       pipelineBusy: false,
-      pipelineActive: false
+      pipelineActive: false,
+      status: null
     })
   })
 
@@ -330,6 +336,32 @@ describe('DocumentManager post-action refreshes', () => {
       expect(screen.queryAllByText(FAILED_ID).length > 0).toBe(true)
     },
     25000
+  )
+
+
+
+  test(
+    'hides the scan action when the server disables local file ingestion',
+    async () => {
+      // Object-store-only deployments intentionally reject /documents/scan.
+      // The document manager must derive the capability from /health and avoid
+      // offering a button that can only produce a 403.
+      backend.localFileIngestionEnabled = false
+      useBackendState.setState({
+        status: {
+          status: 'healthy',
+          configuration: { local_file_ingestion_enabled: false }
+        } as any
+      })
+      renderWithProviders(<DocumentManager />)
+
+      await waitFor(() => {
+        expect(rowFor(DOC_ID) === null).toBe(false)
+      })
+
+      expect(screen.queryByRole('button', { name: /^Scan\/Retry/ }) === null).toBe(true)
+      expect(backend.scanInFlight).toBe(false)
+    }
   )
 
   test(

@@ -756,34 +756,41 @@ class HugeGraphStorage(BaseGraphStorage):
         included = [self._vertex_id(n) for n in properties]
         seen_edges = set()
         for batch in self._batches(list(properties)):
-            rows = await self._client.gremlin(
-                _INDUCED,
-                self._bindings(
-                    ids=[self._vertex_id(n) for n in batch],
-                    included=included,
-                ),
-            )
-            for row in rows:
-                a, b = row.get("source"), row.get("target")
-                if (
-                    a not in properties
-                    or b not in properties
-                    or a > b
-                    or (a, b) in seen_edges
-                ):
-                    raise ValueError("Malformed HugeGraph induced edge")
-                seen_edges.add((a, b))
-                edge_id = (
-                    "lr-e-"
-                    + hashlib.sha256(_json([self._scope, a, b]).encode()).hexdigest()
+            # The source batch and the included target set both cross the HTTP
+            # boundary as Gremlin bindings.  Repeating every selected node id in
+            # each source-batch request can exceed HugeGraph's request-size
+            # limit for label=* graph views, so chunk the target set too.
+            for included_batch in self._batches(included):
+                rows = await self._client.gremlin(
+                    _INDUCED,
+                    self._bindings(
+                        ids=[self._vertex_id(n) for n in batch],
+                        included=included_batch,
+                    ),
                 )
-                graph.edges.append(
-                    KnowledgeGraphEdge(
-                        id=edge_id,
-                        type="RELATED",
-                        source=a,
-                        target=b,
-                        properties=_decode(row.get("data")),
+                for row in rows:
+                    a, b = row.get("source"), row.get("target")
+                    if (
+                        a not in properties
+                        or b not in properties
+                        or a > b
+                        or (a, b) in seen_edges
+                    ):
+                        raise ValueError("Malformed HugeGraph induced edge")
+                    seen_edges.add((a, b))
+                    edge_id = (
+                        "lr-e-"
+                        + hashlib.sha256(
+                            _json([self._scope, a, b]).encode()
+                        ).hexdigest()
                     )
-                )
+                    graph.edges.append(
+                        KnowledgeGraphEdge(
+                            id=edge_id,
+                            type="RELATED",
+                            source=a,
+                            target=b,
+                            properties=_decode(row.get("data")),
+                        )
+                    )
         return graph

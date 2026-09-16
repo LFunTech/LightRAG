@@ -259,6 +259,41 @@ async def test_bfs_cap_uses_original_ids_and_induced_edges(monkeypatch):
     assert all(n.properties["entity_id"] == n.id for n in graph.nodes)
 
 
+async def test_induced_edge_queries_chunk_included_ids_to_stay_under_request_limit(
+    monkeypatch,
+):
+    from lightrag.kg.hugegraph_impl import _INDUCED, _NODES
+
+    s = storage(monkeypatch)
+    names = ["A", "B", "C", "D", "E"]
+    ids_to_names = {s._vertex_id(name): name for name in names}
+    included_lengths = []
+    s.get_popular_labels = AsyncMock(return_value=names)
+
+    async def gremlin(script, bindings, **_kwargs):
+        if script == _NODES:
+            return [row(s, ids_to_names[vertex_id]) for vertex_id in bindings["ids"]]
+        if script == _INDUCED:
+            included_lengths.append(len(bindings["included"]))
+            source_names = [ids_to_names[vertex_id] for vertex_id in bindings["ids"]]
+            included_names = {
+                ids_to_names[vertex_id] for vertex_id in bindings["included"]
+            }
+            if "A" in source_names and "C" in included_names:
+                return [{"source": "A", "target": "C", "data": '{"weight":1}'}]
+            return []
+        raise AssertionError(f"unexpected gremlin script: {script}")
+
+    s._client.gremlin.side_effect = gremlin
+
+    graph = await s.get_knowledge_graph("*", max_nodes=len(names))
+
+    assert {node.id for node in graph.nodes} == set(names)
+    assert [(edge.source, edge.target) for edge in graph.edges] == [("A", "C")]
+    assert included_lengths
+    assert max(included_lengths) <= s._client.batch_size
+
+
 async def test_depth_zero_does_not_expand(monkeypatch):
     s = storage(monkeypatch)
     s._client.gremlin.side_effect = [[row(s, "A")], [row(s, "A")], []]

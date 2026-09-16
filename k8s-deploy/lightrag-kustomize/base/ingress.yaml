@@ -6,7 +6,9 @@ metadata:
     app.kubernetes.io/name: lightrag
     app.kubernetes.io/instance: lightrag
   annotations:
+    nginx.ingress.kubernetes.io/configuration-snippet: 'more_set_headers "X-Accel-Buffering: no";'
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
 spec:
   ingressClassName: nginx

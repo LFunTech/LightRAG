@@ -403,6 +403,7 @@ export default function DocumentManager() {
   const [showPipelineStatus, setShowPipelineStatus] = useState(false)
   const { t, i18n } = useTranslation()
   const health = useBackendState.use.health()
+  const backendStatus = useBackendState.use.status()
   const pipelineActive = useBackendState.use.pipelineActive()
 
   const currentTab = useSettingsStore.use.currentTab()
@@ -422,6 +423,8 @@ export default function DocumentManager() {
     has_prev: false
   })
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({ all: 0 })
+  const localFileIngestionEnabled =
+    backendStatus?.configuration?.local_file_ingestion_enabled !== false
   // Mirror statusCounts in a ref so async callbacks (e.g. activity probe ticks)
   // can read the latest value without being tied to the closure captured at
   // schedule time. Synced via useEffect to satisfy react-hooks/refs.
@@ -1229,6 +1232,8 @@ export default function DocumentManager() {
     try {
       if (!isMountedRef.current) return;
 
+      if (!localFileIngestionEnabled) return;
+
       const { status, message } = await scanNewDocuments();
 
       if (!isMountedRef.current) return;
@@ -1252,7 +1257,7 @@ export default function DocumentManager() {
         toast.error(t('documentPanel.documentManager.errors.scanFailed', { error: errorMessage(err) }));
       }
     }
-  }, [t, startActivityProbe, refreshDocumentsThrottled])
+  }, [t, startActivityProbe, refreshDocumentsThrottled, localFileIngestionEnabled])
 
   // Handle manual refresh with pagination reset logic
   const handleManualRefresh = useCallback(async () => {
@@ -1485,15 +1490,17 @@ export default function DocumentManager() {
       <CardContent className="flex-1 flex flex-col min-h-0 overflow-auto">
         <div className="flex justify-between items-center gap-2 mb-2">
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={scanDocuments}
-              side="bottom"
-              tooltip={t('documentPanel.documentManager.scanTooltip')}
-              size="sm"
-            >
-              <RefreshCwIcon /> {t('documentPanel.documentManager.scanButton')}
-            </Button>
+            {localFileIngestionEnabled && (
+              <Button
+                variant="outline"
+                onClick={scanDocuments}
+                side="bottom"
+                tooltip={t('documentPanel.documentManager.scanTooltip')}
+                size="sm"
+              >
+                <RefreshCwIcon /> {t('documentPanel.documentManager.scanButton')}
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => setShowPipelineStatus(true)}

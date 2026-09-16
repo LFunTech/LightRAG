@@ -14,7 +14,7 @@ def test_deploy_workflow_uses_kubectl_apply_k_not_helm():
     assert "scripts/ci/deploy-test.sh" in text
     script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
     assert 'kubectl -n "$NAMESPACE" apply -k "$OVERLAY"' in script
-    assert 'wait --for=condition=Ready pod' in script
+    assert "wait --for=condition=Ready pod" in script
     assert "imageID" in script
     workflow = yaml.safe_load(text)
     step = workflow["steps"]["deploy-test"]
@@ -117,15 +117,36 @@ def test_kustomize_base_exposes_test_api_and_webui_through_ingress():
             },
         }
     ]
-    assert ingress["metadata"]["annotations"]["nginx.ingress.kubernetes.io/proxy-body-size"] == "50m"
+    assert (
+        ingress["metadata"]["annotations"][
+            "nginx.ingress.kubernetes.io/proxy-body-size"
+        ]
+        == "50m"
+    )
+    assert (
+        ingress["metadata"]["annotations"][
+            "nginx.ingress.kubernetes.io/proxy-buffering"
+        ]
+        == "off"
+    )
+    assert (
+        ingress["metadata"]["annotations"][
+            "nginx.ingress.kubernetes.io/configuration-snippet"
+        ]
+        == 'more_set_headers "X-Accel-Buffering: no";'
+    )
 
 
 def test_kustomize_deployment_preserves_distributed_profile_without_plaintext_secrets():
-    deployment = yaml.safe_load((OVERLAY.parent.parent / "base/deployment.yaml").read_text())
+    deployment = yaml.safe_load(
+        (OVERLAY.parent.parent / "base/deployment.yaml").read_text()
+    )
     assert deployment["spec"]["replicas"] == 2
     spec = deployment["spec"]["template"]["spec"]
     assert spec["securityContext"]["runAsNonRoot"] is True
-    assert spec["containers"][0]["envFrom"] == [{"secretRef": {"name": "lightrag-runtime"}}]
+    assert spec["containers"][0]["envFrom"] == [
+        {"secretRef": {"name": "lightrag-runtime"}}
+    ]
     env = {item["name"]: item["value"] for item in spec["containers"][0]["env"]}
     assert env["WORKERS"] == "1"
     assert env["LIGHTRAG_SHARED_STORAGE"] == "false"
