@@ -10,7 +10,7 @@ from uuid import uuid4
 import numpy as np
 import pytest
 from lightrag import LightRAG
-from lightrag.base import DocStatus
+from lightrag.base import DocProcessingStatus, DocStatus
 from lightrag.constants import FULL_DOCS_FORMAT_PENDING_PARSE, FULL_DOCS_FORMAT_RAW
 from lightrag.constants import FULL_DOCS_FORMAT_LIGHTRAG
 from lightrag.object_storage import FakeObjectStore, ObjectStoreConfig
@@ -351,6 +351,36 @@ async def test_local_pending_parse_keeps_existing_metadata_shape(tmp_path):
         assert "object_source" not in full_doc
         assert "object_source" not in status_doc.get("metadata", {})
         assert status_doc["metadata"]["source_file"] == "report.pdf"
+    finally:
+        await rag.finalize_storages()
+
+
+@pytest.mark.asyncio
+async def test_empty_object_source_metadata_is_treated_as_absent(tmp_path):
+    rag = await _build_rag(tmp_path)
+    try:
+        content_data = {"object_source": {}}
+
+        prepared = await rag._prepare_object_source_for_parse(
+            "doc-local", "report.pdf", content_data
+        )
+        status_doc = DocProcessingStatus(
+            content_summary="",
+            content_length=0,
+            file_path="report.pdf",
+            status=DocStatus.PARSING,
+            created_at="2026-09-16T00:00:00+00:00",
+            updated_at="2026-09-16T00:00:00+00:00",
+            track_id="track-local",
+            metadata={},
+        )
+        uploaded = await rag._upload_object_sidecar_artifacts(
+            "doc-local", status_doc, content_data
+        )
+
+        assert prepared is None
+        assert uploaded is None
+        assert content_data == {"object_source": {}}
     finally:
         await rag.finalize_storages()
 

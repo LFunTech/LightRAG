@@ -3291,9 +3291,10 @@ class PGKVStorage(BaseKVStorage):
                     object_source = json.loads(object_source)
                 except json.JSONDecodeError:
                     object_source = {}
-            if not isinstance(object_source, dict):
-                object_source = {}
-            response["object_source"] = object_source
+            if isinstance(object_source, dict) and object_source:
+                response["object_source"] = object_source
+            else:
+                response.pop("object_source", None)
 
         if response and is_namespace(
             self.namespace, NameSpace.KV_STORE_UPLOAD_SESSIONS
@@ -3491,9 +3492,10 @@ class PGKVStorage(BaseKVStorage):
                         object_source = json.loads(object_source)
                     except json.JSONDecodeError:
                         object_source = {}
-                if not isinstance(object_source, dict):
-                    object_source = {}
-                result["object_source"] = object_source
+                if isinstance(object_source, dict) and object_source:
+                    result["object_source"] = object_source
+                else:
+                    result.pop("object_source", None)
 
         if results and is_namespace(
             self.namespace, NameSpace.KV_STORE_UPLOAD_SESSIONS

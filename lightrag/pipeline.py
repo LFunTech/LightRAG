@@ -6616,7 +6616,7 @@ class _PipelineMixin:
             if isinstance(content_data, dict)
             else None
         )
-        if not isinstance(object_source, dict):
+        if not isinstance(object_source, dict) or not object_source:
             return None
         source_kind = str(object_source.get("source_kind") or "s3_object")
         if source_kind != "s3_object":
@@ -6706,7 +6706,7 @@ class _PipelineMixin:
             if isinstance(content_data, dict)
             else None
         )
-        if not isinstance(object_source, dict):
+        if not isinstance(object_source, dict) or not object_source:
             return None
         if str(object_source.get("source_kind") or "s3_object") != "s3_object":
             return None

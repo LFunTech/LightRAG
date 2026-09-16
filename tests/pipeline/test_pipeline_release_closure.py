@@ -394,6 +394,9 @@ def test_carry_over_keys_grouped_by_stage():
         "parse_stage_skipped",
         "parse_format",
         "parse_engine",
+        # Object-backed source metadata is still parse-stage provenance: retry,
+        # delete and clear need it after every later status transition.
+        "object_source",
         # Parse-stage LLM cache keys (docx smart_heading) — parse-stage
         # group so document deletion can purge them at any later status.
         "smartheading_llm_cache_ids",
