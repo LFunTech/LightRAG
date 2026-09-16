@@ -3,12 +3,13 @@
 from hashlib import sha256
 
 from .v001 import SQL, VERSION
-from . import v002
+from . import v002, v003
 
 CHECKSUM = sha256(SQL.encode()).hexdigest()
 MIGRATIONS = [
     (VERSION, SQL, CHECKSUM),
     (v002.VERSION, v002.SQL, sha256(v002.SQL.encode()).hexdigest()),
+    (v003.VERSION, v003.SQL, sha256(v003.SQL.encode()).hexdigest()),
 ]
 
 # This is the runtime schema contract, not a hash of the migration source.
@@ -64,7 +65,7 @@ _COLUMN_TYPES.update(
         },
         "pipeline_requests": {
             "text": "deployment_id workspace request_id state",
-            "timestamp with time zone": "created_at",
+            "timestamp with time zone": "created_at target_cutoff_at",
         },
         "pipeline_retry_targets": {
             "text": "deployment_id workspace request_id doc_id version",
@@ -102,6 +103,7 @@ _COLUMN_DEFAULTS.update(
         "pipeline_control.cancel_epoch": "0",
         "pipeline_requests.state": "'selecting'::text",
         "pipeline_requests.created_at": "clock_timestamp()",
+        "pipeline_requests.target_cutoff_at": "clock_timestamp()",
         "pipeline_retry_targets.done": "false",
     }
 )

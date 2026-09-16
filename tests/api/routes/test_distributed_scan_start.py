@@ -30,7 +30,7 @@ async def test_scan_http_startup_failure_is_typed_and_joined(
     admission_entered = asyncio.Event()
     admission_joined = asyncio.Event()
 
-    async def request_retry(request_id):
+    async def request_retry(request_id, *, target_cutoff_at=None):
         accepted.add(request_id)
 
     async def resume():

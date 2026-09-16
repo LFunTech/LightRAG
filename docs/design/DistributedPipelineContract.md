@@ -50,7 +50,9 @@ a possibly claimed row. Local error enqueue retains its original behavior.
 ## Persistent cancellation and manual retry
 
 Version 2 of the explicit coordinator migrations adds `pipeline_control`,
-`pipeline_requests`, and `pipeline_retry_targets`. Version 1 SQL/checksum is
+`pipeline_requests`, and `pipeline_retry_targets`. Version 3 adds
+`pipeline_requests.target_cutoff_at`, the application-clock cutoff used for
+retry target selection. Version 1 SQL/checksum is
 unchanged. Startup verifies all versions and the actual types, nullability,
 defaults and primary keys of new columns. There is no startup DDL or schema repair.
 
@@ -82,10 +84,15 @@ is independent of the accepting process or its in-memory mailbox.
 A pending request causes processing schedulers to stop admitting new batches.
 An exclusive reset selects FAILED rows in bounded pages. Each selected target's
 original `updated_at` version is committed before any reset. Selection only
-includes versions at or before the request's database timestamp, so rows failing
-during the drain or restarted selection do not receive another attempt. Targets
-are insert-once; restarting selection cannot replace an older target version.
-After selection is durable, the request moves from `selecting` to `resetting`.
+includes versions at or before `target_cutoff_at`, which is captured from the
+accepting application's UTC clock before publishing the request. `created_at`
+remains a database timestamp for FIFO ordering, but it is not compared against
+`doc_status.updated_at`; application nodes and PG can be a few seconds apart
+without skipping a failure the caller already observed. Rows failing after the
+application cutoff, during the drain or restarted selection, do not receive
+another attempt. Targets are insert-once; restarting selection cannot replace an
+older target version. After selection is durable, the request moves from
+`selecting` to `resetting`.
 
 Each reset strictly reads status/content, skips custom-chunk journals and
 confirmed-absent content, and only resets a row still FAILED at the selected

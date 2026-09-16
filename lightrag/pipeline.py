@@ -1758,7 +1758,9 @@ class _PipelineMixin:
         runtime = get_runtime(self)
         request_id = request_id or uuid.uuid4().hex
         if runtime is not None:
-            await runtime.coordinator.pipeline_control.request_retry(request_id)
+            await runtime.coordinator.pipeline_control.request_retry(
+                request_id, target_cutoff_at=datetime.now(timezone.utc)
+            )
         else:
             ingress = await get_pipeline_ingress(self.workspace)
             from lightrag.kg.pipeline_ingress import ManualRetryPublishResult
@@ -3601,7 +3603,9 @@ class _PipelineMixin:
         if runtime is not None:
             from lightrag.distributed.pipeline import reset_requests
 
-            await runtime.coordinator.pipeline_control.request_retry(request_id)
+            await runtime.coordinator.pipeline_control.request_retry(
+                request_id, target_cutoff_at=datetime.now(timezone.utc)
+            )
             await reset_requests(self)
             return True
 

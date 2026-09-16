@@ -85,6 +85,39 @@ async def test_inherited_ticket_cannot_outlive_parent():
     assert sum(e[0] == "enter" for e in coordinator.events) == 1
 
 
+async def test_retry_request_carries_application_clock_cutoff():
+    """Manual retry target selection must not compare against DB server time."""
+
+    from datetime import datetime, timezone
+
+    from lightrag.distributed.runtime import DistributedRuntime
+    from lightrag.pipeline import _PipelineMixin
+
+    class PipelineControl:
+        def __init__(self):
+            self.calls = []
+
+        async def request_retry(self, request_id, *, target_cutoff_at=None):
+            self.calls.append((request_id, target_cutoff_at))
+
+    control = PipelineControl()
+    rag = SimpleNamespace(
+        _distributed_runtime=DistributedRuntime(
+            SimpleNamespace(pipeline_control=control), workspace="test"
+        )
+    )
+
+    before = datetime.now(timezone.utc)
+    await _PipelineMixin.apipeline_request_retry(rag, "clock-safe")
+    after = datetime.now(timezone.utc)
+
+    assert control.calls[0][0] == "clock-safe"
+    cutoff = control.calls[0][1]
+    assert cutoff is not None
+    assert cutoff.tzinfo is not None
+    assert before <= cutoff <= after
+
+
 async def test_uncontrolled_storage_mutation_is_rejected_and_ack_follows_actual_write():
     module = runtime_module()
     runtime, coordinator = make_runtime()

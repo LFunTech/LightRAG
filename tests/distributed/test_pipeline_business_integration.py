@@ -132,6 +132,41 @@ async def test_retry_replay_skips_a_new_failure_version(runtime_rags):
     assert (await control.status())["pending_retries"] == 0
 
 
+async def test_manual_retry_selection_uses_application_cutoff_not_db_clock(
+    runtime_rags,
+):
+    from datetime import timedelta
+
+    from lightrag.distributed.pipeline import reset_requests
+
+    rag, peer = runtime_rags
+    await configure(runtime_rags)
+    await rag.apipeline_enqueue_documents(
+        "Retry clock skew.", ids=["retry-clock"], file_paths=["retry-clock.txt"]
+    )
+    rt = rag._distributed_runtime
+    async with rt.operation("seed-clock-skew-failure"):
+        # The target DB may be behind the app nodes. This row is deliberately
+        # newer than the request's DB-side created_at, but still existed before
+        # the app published the retry request.
+        db_now = await rt.coordinator._pool.fetchval("SELECT clock_timestamp()")
+        failed_at = db_now + timedelta(seconds=5)
+        cutoff_at = failed_at + timedelta(seconds=5)
+        await rag.doc_status.update_doc_status_fields(
+            "retry-clock",
+            {
+                "status": DocStatus.FAILED,
+                "updated_at": failed_at.isoformat(),
+            },
+        )
+    control = rt.coordinator.pipeline_control
+    await control.request_retry("clock-cutoff", target_cutoff_at=cutoff_at)
+    await reset_requests(peer)
+    after = await rag.doc_status.get_full_docs_by_ids(["retry-clock"], strict=True)
+    assert after["retry-clock"].status == DocStatus.PENDING
+    assert (await control.status())["pending_retries"] == 0
+
+
 async def test_global_cancel_reaches_two_active_processing_owners(runtime_rags):
     rag, peer = runtime_rags
     await configure(runtime_rags)

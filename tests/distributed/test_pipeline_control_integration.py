@@ -48,6 +48,7 @@ async def test_retry_acceptance_is_durable_deduplicated_and_exclusive_ack(client
         ("pipeline_control.paused", "true"),
         ("pipeline_control.cancel_epoch", "1"),
         ("pipeline_requests.state", "'completed'"),
+        ("pipeline_requests.target_cutoff_at", "clock_timestamp() + interval '1 second'"),
         ("pipeline_retry_targets.done", "true"),
     ],
 )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, Mapping
 
 if TYPE_CHECKING:
@@ -87,7 +88,9 @@ class PipelineControl:
                 orphaned_operations=orphaned,
             )
 
-    async def request_retry(self, request_id: str) -> dict[str, Any]:
+    async def request_retry(
+        self, request_id: str, *, target_cutoff_at: datetime | None = None
+    ) -> dict[str, Any]:
         """Atomically accept a new intent and resume; duplicates never undo pause.
 
         Request IDs retain their identity after completion. Replaying one only
@@ -97,12 +100,21 @@ class PipelineControl:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id must be non-empty")
         async with self._transaction() as db:
-            row = await db.fetchrow(
-                "INSERT INTO lightrag_coordination.pipeline_requests (deployment_id,workspace,request_id,state) VALUES($1,$2,$3,'selecting') "
-                "ON CONFLICT DO NOTHING RETURNING request_id,state,created_at",
-                *self.coordinator._scope,
-                request_id,
-            )
+            if target_cutoff_at is None:
+                row = await db.fetchrow(
+                    "INSERT INTO lightrag_coordination.pipeline_requests (deployment_id,workspace,request_id,state) VALUES($1,$2,$3,'selecting') "
+                    "ON CONFLICT DO NOTHING RETURNING request_id,state,created_at,target_cutoff_at",
+                    *self.coordinator._scope,
+                    request_id,
+                )
+            else:
+                row = await db.fetchrow(
+                    "INSERT INTO lightrag_coordination.pipeline_requests (deployment_id,workspace,request_id,state,target_cutoff_at) VALUES($1,$2,$3,'selecting',$4) "
+                    "ON CONFLICT DO NOTHING RETURNING request_id,state,created_at,target_cutoff_at",
+                    *self.coordinator._scope,
+                    request_id,
+                    target_cutoff_at,
+                )
             if row is not None:
                 # The workspace transaction orders acceptance against pause.
                 # Never resume in the caller after this transaction commits.
@@ -112,7 +124,7 @@ class PipelineControl:
                 )
             else:
                 row = await db.fetchrow(
-                    "SELECT request_id,state,created_at FROM lightrag_coordination.pipeline_requests WHERE deployment_id=$1 AND workspace=$2 AND request_id=$3",
+                    "SELECT request_id,state,created_at,target_cutoff_at FROM lightrag_coordination.pipeline_requests WHERE deployment_id=$1 AND workspace=$2 AND request_id=$3",
                     *self.coordinator._scope,
                     request_id,
                 )
@@ -121,7 +133,7 @@ class PipelineControl:
     async def next_request(self, operation: Operation) -> dict[str, Any] | None:
         async with self._transaction(operation) as db:
             row = await db.fetchrow(
-                "SELECT request_id,state,created_at FROM lightrag_coordination.pipeline_requests WHERE deployment_id=$1 AND workspace=$2 AND state<>'completed' ORDER BY created_at,request_id LIMIT 1",
+                "SELECT request_id,state,created_at,target_cutoff_at FROM lightrag_coordination.pipeline_requests WHERE deployment_id=$1 AND workspace=$2 AND state<>'completed' ORDER BY created_at,request_id LIMIT 1",
                 *self.coordinator._scope,
             )
             return dict(row) if row else None

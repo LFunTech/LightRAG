@@ -47,9 +47,13 @@ HugeGraph, KV/doc-status, or any remaining file-backed business storage. Local
 `/documents/upload` and `/documents/scan` still require a filesystem visible to
 the Pod that will process those local files.
 
-Use UTC/NTP on application nodes and PG: one-shot retry selection compares
-`doc_status.updated_at` with the request's database timestamp. Future/newer
-versions are conservatively skipped, not granted another attempt.
+Use UTC/NTP on application nodes and PG. One-shot retry selection compares
+`doc_status.updated_at` with `pipeline_requests.target_cutoff_at`, captured from
+the accepting application's UTC clock before the retry request is published;
+the database `created_at` timestamp is retained only for FIFO ordering. A few
+seconds of app/PG skew should not skip a failure the caller already observed,
+but future/newer document versions are still conservatively skipped rather than
+granted another attempt.
 
 ## Build, secrets, permissions, and network
 

@@ -50,6 +50,7 @@ async def reset_requests(rag: LightRAG) -> None:
         while request := await control.next_request(operation):
             request_id = request["request_id"]
             if request["state"] == "selecting":
+                cutoff = request.get("target_cutoff_at") or request["created_at"]
                 position = CURSOR_START
                 while position is not CURSOR_END:
                     page = await rag.doc_status.get_docs_by_statuses_page(
@@ -74,7 +75,7 @@ async def reset_requests(rag: LightRAG) -> None:
                             updated = updated.replace(tzinfo=timezone.utc)
                         # Restart selection may rescan old pages, but neither a
                         # newly failed row nor a replacement version is selected.
-                        if updated <= request["created_at"]:
+                        if updated <= cutoff:
                             targets[doc_id] = version
                     await control.add_targets(operation, request_id, targets)
                     position = page.next_position
