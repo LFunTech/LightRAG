@@ -849,6 +849,7 @@ SECOND_POD="$(printf '%s\n' "$POD_NAMES" | sed -n '2p')"
 MARKER="woodpecker-${INSTANCE_ID}-${CI_COMMIT_TAG}-${CI_COMMIT_SHA}-${CI_PIPELINE_NUMBER:-manual}-$(date +%s)"
 
 kubectl -n "$NAMESPACE" exec -i "$FIRST_POD" -c "$CONTAINER" -- python - "$MARKER" <<'PY' > "$INSTANCE_RELEASE_DIR/acceptance-upload.json"
+import asyncio
 import hashlib
 import json
 import os
@@ -904,7 +905,45 @@ def direct_put(presign, content):
         raise SystemExit(f"object upload failed: {type(exc).__name__}")
 
 
-def wait_for_track(track_id, expected):
+def overwrite_retry_object(object_key, content):
+    async def _run():
+        from lightrag.object_storage import ObjectStoreConfig, build_object_store
+
+        def truthy(value):
+            return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+        store = build_object_store(
+            ObjectStoreConfig(
+                provider=os.environ.get("LIGHTRAG_OBJECT_STORAGE", "s3") or "s3",
+                bucket=os.environ["S3_BUCKET"],
+                endpoint_url=os.environ.get("S3_ENDPOINT_URL") or None,
+                region=os.environ.get("S3_REGION") or None,
+                force_path_style=truthy(os.environ.get("S3_FORCE_PATH_STYLE")),
+                access_key_id=os.environ.get("S3_ACCESS_KEY_ID") or None,
+                secret_access_key=os.environ.get("S3_SECRET_ACCESS_KEY") or None,
+                session_token=os.environ.get("S3_SESSION_TOKEN") or None,
+                object_prefix=os.environ.get("S3_OBJECT_PREFIX", ""),
+                scratch_dir=os.environ.get("S3_SCRATCH_DIR") or None,
+            )
+        )
+        if store is None:
+            raise RuntimeError("object store is not configured")
+        metadata = await store.put_bytes(
+            object_key,
+            content,
+            content_type="text/plain",
+            metadata={"purpose": "lightrag-acceptance-retry"},
+        )
+        if metadata.size != len(content):
+            raise RuntimeError("object overwrite size mismatch")
+
+    try:
+        asyncio.run(_run())
+    except Exception as exc:
+        raise SystemExit(f"object overwrite failed: {type(exc).__name__}")
+
+
+def wait_for_track(track_id, expected, allow_failed_while_waiting=False):
     summary = {}
     doc_ids = []
     for _ in range(120):
@@ -930,7 +969,7 @@ def wait_for_track(track_id, expected):
             if processed >= total:
                 raise SystemExit(f"retry seed unexpectedly processed: {summary}")
         else:
-            if failed:
+            if failed and not allow_failed_while_waiting:
                 raise SystemExit(f"document processing failed: {summary}")
             if processed >= total:
                 return summary, doc_ids
@@ -998,11 +1037,15 @@ retry_track_id = json.loads(retry_insert_body).get("track_id")
 if not retry_track_id:
     raise SystemExit("retry complete response did not include track_id")
 retry_failed_summary, _retry_failed_doc_ids = wait_for_track(retry_track_id, "failed")
-direct_put(retry_presign, retry_good_content)
+overwrite_retry_object(retry_presign["object_key"], retry_good_content)
 reprocess_status, reprocess_body = request("POST", "/documents/reprocess_failed")
 if reprocess_status != 200:
     raise SystemExit(f"reprocess_failed returned {reprocess_status}: {reprocess_body[:200]}")
-retry_summary, retry_doc_ids = wait_for_track(retry_track_id, "processed")
+retry_summary, retry_doc_ids = wait_for_track(
+    retry_track_id,
+    "processed",
+    allow_failed_while_waiting=True,
+)
 if not retry_doc_ids:
     raise SystemExit("retry track status did not include document ids")
 

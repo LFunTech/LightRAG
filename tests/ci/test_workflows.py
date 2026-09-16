@@ -564,6 +564,23 @@ def test_deploy_test_acceptance_exec_passes_heredoc_over_stdin():
     assert 'kubectl -n "$NAMESPACE" exec "$SECOND_POD" -c "$CONTAINER" -- python -' not in script
 
 
+def test_deploy_test_reprocess_acceptance_overwrites_object_store_directly():
+    script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
+    assert "def overwrite_retry_object(object_key, content):" in script
+    assert "from lightrag.object_storage import ObjectStoreConfig, build_object_store" in script
+    assert 'overwrite_retry_object(retry_presign["object_key"], retry_good_content)' in script
+    assert "direct_put(retry_presign, retry_good_content)" not in script
+    assert (
+        'def wait_for_track(track_id, expected, allow_failed_while_waiting=False):'
+        in script
+    )
+    assert "if failed and not allow_failed_while_waiting:" in script
+    assert 'retry_summary, retry_doc_ids = wait_for_track(' in script
+    assert 'retry_track_id,' in script
+    assert '"processed",' in script
+    assert "allow_failed_while_waiting=True," in script
+
+
 def test_deploy_test_script_uses_posix_shell_and_prints_kubernetes_status():
     script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
     assert script.startswith("#!/usr/bin/env sh\n")
