@@ -67,6 +67,11 @@ class _UnavailablePresignStore(FakeObjectStore):
         raise ObjectStoreUnavailableError("object store unavailable")
 
 
+class _UnavailablePutStore(FakeObjectStore):
+    async def put_bytes(self, *args, **kwargs):
+        raise ObjectStoreUnavailableError("object store unavailable during upload")
+
+
 class _Coordinator:
     def __init__(self):
         self.events = []
@@ -111,6 +116,7 @@ def _make_client(
     local_file_ingestion_enabled=True,
     runtime=None,
     session_manager=None,
+    raise_server_exceptions=True,
 ):
     rag = _Rag(runtime=runtime)
     app = FastAPI()
@@ -147,7 +153,142 @@ def _make_client(
             upload_session_manager=sessions,
         )
     )
-    return TestClient(app), rag, object_store
+    return (
+        TestClient(app, raise_server_exceptions=raise_server_exceptions),
+        rag,
+        object_store,
+    )
+
+
+def test_official_upload_uses_object_store_when_local_ingestion_is_disabled(
+    monkeypatch, tmp_path
+):
+    client, rag, object_store = _make_client(
+        monkeypatch,
+        tmp_path,
+        local_file_ingestion_enabled=False,
+    )
+
+    response = client.post(
+        "/documents/upload",
+        headers=_HEADERS,
+        files={
+            "file": (
+                "notes.[-R(chunk_ts=800,chunk_ol=80)].md",
+                b"hello",
+                "text/markdown",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "success"
+    assert body["track_id"].startswith("upload_")
+    assert [p.name for p in (tmp_path / "inputs").rglob("*") if p.is_file()] == []
+    assert rag.enqueued
+    enqueued = rag.enqueued[0]
+    assert enqueued["file_paths"] == "notes.md"
+    assert enqueued["docs_format"] == "pending_parse"
+    assert enqueued["object_source"]["source_kind"] == "s3_object"
+    assert enqueued["object_source"]["object_key"].startswith(
+        "lightrag/uploads/tenant_a/"
+    )
+    assert enqueued["parse_engine"] == "legacy"
+    assert enqueued["process_options"] == "R"
+    recursive = enqueued["chunk_options"]["recursive_character"]
+    assert recursive["chunk_token_size"] == 800
+    assert recursive["chunk_overlap_token_size"] == 80
+
+    import anyio
+
+    keys = anyio.run(object_store.list_keys, "lightrag/uploads/tenant_a/")
+    assert keys == [enqueued["object_source"]["object_key"]]
+
+
+def test_official_upload_returns_after_enqueue_without_waiting_for_pipeline_drive(
+    monkeypatch, tmp_path
+):
+    client, rag, _object_store = _make_client(
+        monkeypatch,
+        tmp_path,
+        local_file_ingestion_enabled=False,
+        raise_server_exceptions=False,
+    )
+
+    async def _failing_drive_pipeline(_rag):
+        _rag.process_calls += 1
+        raise RuntimeError("pipeline drive must stay in background")
+
+    monkeypatch.setattr(_dr, "drive_pipeline", _failing_drive_pipeline)
+
+    response = client.post(
+        "/documents/upload",
+        headers=_HEADERS,
+        files={"file": ("report.pdf", b"hello", "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert rag.enqueued
+    assert rag.process_calls == 1
+
+
+def test_official_upload_fails_closed_without_object_store_when_local_disabled(
+    monkeypatch, tmp_path
+):
+    client, rag, _object_store = _make_client(
+        monkeypatch,
+        tmp_path,
+        with_object_store=False,
+        local_file_ingestion_enabled=False,
+    )
+
+    response = client.post(
+        "/documents/upload",
+        headers=_HEADERS,
+        files={"file": ("report.pdf", b"hello", "application/pdf")},
+    )
+
+    assert response.status_code == 503
+    assert "Object-store document ingestion is not configured" in response.text
+    assert rag.enqueued == []
+    assert [p.name for p in (tmp_path / "inputs").rglob("*") if p.is_file()] == []
+
+
+def test_official_upload_object_store_failure_does_not_enqueue_or_write_input_dir(
+    monkeypatch, tmp_path
+):
+    client, rag, object_store = _make_client(
+        monkeypatch,
+        tmp_path,
+        local_file_ingestion_enabled=False,
+    )
+    client.app.router.routes.clear()
+    manager = DocumentManager(str(tmp_path / "inputs-unavailable"), workspace=rag.workspace)
+    sessions = UploadSessionManager(
+        InMemoryUploadSessionStore(), bucket="docs", prefix="lightrag"
+    )
+    unavailable = _UnavailablePutStore(object_store.config)
+    client.app.include_router(
+        create_document_routes(
+            rag,
+            manager,
+            api_key="test-key",
+            object_store=unavailable,
+            upload_session_manager=sessions,
+        )
+    )
+
+    response = client.post(
+        "/documents/upload",
+        headers=_HEADERS,
+        files={"file": ("report.pdf", b"hello", "application/pdf")},
+    )
+
+    assert response.status_code == 503
+    assert rag.enqueued == []
+    assert [p.name for p in (tmp_path / "inputs-unavailable").rglob("*") if p.is_file()] == []
 
 
 def test_presign_requires_authentication(monkeypatch, tmp_path):
@@ -330,6 +471,43 @@ def test_complete_verifies_object_and_enqueues_object_backed_document(monkeypatc
     assert enqueued["docs_format"] == "pending_parse"
     assert enqueued["object_source"]["source_kind"] == "s3_object"
     assert enqueued["object_source"]["object_key"] == presign["object_key"]
+
+
+def test_complete_returns_after_enqueue_without_waiting_for_pipeline_drive(
+    monkeypatch, tmp_path
+):
+    client, rag, object_store = _make_client(
+        monkeypatch, tmp_path, raise_server_exceptions=False
+    )
+    presign = client.post(
+        "/documents/uploads/presign",
+        headers=_HEADERS,
+        json={"filename": "report.pdf", "content_type": "application/pdf", "size": 5},
+    ).json()
+
+    import anyio
+
+    async def _put_object():
+        await object_store.put_bytes(
+            presign["object_key"], b"hello", content_type="application/pdf"
+        )
+
+    async def _failing_drive_pipeline(_rag):
+        _rag.process_calls += 1
+        raise RuntimeError("pipeline drive must stay in background")
+
+    anyio.run(_put_object)
+    monkeypatch.setattr(_dr, "drive_pipeline", _failing_drive_pipeline)
+    response = client.post(
+        "/documents/uploads/complete",
+        headers=_HEADERS,
+        json={"upload_id": presign["upload_id"], "object_key": presign["object_key"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert rag.enqueued
+    assert rag.process_calls == 1
 
 
 def test_complete_applies_filename_hint_process_and_chunk_options(monkeypatch, tmp_path):

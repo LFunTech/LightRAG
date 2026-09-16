@@ -65,7 +65,7 @@ def _client(monkeypatch, tmp_path, *, enabled: bool) -> tuple[TestClient, _Rag]:
     return TestClient(app), rag
 
 
-def test_upload_route_refuses_when_local_file_ingestion_is_disabled(
+def test_upload_route_refuses_when_local_file_ingestion_is_disabled_without_object_store(
     monkeypatch, tmp_path
 ):
     client, _rag = _client(monkeypatch, tmp_path, enabled=False)
@@ -76,8 +76,8 @@ def test_upload_route_refuses_when_local_file_ingestion_is_disabled(
         files={"file": ("local.txt", b"should not land", "text/plain")},
     )
 
-    assert response.status_code == 403
-    assert "Local file ingestion is disabled" in response.text
+    assert response.status_code == 503
+    assert "Object-store document ingestion is not configured" in response.text
     assert [p.name for p in (tmp_path / "inputs").rglob("*") if p.is_file()] == []
 
 

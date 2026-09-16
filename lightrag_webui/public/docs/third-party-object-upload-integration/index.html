@@ -753,8 +753,8 @@
 
           <line class="msg async" x1="446" y1="226" x2="1379" y2="226" />
           <rect class="label-bg" x="780" y="206" width="264" height="35" />
-          <text class="msg-label" x="790" y="220">2. 持久化 upload session</text>
-          <text class="msg-note" x="790" y="235">workspace + server-owned object_key</text>
+          <text class="msg-label" x="790" y="220">2. 签发上传会话</text>
+          <text class="msg-note" x="790" y="235">返回服务端生成的 object_key</text>
 
           <line class="msg return" x1="426" y1="266" x2="129" y2="266" />
           <rect class="label-bg" x="200" y="245" width="186" height="35" />
@@ -787,8 +787,8 @@
 
           <line class="msg async" x1="446" y1="596" x2="1379" y2="596" />
           <rect class="label-bg" x="860" y="575" width="248" height="35" />
-          <text class="msg-label" x="870" y="589">9. 入队 doc_status / full_docs</text>
-          <text class="msg-note" x="870" y="604">记录 object_source 元数据</text>
+          <text class="msg-label" x="870" y="589">9. 文档受理入队</text>
+          <text class="msg-note" x="870" y="604">返回后继续异步处理</text>
 
           <line class="msg return" x1="426" y1="636" x2="129" y2="636" />
           <rect class="label-bg" x="200" y="616" width="170" height="32" />
@@ -797,12 +797,12 @@
           <!-- Messages: C -->
           <line class="msg async" x1="1378" y1="684" x2="1085" y2="684" />
           <rect class="label-bg" x="1190" y="664" width="154" height="32" />
-          <text class="msg-label" x="1200" y="684">11. worker claim</text>
+          <text class="msg-label" x="1200" y="684">11. 后台开始处理</text>
 
           <line class="msg data" x1="1062" y1="728" x2="767" y2="728" />
           <rect class="label-bg" x="850" y="707" width="170" height="35" />
-          <text class="msg-label" x="860" y="721">12. GET source object</text>
-          <text class="msg-note" x="860" y="736">下载到本地 scratch</text>
+          <text class="msg-label" x="860" y="721">12. 读取已上传文件</text>
+          <text class="msg-note" x="860" y="736">解析、分块并建立索引</text>
 
           <line class="msg async" x1="1085" y1="772" x2="1379" y2="772" />
           <rect class="label-bg" x="1188" y="751" width="168" height="35" />
@@ -1044,33 +1044,33 @@
           </div>
         </article>
         <article class="endpoint-detail" id="api-post-documents-upload" data-endpoint="POST /documents/upload">
-          <h3><a class="endpoint-anchor" href="#api-post-documents-upload" aria-label="链接到 POST /documents/upload">#</a><code>POST /documents/upload</code> — 兼容本地文件上传</h3>
+          <h3><a class="endpoint-anchor" href="#api-post-documents-upload" aria-label="链接到 POST /documents/upload">#</a><code>POST /documents/upload</code> — 官方兼容文件上传</h3>
           <div class="api-doc">
             <div class="api-doc-section api-basics">
               <h4>1. 基本信息</h4>
               <dl class="api-basics-list">
-                <div><dt>接口名称</dt><dd>兼容本地文件上传</dd></div>
+                <div><dt>接口名称</dt><dd>官方兼容文件上传</dd></div>
                 <div><dt>请求路径</dt><dd><code>/documents/upload</code></dd></div>
                 <div><dt>请求方式</dt><dd><code>POST</code></dd></div>
                 <div><dt>接口状态</dt><dd>已上线；具体能力以当前部署配置为准。</dd></div>
               </dl>
-              <p><strong>功能说明：</strong>保留既有 multipart 文件上传入口，由 LightRAG API 接收文件正文并写入服务器输入目录，再沿用本地文件 pipeline 处理。它用于兼容旧客户端，不是分布式大文件接入的推荐路径。</p>
-              <p><strong>调用时机：</strong>仅当第三方无法实现对象直传、文件很小、部署仍使用单 Pod/共享输入目录，或需要兼容历史工具时使用。对象存储链路启用后，该接口仍保持原有语义，不会被替换。</p>
-              <p><strong>接入建议：</strong>新集成尽量不要依赖它承载大文件，因为 API Pod 会消耗带宽、磁盘和上传超时预算。若必须保留，业务系统要清楚该路径需要服务器输入目录可见，和对象上传路径的存储位置不同。</p>
+              <p><strong>功能说明：</strong>保留官方 multipart 文件上传入口。默认本地文件摄取启用时，LightRAG API 接收文件正文并写入服务器输入目录；object-store-only 部署关闭本地文件摄取且对象存储可用时，同一个接口会把文件写入对象存储并异步入队。</p>
+              <p><strong>调用时机：</strong>第三方已经按官方 LightRAG API 集成 multipart 上传时可继续使用。大文件或高并发仍优先使用 presigned 对象上传；需要 object-store-only 部署时，无需改 API 路径，只要服务端已配置对象存储即可。</p>
+              <p><strong>接入建议：</strong>新集成若能改造客户端，优先使用 presigned 对象上传以减少 API Pod 带宽占用。若保留官方上传，客户端只依赖外部请求/响应合同，不应假设后端写入本地目录还是对象存储。</p>
             </div>
             <div class="api-doc-section api-request">
               <h4>2. 请求参数（Request）</h4>
               <p><strong>请求头：</strong>携带 <code>X-API-Key</code>，并使用 <code>multipart/form-data</code>；boundary 由 HTTP 客户端生成。</p>
-              <p><strong>请求参数：</strong>请求使用 <code>multipart/form-data</code>，字段通常为上传文件本身，可附带 parser、chunking 或 process 选项。文件名仍按本地上传规则校验，同名冲突按 canonical basename 处理。</p>
+              <p><strong>请求参数：</strong>请求使用 <code>multipart/form-data</code>，字段通常为上传文件本身，可附带 parser、chunking 或 process 选项。文件名按官方上传规则校验，同名冲突按 canonical basename 处理；后端存储位置由部署配置决定。</p>
               <div class="api-table-wrap">
                 <table class="api-param-table">
                   <thead><tr><th>参数名</th><th>位置</th><th>类型</th><th>是否必填</th><th>字段说明</th></tr></thead>
                   <tbody>
                 <tr><td>X-API-Key</td><td>Header</td><td>String</td><td>是</td><td>LightRAG 控制面认证凭证；如部署改用 JWT 或网关鉴权，请按部署方约定替换为等价认证头。</td></tr>
-                <tr><td>Content-Type</td><td>Header</td><td>String</td><td>是</td><td>multipart/form-data，由 HTTP 客户端自动附带 boundary；仅兼容本地文件上传入口使用。</td></tr>
+                <tr><td>Content-Type</td><td>Header</td><td>String</td><td>是</td><td>multipart/form-data，由 HTTP 客户端自动附带 boundary；官方兼容上传入口使用。</td></tr>
                 <tr><td>Accept</td><td>Header</td><td>String</td><td>否</td><td>建议使用 application/json；流式接口可接收 application/x-ndjson 或 text/event-stream 形式的逐段输出。</td></tr>
-                <tr><td>file</td><td>Form</td><td>File</td><td>是</td><td>要上传的文件正文；该兼容入口会让 LightRAG API Pod 承载流量和临时落盘。</td></tr>
-                <tr><td>parser</td><td>Form</td><td>String</td><td>否</td><td>解析器提示；新集成建议优先走对象上传链路后再 complete。</td></tr>
+                <tr><td>file</td><td>Form</td><td>File</td><td>是</td><td>要上传的文件正文；API Pod 会承载该请求的数据面，后端可能写入本地输入目录或对象存储。</td></tr>
+                <tr><td>parser</td><td>Form</td><td>String</td><td>否</td><td>解析器提示；大文件新集成建议优先走 presigned 对象上传链路后再 complete。</td></tr>
                 <tr><td>chunking</td><td>Form</td><td>Object/String</td><td>否</td><td>分块选项；如客户端以字符串传递，服务端需能解析为合法配置。</td></tr>
                   </tbody>
                 </table>
@@ -1079,12 +1079,12 @@
             <div class="api-doc-section api-response">
               <h4>3. 响应结果（Response）</h4>
               <p><strong>返回格式：</strong>JSON 对象。</p>
-              <p><strong>响应字段：</strong>返回插入受理结果和 <code>track_id</code>；文件正文已经由 API 写入本地输入目录，但解析和索引仍然是异步流程，必须查询状态确认。</p>
+              <p><strong>响应字段：</strong>返回插入受理结果和 <code>track_id</code>；服务端已经完成持久入队，但解析和索引仍然是异步流程，必须查询状态确认。</p>
               <div class="api-table-wrap">
                 <table class="api-response-table">
                   <thead><tr><th>字段名</th><th>类型</th><th>字段说明</th></tr></thead>
                   <tbody>
-                <tr><td>status</td><td>String</td><td>本地上传受理结果。</td></tr>
+                <tr><td>status</td><td>String</td><td>官方上传受理结果。</td></tr>
                 <tr><td>message</td><td>String</td><td>上传或入队提示。</td></tr>
                 <tr><td>track_id</td><td>String</td><td>用于查询后续解析、抽取和索引状态。</td></tr>
                   </tbody>
@@ -1109,7 +1109,8 @@
                 <tr><td><code>400/422</code></td><td>文件名或处理选项非法</td><td>按参数表核对必填字段、类型、枚举值、路径参数和请求体格式。</td></tr>
                 <tr><td><code>409</code></td><td>同名文档冲突或 pipeline 控制面冲突</td><td>检查同名来源、并发操作、pipeline/admin 写入互斥或上传会话状态后再重试。</td></tr>
                 <tr><td><code>413</code></td><td>超过大小限制</td><td>压缩文件、拆分批次或重新申请符合大小限制的上传会话。</td></tr>
-                <tr><td><code>500</code></td><td>本地落盘或后端失败</td><td>记录响应中的安全错误摘要和请求 ID，交由平台侧排查后端日志。</td></tr>
+                <tr><td><code>503</code></td><td>对象存储未配置或暂时不可用，且本地文件摄取不可用</td><td>确认部署是否允许官方上传写入对象存储；稍后重试或联系平台侧排查对象存储 preflight。</td></tr>
+                <tr><td><code>500</code></td><td>持久化或后端失败</td><td>记录响应中的安全错误摘要和请求 ID，交由平台侧排查后端日志。</td></tr>
                   </tbody>
                 </table>
               </div>

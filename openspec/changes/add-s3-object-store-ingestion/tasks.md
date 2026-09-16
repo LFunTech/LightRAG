@@ -39,7 +39,7 @@
 - [x] 6.2 更新 Kustomize 测试部署：通过 Secret 注入对象存储凭据，object-backed 链路使用 `emptyDir` scratch，不创建共享 `INPUT_DIR` PVC。
 - [x] 6.3 更新 Woodpecker 部署验收：在 test 集群通过 presigned upload 或等价控制面直传对象、complete、处理、查询/状态、retry/delete 的最小真实链路。
 - [x] 6.4 确认 pipeline 日志不输出 presigned URL、access key、secret key、checksum 明文以外的敏感材料；失败日志只包含安全对象标识。
-- [x] 6.5 测试环境切换为 object-store-only profile：设置 `ENABLE_LOCAL_FILE_INGESTION=false`，并在服务端拒绝本地 `/documents/upload` 与 `/documents/scan`。
+- [x] 6.5 测试环境切换为 object-store-only profile：设置 `ENABLE_LOCAL_FILE_INGESTION=false`，拒绝 `/documents/scan` 和所有本地 `INPUT_DIR` 写入；在对象存储可用时，官方兼容 `POST /documents/upload` 必须走 S3-backed 入队路径而不是被拒绝。
 
 ## 7. 验证与收口
 
@@ -48,6 +48,17 @@
 - [x] 7.3 在本机或隔离 MinIO/COS 环境执行 object-backed 端到端 smoke，验证 API 不承载文件正文且 worker 从对象存储解析。
 - [ ] 7.4 触发 Woodpecker test tag，验证测试部署无共享 `INPUT_DIR` PVC 的 object-backed 摄取链路可用，并记录 pipeline/build/deploy 证据。
 - [x] 7.5 对照 spec 逐项更新任务和验证记录，列出仍未验证的环境限制或运维事项。
+
+## 8. 官方 API 兼容上传与公开文档边界
+
+- [x] 8.1 先写 API RED 测试：`ENABLE_LOCAL_FILE_INGESTION=false` 且对象存储可用时，`POST /documents/upload` 接收官方 multipart `file`，返回 `InsertResponse.track_id`，不写 `INPUT_DIR`，并持久记录 object-backed 文档源。
+- [x] 8.2 先写失败路径 RED 测试：对象存储不可用或未配置时 `/documents/upload` fail closed；`/documents/scan` 仍 403；middleware 不应在 S3-backed upload 可用时提前拒绝或读取无界请求体。
+- [x] 8.3 实现 `/documents/upload` 的后端选择：默认本地行为保持不变；object-store-only profile 下把 multipart 内容流式写入对象存储，复用 object-backed enqueue 公共函数，并通过受管理后台任务异步触发 pipeline。
+- [x] 8.4 补齐验证规则和清理语义：文件名、扩展名、大小、重复来源、parser/chunk options、上传中断、对象写入失败和入队失败均不得留下伪成功的文档状态或本地源文件。
+- [x] 8.5 调整本地文件入口 middleware 与配置导出，明确 `ENABLE_LOCAL_FILE_INGESTION=false` 禁止的是本地 `INPUT_DIR` 入口，不是官方 upload endpoint 本身；无对象存储能力时仍拒绝 `/documents/upload`。
+- [x] 8.6 更新公开 API 文档、中文文档和 WebUI 第三方对接页：只描述外部调用方式、认证、请求/响应、状态轮询、错误码和官方 upload / presign 两种流程；内部对象源、doc_status/full_docs、session storage、pipeline 调度和恢复细节不进入公开文档。
+- [ ] 8.7 通过测试环境 API 执行官方兼容上传 smoke：`POST /documents/upload` 上传小文档，轮询状态，执行 `/query/data`，删除清理；验收过程中不实际调用耗时 LLM 业务回答。
+- [x] 8.8 运行相关 mirror 测试、ruff、OpenSpec strict validation、`git diff --check`，并把新的验证记录追加到本文件。
 
 ## 验证记录
 
@@ -70,6 +81,11 @@
 - 2026-09-16 test 环境 object-store-only local ingress 禁用验证：先新增 RED 回归，确认缺少 `lightrag.api.local_file_ingestion_middleware` 且本地入口无禁用开关；修复后 `./scripts/test.sh tests/api/config/test_api_config_local_file_ingestion.py tests/api/test_local_file_ingestion_middleware.py tests/api/routes/test_local_file_ingestion_gate.py tests/api/routes/test_object_upload_routes.py tests/ci/test_kustomize_delivery.py tests/ci/test_test_environment_assets.py tests/ci/test_workflows.py` → 75 passed；扩大到 `./scripts/test.sh tests/api` → 1325 passed, 37 skipped；`./scripts/test.sh tests/ci` → 81 passed；`bun install --frozen-lockfile && bun test && bunx tsc --noEmit && bun run lint` → 638 frontend tests passed、typecheck passed、lint 0 errors/1 existing warning；`uv run ruff check ...`、`sh -n scripts/ci/deploy-test.sh`、`openspec validate add-s3-object-store-ingestion --strict`、`openspec validate --all --strict`、`git diff --check` 均通过。
 - 2026-09-16 deploy-test stale coordination fence 修复验证：pipeline #69 在旧 deploy acceptance 仍实际调用对象上传/重试业务 API，instance `03` 的 retry presign 返回 `CoordinationUnavailableError` 并遗留 workspace fence；pipeline #70 使用健康检查式 deploy acceptance 后，instance `03` 在 bootstrap 阶段因同一 stale fence 返回 `WorkspaceFencedError`。先新增 RED 回归 `test_deploy_test_script_recovers_fenced_workspace_before_bootstrap`，确认 `deploy-test.sh` 未在 `migrate_coordination_schema` 与 `bootstrap_storage_profile` 之间执行 recovery（1 failed）；修复后同一目标测试 1 passed，`./scripts/test.sh tests/ci` → 82 passed，`sh -n scripts/ci/deploy-test.sh` 通过。本次只在本地修复脚本与文档；7.4 仍需新 test tag 在远端验证 scoped audited recovery 和全实例 rollout。
 - 2026-09-16 deploy-test cold image pull timeout 修复验证：pipeline #71 证明 instance `01` 的 coordination inspect/recovery skip 和 bootstrap 均成功，但 rollout 因第二个 Pod 冷拉新镜像约 9m19s，超过脚本 `kubectl rollout status --timeout=600s` 而失败；失败后只读 K8s 检查显示 Deployment 已达到 `2/2 Ready` 且运行期望 digest，说明这是 rollout 等待窗口偏短导致的假失败。先新增 RED 回归 `test_deploy_test_script_allows_cold_image_pull_during_rollout`（1 failed），修复为 `LIGHTRAG_TEST_ROLLOUT_TIMEOUT_SECONDS` 可配置且默认 1200 秒后同一目标测试 1 passed；完整验证见本次后续记录。
+- 2026-09-16 object upload complete 异步化修复验证：确认 `/documents/uploads/complete` 在对象 HEAD、session complete、doc_status/full_docs 入队后仍同步 `await drive_pipeline(rag)`，导致 parse/LLM/index 耗时被压在 HTTP 请求内并可能触发 504。先新增 RED 回归 `test_complete_returns_after_enqueue_without_waiting_for_pipeline_drive`，用抛异常的 pipeline drive 证明当前 complete 会返回 500（1 failed）；修复为 complete 入队后通过 managed background task 触发 pipeline drive 后，同一目标测试 1 passed，`./scripts/test.sh tests/api/routes/test_object_upload_routes.py` → 15 passed；扩大到 `./scripts/test.sh tests/api/routes tests/api/config/test_object_storage_server.py tests/api/test_distributed_lifespan.py` → 657 passed, 27 skipped（存在既有 frontend build stale 警告）；`uv run ruff check lightrag/api/routers/document_routes.py tests/api/routes/test_object_upload_routes.py`、`openspec validate add-s3-object-store-ingestion --strict`、`openspec validate --all --strict`、`git diff --check` 均通过。
+- 2026-09-16 proposal 修订：第三方应用需要继续按官方 `POST /documents/upload` 调用，而测试环境仍要求完全禁止本地文件入口；因此原“object-store-only profile 拒绝 `/documents/upload`”合同已废弃，改为“拒绝本地 `INPUT_DIR` 写入和 `/documents/scan`，但在对象存储可用时 `/documents/upload` 走 S3-backed 官方兼容路径”。本条仅构建 proposal/design/spec/tasks，尚未实现。
+
+- 2026-09-16 官方兼容 `/documents/upload` S3-backed 实现验证：先按 TDD 新增 RED 回归，确认 `ENABLE_LOCAL_FILE_INGESTION=false` 时官方 upload 仍被本地入口 guard 拒绝、middleware 不接受 `object_upload_available`、无对象存储时仍返回旧 403（`./scripts/test.sh tests/api/routes/test_object_upload_routes.py tests/api/test_local_file_ingestion_middleware.py tests/api/routes/test_local_file_ingestion_gate.py -q` → 7 failed, 19 passed）；实现后同一目标测试 26 passed。随后扩大到 `./scripts/test.sh tests/api -q` → 1333 passed, 37 skipped（仅有既有 frontend build stale/workspace.html 警告）；WebUI 检查 `bun install --frozen-lockfile && bun test && bunx tsc --noEmit && bun run lint` → 638 frontend tests passed、typecheck passed、lint 0 errors/1 existing warning；`uv run ruff check .` → All checks passed；`openspec validate add-s3-object-store-ingestion --strict` → valid；`openspec validate --all --strict` → 4 passed, 0 failed；`git diff --check` 通过。公开对接页新增回归确保不发布 `object_source`、`doc_status`、`full_docs` 等内部存储合同。
+- 2026-09-16 最终本地收口验证：官方兼容 upload 已改为通过 object-store `put_fileobj` 传输 multipart 文件流，避免写入 `INPUT_DIR` 或把完整文件拼接为 bytes 后再上传；fake store 覆盖该接口并保留失败注入能力。Fresh 验证：`./scripts/test.sh tests/api -q` → 1333 passed, 37 skipped（仅有既有 frontend build stale/workspace.html 警告）；`./scripts/test.sh tests/object_storage -q` → 11 passed；`bun install --frozen-lockfile && bun test && bunx tsc --noEmit && bun run lint` → 638 frontend tests passed、typecheck passed、lint 0 errors/1 existing warning；`uv run ruff check .` → All checks passed；`openspec validate add-s3-object-store-ingestion --strict` → valid；`openspec validate --all --strict` → 4 passed, 0 failed；`git diff --check` 通过。
 
 ## 未完成/待远端验证
 
@@ -77,3 +93,4 @@
 - 2026-09-15 `v1.5.49-test` / pipeline #60 已通过源码归档、Kaniko build、pre-deploy image verification、storage preflight、coordination migration 和 storage bootstrap，随后在 Deployment rollout 阶段失败。Pod startup 日志显示 object upload session 的 `upload_sessions` KV storage 是在 LightRAG 主 storage 列表之外创建的，未绑定 distributed runtime，且初始化没有处于 runtime operation 中；同源问题也会影响 presign/complete 路由的 session 写入。已修复为构建 object upload components 时绑定 runtime，并在 startup 与上传路由中进入显式 distributed operation；7.4 仍需新 test tag 在远端重新验证完整 rollout、对外 Ingress 和 object-backed 摄取链路。
 - 2026-09-16 `v1.5.57-test` / pipeline #70 已确认 deploy-test 不再需要实际业务调用即可发现运行状态，但因 pipeline #69 遗留的 fenced workspace 在 instance `03` bootstrap 停止。已补充 deploy-test 的 drained test workspace audited recovery；7.4 仍需新 tag 验证该 recovery 后能继续 bootstrap、rollout 与健康检查。
 - 2026-09-16 `v1.5.58-test` / pipeline #71 已确认 scoped audited recovery 不再阻塞 instance `01`，但仍因冷拉镜像超过 600 秒 rollout timeout 停止；已将 rollout/Pod Ready 等待默认提高到 1200 秒并保留环境变量覆盖。7.4 仍需新 tag 验证全实例 rollout、Service route restore 和公共 `/health`。
+- 2026-09-16 官方 API 兼容上传已完成本地实现与回归验证；仍需在测试环境 API 上执行 8.7 smoke（`POST /documents/upload` 小文档、状态轮询、`/query/data`、删除清理，且不实际触发耗时 LLM 业务回答）。

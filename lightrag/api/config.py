@@ -1019,9 +1019,10 @@ def parse_args() -> argparse.Namespace:
         "MAX_UPLOAD_SIZE", 104857600, int, special_none=True
     )
 
-    # Local file ingestion controls the legacy INPUT_DIR entry points:
-    # /documents/upload and /documents/scan. It stays enabled by default for
-    # compatibility; object-store-only deployments disable it explicitly.
+    # Local file ingestion controls local INPUT_DIR entry points. /documents/scan
+    # is always local and is disabled by this flag; /documents/upload keeps the
+    # official API shape and uses object storage instead when object-store
+    # ingestion is configured. It stays enabled by default for compatibility.
     args.enable_local_file_ingestion = get_env_value(
         "ENABLE_LOCAL_FILE_INGESTION", True, bool
     )

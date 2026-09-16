@@ -1,6 +1,6 @@
 # S3-compatible 对象存储摄取运维手册
 
-对象存储摄取是可选文档来源，适用于希望客户端把大文件直接上传到 S3-compatible 存储的部署。它是增量能力：未启用时，本地 `/documents/upload`、`/documents/scan`、SDK 文本写入、`INPUT_DIR` 和本地 parsed sidecar 行为保持不变。运维也可以额外设置 `ENABLE_LOCAL_FILE_INGESTION=false` 进入 object-store-only 模式：保留 presign/complete 与文本摄取接口，但拒绝 `/documents/upload` 和 `/documents/scan`。
+对象存储摄取是可选文档来源，适用于希望客户端把大文件直接上传到 S3-compatible 存储的部署。它是增量能力：未启用时，本地 `/documents/upload`、`/documents/scan`、SDK 文本写入、`INPUT_DIR` 和本地 parsed sidecar 行为保持不变。运维也可以额外设置 `ENABLE_LOCAL_FILE_INGESTION=false` 进入 object-store-only 模式：拒绝 `/documents/scan` 和本地 `INPUT_DIR` 写入；在对象存储已配置时，官方兼容 `POST /documents/upload`、presign/complete 与文本摄取接口仍可用。
 
 面向第三方应用的公开对接文档通过 WebUI 静态路径发布：
 `/webui/docs/third-party-object-upload-integration/`。该页面只包含调用流程与示例占位符，不包含真实密钥、Secret 名称或环境专用连接信息。
@@ -28,7 +28,7 @@ ENABLE_LOCAL_FILE_INGESTION=false
 
 启用后，服务启动会初始化 upload session KV namespace 并执行对象存储 preflight。缺少 endpoint、bucket、access key、secret key，或 bucket 权限不可用时会 fail closed，不会把 object-backed 请求静默回退为本地上传。
 
-内置 WebUI 的上传弹窗会在对象存储摄取已配置时自动使用该流程。只有服务端明确返回“对象存储文档摄取未配置”且本地文件摄取仍启用时，WebUI 才保留既有的本地 `/documents/upload` 路径；object-store-only 部署会收到服务端 403 本地入口拒绝。其它 presign 或对象存储错误会直接暴露，不会被本地上传 fallback 掩盖。
+内置 WebUI 的上传弹窗会在对象存储摄取已配置时优先使用 presign 流程。若 presign 未配置，WebUI 仍可调用官方 `/documents/upload` API：本地文件摄取启用时它写入 `INPUT_DIR`；`ENABLE_LOCAL_FILE_INGESTION=false` 且对象存储已配置时，它接收同样的 multipart 请求但写入对象存储并在持久入队后返回。其它 presign 或对象存储错误会直接暴露，不会被本地上传 fallback 掩盖。
 
 ## 客户端流程
 
@@ -36,7 +36,7 @@ ENABLE_LOCAL_FILE_INGESTION=false
 2. 使用响应里的 method 和 headers，把文件字节直接上传到 `upload_url`。
 3. 调用 `POST /documents/uploads/complete`，提交 `upload_id` 与 `object_key`。
 
-对象 key 由服务端生成，并绑定到 upload session 与 workspace。创建 session 时客户端提供的 object key 会被忽略；complete 时如果 key 与签发记录不一致会被拒绝。complete 会先对对象执行 `HEAD` 校验，确认 size/content type/checksum 等元数据匹配后才入队。
+对象 key 由服务端生成，并绑定到 upload session 与 workspace。创建 session 时客户端提供的 object key 会被忽略；complete 时如果 key 与签发记录不一致会被拒绝。complete 会先对对象执行 `HEAD` 校验，确认 size/content type/checksum 等元数据匹配后才入队。complete 响应只表示对象源文档已经持久入队；解析、分块、LLM 抽取和索引会在受管理的后台任务中继续执行。客户端应使用响应中的 `track_id` 调用 `GET /documents/track_status/{track_id}` 查看最终处理状态，而不是长时间保持 complete 请求。
 
 `file_path` 仍然是面向用户展示的来源文件名；S3 bucket、key、size、content type、checksum、ETag、upload id 和 parsed-artifact prefix 都写入 `object_source` metadata。
 
@@ -56,7 +56,7 @@ object-backed 分布式 profile 使用：
 - Kubernetes Secret 注入 S3-compatible 凭据；
 - `S3_SCRATCH_DIR` 使用每 Pod 的 `emptyDir` 等临时存储。
 
-本地 `/documents/upload` 与 `/documents/scan` 仍需要处理该本地文件的 Pod 可见对应文件系统。只有验收路径完全使用 object-backed API 时，移除共享 `INPUT_DIR` PVC 才是安全的；此时应设置 `ENABLE_LOCAL_FILE_INGESTION=false`，避免客户端误入本地 `INPUT_DIR` 链路。
+本地 scan 仍需要处理该本地文件的 Pod 可见对应文件系统。只有 profile 完全使用 object-backed 文档入口时，移除共享 `INPUT_DIR` PVC 才是安全的；此时应设置 `ENABLE_LOCAL_FILE_INGESTION=false`，拒绝 `POST /documents/scan` 和本地 `INPUT_DIR` 写入。该 profile 下官方 multipart `POST /documents/upload` 仍可用，是因为它改写入对象存储而不是 `INPUT_DIR`。
 
 ## 清理与重试
 

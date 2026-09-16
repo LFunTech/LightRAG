@@ -2,10 +2,11 @@
 
 ``/documents/upload`` normally parses a multipart body before the FastAPI route
 can decide anything, and ``/documents/scan`` consumes the local ``INPUT_DIR``.
-Deployments that are object-store-only need both entry points closed. The route
-handlers keep an in-process guard for tests and embedded apps, while this ASGI
-middleware avoids reading an upload body at all when the server is configured
-with ``ENABLE_LOCAL_FILE_INGESTION=false``.
+Deployments that are object-store-only need the local scan closed, and they need
+``/documents/upload`` closed before reading the body unless the S3-backed
+official upload path is available. The route handlers keep an in-process guard
+for tests and embedded apps, while this ASGI middleware avoids reading an upload
+body at all when it cannot be accepted safely.
 """
 
 from __future__ import annotations
@@ -16,8 +17,9 @@ from .asgi_helpers import send_json
 from .utils_api import get_route_path
 
 LOCAL_FILE_INGESTION_DISABLED_DETAIL = (
-    "Local file ingestion is disabled. Use the object-store upload endpoints "
-    "/documents/uploads/presign and /documents/uploads/complete for file ingestion."
+    "Local file ingestion is disabled. Configure object-store ingestion for "
+    "official /documents/upload support, or use /documents/uploads/presign and "
+    "/documents/uploads/complete when object-store ingestion is available."
 )
 
 LOCAL_FILE_INGESTION_PATHS: tuple[str, ...] = (
@@ -34,16 +36,21 @@ class LocalFileIngestionMiddleware:
         app,
         *,
         enabled: bool = True,
+        object_upload_available: bool = False,
         api_prefix: str = "",
     ) -> None:
         self.app = app
         self._enabled = bool(enabled)
+        self._object_upload_available = bool(object_upload_available)
         self._api_prefix = (api_prefix or "").rstrip("/")
 
     def _is_local_file_ingestion_path(self, scope: dict[str, Any]) -> bool:
         if scope.get("method") != "POST":
             return False
-        return get_route_path(scope, self._api_prefix) in LOCAL_FILE_INGESTION_PATHS
+        route_path = get_route_path(scope, self._api_prefix)
+        if route_path == "/documents/upload" and self._object_upload_available:
+            return False
+        return route_path in LOCAL_FILE_INGESTION_PATHS
 
     async def __call__(self, scope, receive, send) -> None:
         if (

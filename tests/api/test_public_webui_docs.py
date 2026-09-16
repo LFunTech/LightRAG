@@ -37,6 +37,15 @@ FORBIDDEN_PUBLIC_DOC_TOKENS = (
     "POSTGRES_PASSWORD",
 )
 
+FORBIDDEN_PUBLIC_DOC_INTERNAL_TOKENS = (
+    "object_source",
+    "full_docs",
+    "doc_status",
+    "upload session storage namespace",
+    "distributed pipeline scheduling",
+    "pipeline fence",
+)
+
 THIRD_PARTY_ENDPOINTS_WITH_DETAIL = (
     "POST /documents/uploads/presign",
     "POST /documents/uploads/complete",
@@ -426,3 +435,10 @@ def test_third_party_object_upload_doc_does_not_publish_secret_material():
     text = _public_doc_text()
     assert "https://&lt;lightrag-host&gt;" in text
     assert "&lt;your-lightrag-api-key&gt;" in text
+
+
+def test_third_party_object_upload_doc_omits_internal_storage_contracts():
+    text = _public_doc_text()
+
+    for token in FORBIDDEN_PUBLIC_DOC_INTERNAL_TOKENS:
+        assert token not in text

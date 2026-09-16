@@ -528,11 +528,9 @@ server {
 2. 按响应里的 method 和 headers，把字节直接上传到返回的 `upload_url`。
 3. 调用 `POST /documents/uploads/complete`，提交返回的 `upload_id` 与 `object_key`。
 
-服务端拥有 object key，签名前拒绝危险文件名和超大文件，complete 时用 `HEAD` 校验对象，并且只有签发 key、size、content type 和必需 checksum 全部匹配后才入队。持久化文档继续用 `file_path` 表示面向用户的规范来源名；S3 bucket/key/etag/size/session 写入显式 `object_source` metadata。
+服务端拥有 object key，签名前拒绝危险文件名和超大文件，complete 时用 `HEAD` 校验对象，并且只有签发 key、size、content type 和必需 checksum 全部匹配后才入队。`complete` 会在持久入队后返回；解析、分块、LLM 抽取和索引继续在后台执行，客户端应轮询 `GET /documents/track_status/{track_id}`。持久化文档继续用 `file_path` 表示面向用户的规范来源名；S3 bucket/key/etag/size/session 写入显式 `object_source` metadata。
 
-对于 object-store-only 部署，设置 `ENABLE_LOCAL_FILE_INGESTION=false`。
-服务端会用 403 拒绝本地 `/documents/upload` 与 `/documents/scan`，不接受本地
-`INPUT_DIR` 工作；presign/complete 与 `/documents/text*` 仍可用。
+对于 object-store-only 部署，在已配置对象存储摄取的同时设置 `ENABLE_LOCAL_FILE_INGESTION=false`。服务端会拒绝 `/documents/scan` 和本地 `INPUT_DIR` 写入，但官方兼容 `POST /documents/upload` 仍接收 multipart 文件，并改为写入对象存储、持久入队后返回；presign/complete 与 `/documents/text*` 也仍可用。若关闭本地文件摄取但未配置对象存储，`/documents/upload` 会 fail closed，不会静默写回本地目录。
 
 启用时必填 `S3_ENDPOINT_URL`、`S3_BUCKET`、`S3_ACCESS_KEY_ID` 和 `S3_SECRET_ACCESS_KEY`；`S3_OBJECT_PREFIX`、`S3_FORCE_PATH_STYLE`、TTL 与 `S3_SCRATCH_DIR` 可选。凭据应来自 Secret 管理器或 Kubernetes Secret。启用后若 bucket 或凭据不可用，启动 preflight 会 fail closed。运维细节见 [S3ObjectStoreIngestion-zh.md](./S3ObjectStoreIngestion-zh.md)；面向第三方应用的公开对接页为 `/webui/docs/third-party-object-upload-integration/`，该页面不包含真实密钥或环境 Secret 信息。
 

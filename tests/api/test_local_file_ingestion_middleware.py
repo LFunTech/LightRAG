@@ -110,3 +110,40 @@ async def test_api_prefix_is_stripped_before_matching():
     assert recorder.status == 403
     assert recorder.receives == 0
     assert downstream.calls == 0
+
+
+async def test_disabled_upload_passes_through_when_object_upload_is_available():
+    downstream = _Downstream()
+    recorder = _Recorder()
+
+    await LocalFileIngestionMiddleware(
+        downstream,
+        enabled=False,
+        object_upload_available=True,
+    )(
+        _scope(headers=[(b"content-length", b"128")]),
+        recorder.receive,
+        recorder.send,
+    )
+
+    assert recorder.status == 204
+    assert downstream.calls == 1
+
+
+async def test_disabled_scan_is_refused_even_when_object_upload_is_available():
+    downstream = _Downstream()
+    recorder = _Recorder()
+
+    await LocalFileIngestionMiddleware(
+        downstream,
+        enabled=False,
+        object_upload_available=True,
+    )(
+        _scope(path="/documents/scan"),
+        recorder.receive,
+        recorder.send,
+    )
+
+    assert recorder.status == 403
+    assert recorder.receives == 0
+    assert downstream.calls == 0

@@ -1897,11 +1897,13 @@ def create_app(args):
 
     # Object-store-only deployments must not accept local INPUT_DIR entry
     # points. Added after the body-limit/admission middleware so it ends up
-    # outside them and refuses /documents/upload before multipart parsing,
-    # without taking a capacity slot. CORS is still added last and wraps it.
+    # outside them and refuses /documents/upload before multipart parsing when
+    # no object-store backend can accept that official upload shape. CORS is
+    # still added last and wraps it.
     app.add_middleware(
         LocalFileIngestionMiddleware,
         enabled=getattr(args, "enable_local_file_ingestion", True),
+        object_upload_available=bool(getattr(args, "object_storage_enabled", False)),
         api_prefix=api_prefix,
     )
 

@@ -528,14 +528,11 @@ Object-store ingestion is disabled by default and does not change `/documents/up
 2. Upload the bytes directly to the returned `upload_url` using the returned method and headers.
 3. `POST /documents/uploads/complete` with the returned `upload_id` and `object_key`.
 
-The server owns the object key, rejects unsafe filenames and oversized files before signing, verifies the object with `HEAD` on completion, and enqueues the document only after the issued key, size, content type, and required checksum match. The persisted document keeps `file_path` as the canonical user-visible source name; the S3 bucket/key/etag/size/session live in explicit `object_source` metadata.
+The server owns the object key, rejects unsafe filenames and oversized files before signing, verifies the object with `HEAD` on completion, and enqueues the document only after the issued key, size, content type, and required checksum match. `complete` returns after that durable queueing step; parsing, chunking, LLM extraction and indexing continue in background, so clients should poll `GET /documents/track_status/{track_id}`. The persisted document keeps `file_path` as the canonical user-visible source name; the S3 bucket/key/etag/size/session live in explicit `object_source` metadata.
 
-The bundled WebUI upload dialog attempts this object-store path first. It falls back to `/documents/upload` only when the server explicitly reports that object-store ingestion is not configured and local file ingestion is enabled; presign, coordination, object-store service failures, and object-store-only 403 refusals remain visible to the user.
+The bundled WebUI upload dialog attempts the presigned object-store path first. It falls back to the official `POST /documents/upload` API only when presign is not configured. In the default local-ingestion profile that endpoint keeps writing to `INPUT_DIR`; in object-store-only deployments it keeps the same multipart request/`InsertResponse` shape but writes the uploaded file to object storage and returns after durable enqueue. Presign, coordination, and object-store service failures remain visible instead of being hidden by a local fallback.
 
-For object-store-only deployments, set `ENABLE_LOCAL_FILE_INGESTION=false`.
-The server then rejects local `/documents/upload` and `/documents/scan` with
-403 before accepting local work; presign/complete and `/documents/text*` remain
-available.
+For object-store-only deployments, set `ENABLE_LOCAL_FILE_INGESTION=false` while object-store ingestion is configured. The server then rejects `/documents/scan` and local `INPUT_DIR` writes, but official `POST /documents/upload`, presign/complete, and `/documents/text*` remain available. If local file ingestion is disabled without object-store ingestion, `/documents/upload` fails closed instead of silently writing to local storage.
 
 Required runtime settings are `S3_ENDPOINT_URL`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY`; `S3_OBJECT_PREFIX`, `S3_FORCE_PATH_STYLE`, TTLs, and `S3_SCRATCH_DIR` are optional. Inject credentials from a secret manager or Kubernetes Secret. Startup preflight fails closed when object ingestion is enabled but the bucket or credentials are unusable. See [S3ObjectStoreIngestion.md](./S3ObjectStoreIngestion.md) for the operator runbook; the public third-party integration page is available at `/webui/docs/third-party-object-upload-integration/` and contains no real credentials or environment Secret details.
 

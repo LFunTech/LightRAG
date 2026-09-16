@@ -1,6 +1,6 @@
 ## Purpose
 
-提供一条可选的原生 S3-compatible 文档摄取链路，使外部应用能够直传大文件到对象存储，并让 LightRAG 以对象引用驱动后续解析、索引、重试和删除，同时保持既有本地上传与目录扫描行为兼容。
+提供一条可选的原生 S3-compatible 文档摄取链路，使外部应用既可以按官方 `POST /documents/upload` API 上传文件，也可以通过 presigned flow 直传大文件到对象存储，并让 LightRAG 以对象引用驱动后续解析、索引、重试和删除，同时保持未启用对象存储时的既有本地上传与目录扫描行为兼容。
 
 ## ADDED Requirements
 
@@ -17,8 +17,42 @@ The system SHALL provide object-store ingestion as an opt-in capability without 
 
 #### Scenario: Operator disables local file entry points
 - **WHEN** the server starts with object-store ingestion configured and `ENABLE_LOCAL_FILE_INGESTION=false`
-- **THEN** `POST /documents/upload` and `POST /documents/scan` are rejected with a forbidden response without writing a local upload or scheduling an input-directory scan
+- **THEN** `POST /documents/scan` is rejected with a forbidden response without scheduling an input-directory scan
+- **AND** `POST /documents/upload` remains available as an official-compatible S3-backed upload endpoint that does not write to `INPUT_DIR`
 - **AND** `POST /documents/uploads/presign`, `POST /documents/uploads/complete`, and text insertion remain available according to their own configuration and validation rules
+
+#### Scenario: Local file entry points disabled without object store
+- **WHEN** the server starts without object-store ingestion configured and `ENABLE_LOCAL_FILE_INGESTION=false`
+- **THEN** `POST /documents/upload` and `POST /documents/scan` are rejected instead of silently writing to local storage
+
+### Requirement: Official-compatible S3-backed upload
+The system SHALL preserve the official `POST /documents/upload` multipart API shape for third-party clients while using object storage as the durable file source whenever local file ingestion is disabled and object-store ingestion is available.
+
+#### Scenario: Multipart upload succeeds in object-store-only profile
+- **WHEN** an authenticated client posts a valid multipart `file` to `POST /documents/upload` while object-store ingestion is configured and `ENABLE_LOCAL_FILE_INGESTION=false`
+- **THEN** the system stores the uploaded file in object storage under a server-owned object record
+- **AND** it enqueues the document through the object-backed pipeline
+- **AND** it returns the standard insert response containing a `track_id`
+
+#### Scenario: Official upload does not create an input-dir file
+- **WHEN** `POST /documents/upload` succeeds in object-store-only profile
+- **THEN** no source file is written to `INPUT_DIR`
+- **AND** a later worker can process the document without relying on the upload-handling Pod's local filesystem
+
+#### Scenario: Official upload remains asynchronous
+- **WHEN** `POST /documents/upload` has stored the object and durably enqueued the document
+- **THEN** the HTTP response is returned without waiting for parsing, LLM extraction, graph indexing, or vector indexing to finish
+- **AND** clients use the returned `track_id` and existing status APIs to observe final processing state
+
+#### Scenario: Official upload fails closed when object storage is unavailable
+- **WHEN** local file ingestion is disabled and object-store ingestion is configured but temporarily unavailable or fails preflight
+- **THEN** `POST /documents/upload` fails with a clear error
+- **AND** the system does not fall back to writing the file into `INPUT_DIR`
+
+#### Scenario: Official upload validation stays compatible
+- **WHEN** a multipart upload uses an unsafe filename, unsupported extension, oversized body, duplicate active source name, or invalid parser/chunk options
+- **THEN** the system rejects the request with the same externally observable validation semantics used by the official upload API
+- **AND** it does not leave a committed document record for the rejected upload
 
 ### Requirement: Presigned upload sessions
 The system SHALL allow an authenticated client to create a bounded upload session for one document object and receive a presigned S3-compatible upload URL plus the headers and expiry needed to upload directly to object storage.
@@ -127,4 +161,20 @@ The system SHALL expose object-store configuration as explicit runtime configura
 #### Scenario: Test deployment without shared input PVC
 - **WHEN** the Kubernetes test deployment is configured to exercise object-store ingestion
 - **THEN** it can run multiple Pods without a shared `INPUT_DIR` PVC, using object storage for source files and parsed artifacts and local ephemeral storage only for scratch processing
-- **AND** local `/documents/upload` and `/documents/scan` entry points are disabled for that test profile
+- **AND** `/documents/scan` and all local `INPUT_DIR` writes are disabled for that test profile
+- **AND** official-compatible `POST /documents/upload` remains available by writing to object storage
+
+### Requirement: Third-party API documentation boundary
+The system SHALL document third-party integration in terms of external API contracts rather than exposing internal object-store, pipeline, or storage implementation details.
+
+#### Scenario: Public document upload instructions
+- **WHEN** a third-party developer reads the public API documentation
+- **THEN** the documentation explains how to call `POST /documents/upload`, how to call the optional presigned upload flow, how to authenticate, what request and response fields mean, which status endpoint to poll, and how common errors should be handled
+
+#### Scenario: Internal implementation details omitted from public docs
+- **WHEN** the public API documentation describes S3-backed ingestion
+- **THEN** it does not expose internal `object_source` metadata, `full_docs` or `doc_status` storage fields, upload session storage namespaces, object key generation rules, distributed pipeline scheduling, locks, fences, or recovery mechanics as third-party API obligations
+
+#### Scenario: Internal docs may describe implementation
+- **WHEN** maintainers need to reason about consistency, recovery, or deployment internals
+- **THEN** those details are kept in OpenSpec, internal design documents, runbooks, or code-level contracts rather than the third-party integration guide

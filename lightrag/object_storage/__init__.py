@@ -100,6 +100,15 @@ class ObjectStore(Protocol):
         metadata: dict[str, str] | None = None,
     ) -> ObjectMetadata: ...
 
+    async def put_fileobj(
+        self,
+        key: str,
+        fileobj,
+        *,
+        content_type: str | None = None,
+        metadata: dict[str, str] | None = None,
+    ) -> ObjectMetadata: ...
+
     async def delete_object(self, key: str) -> bool: ...
 
     async def list_keys(self, prefix: str) -> list[str]: ...
@@ -206,6 +215,22 @@ class FakeObjectStore:
         )
         self._objects[key] = (payload, obj_meta)
         return obj_meta
+
+    async def put_fileobj(
+        self,
+        key: str,
+        fileobj,
+        *,
+        content_type: str | None = None,
+        metadata: dict[str, str] | None = None,
+    ) -> ObjectMetadata:
+        fileobj.seek(0)
+        return await self.put_bytes(
+            key,
+            fileobj.read(),
+            content_type=content_type,
+            metadata=metadata,
+        )
 
     async def delete_object(self, key: str) -> bool:
         key = self.config.scoped_key(key)
@@ -353,6 +378,32 @@ class S3ObjectStore:
         key = self.config.scoped_key(key)
         payload = bytes(data)
         args: dict[str, Any] = {"Bucket": self.config.bucket, "Key": key, "Body": payload}
+        if content_type:
+            args["ContentType"] = content_type
+        if metadata:
+            args["Metadata"] = {str(k): str(v) for k, v in metadata.items()}
+        try:
+            async with self._session().client("s3", **self._client_kwargs()) as client:
+                await client.put_object(**args)
+        except Exception as exc:  # pragma: no cover - exercised by integration
+            raise ObjectStoreUnavailableError(f"failed to write object: {key}") from exc
+        return await self.head_object(key)
+
+    async def put_fileobj(
+        self,
+        key: str,
+        fileobj,
+        *,
+        content_type: str | None = None,
+        metadata: dict[str, str] | None = None,
+    ) -> ObjectMetadata:
+        key = self.config.scoped_key(key)
+        fileobj.seek(0)
+        args: dict[str, Any] = {
+            "Bucket": self.config.bucket,
+            "Key": key,
+            "Body": fileobj,
+        }
         if content_type:
             args["ContentType"] = content_type
         if metadata:

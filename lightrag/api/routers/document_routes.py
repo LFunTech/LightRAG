@@ -1804,6 +1804,12 @@ async def _reserve_enqueue_slot(
         )
     except PipelineNotInitializedError:
         return False
+    except ValueError as exc:
+        if get_runtime(rag) is None and "Shared dictionaries not initialized" in str(
+            exc
+        ):
+            return False
+        raise
     pipeline_status_lock = get_namespace_lock(
         "pipeline_status", workspace=rag.workspace
     )
@@ -4899,6 +4905,140 @@ def create_document_routes(
                 ),
             )
 
+    def _resolve_object_upload_enqueue_options(
+        directives: ParserDirectives,
+    ) -> tuple[str, str, dict[str, Any] | None]:
+        active_strategy = parse_process_options(directives.process_options).chunking
+        hint_chunk_options = None
+        hint_chunk_params = directives.chunk_params.get(active_strategy)
+        if hint_chunk_params:
+            try:
+                strategy_key = chunk_strategy_key(directives.process_options)
+                hint_chunk_options = resolve_chunk_options(
+                    rag.addon_params, process_options=directives.process_options
+                )
+                hint_chunk_options[strategy_key].update(hint_chunk_params)
+                _validate_effective_chunk_overlap(
+                    hint_chunk_options, strategy_key, strategy_key
+                )
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid chunking configuration: {exc}",
+                ) from exc
+        parse_engine_field = encode_parse_engine(
+            directives.engine, directives.engine_params
+        )
+        return parse_engine_field, directives.process_options, hint_chunk_options
+
+    async def _enqueue_completed_object_upload_session(
+        completed: Any,
+        directives: ParserDirectives,
+        *,
+        track_id: str,
+    ) -> None:
+        existing_doc_data = await get_existing_doc_by_file_path_candidates(
+            rag.doc_status, Path(completed.canonical_file_path)
+        )
+        if existing_doc_data:
+            status = get_doc_status_value(existing_doc_data) or "unknown"
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Document storage already contains '{completed.canonical_file_path}' "
+                    f"(Status: {status}). Delete the existing record before re-uploading."
+                ),
+            )
+
+        parse_engine_field, process_options, hint_chunk_options = (
+            _resolve_object_upload_enqueue_options(directives)
+        )
+        object_source = {
+            "source_kind": "s3_object",
+            "bucket": completed.bucket,
+            "object_key": completed.object_key,
+            "etag": completed.object_etag,
+            "size": completed.object_size,
+            "content_type": completed.object_content_type or completed.content_type,
+            "checksum_sha256": completed.checksum_sha256,
+            "upload_id": completed.upload_id,
+        }
+        enqueue_kwargs: dict[str, Any] = {
+            "input": "",
+            "file_paths": completed.canonical_file_path,
+            "track_id": track_id,
+            "docs_format": FULL_DOCS_FORMAT_PENDING_PARSE,
+            "parse_engine": parse_engine_field,
+            "process_options": process_options,
+            "object_source": object_source,
+        }
+        if hint_chunk_options is not None:
+            enqueue_kwargs["chunk_options"] = hint_chunk_options
+        await rag.apipeline_enqueue_documents(**enqueue_kwargs)
+
+    async def _resolve_upload_file_size(
+        file: UploadFile, safe_filename: str
+    ) -> int:
+        file_size = getattr(file, "size", None)
+        if file_size is not None:
+            _enforce_object_upload_size(file_size)
+            await file.seek(0)
+            return int(file_size)
+        else:
+            logger.debug(
+                f"File size not available in UploadFile for {safe_filename}, will check during streaming"
+            )
+
+        bytes_read = 0
+        chunk_size = 1024 * 1024
+        while True:
+            chunk = await file.read(chunk_size)
+            if not chunk:
+                break
+            bytes_read += len(chunk)
+            _enforce_object_upload_size(bytes_read)
+        await file.seek(0)
+        return bytes_read
+
+    async def _put_upload_file_to_object_store(
+        store: ObjectStore,
+        key: str,
+        file: UploadFile,
+        *,
+        content_type: str,
+        size: int,
+    ):
+        put_fileobj = getattr(store, "put_fileobj", None)
+        metadata = {"size": str(size)}
+        if put_fileobj is not None:
+            return await put_fileobj(
+                key,
+                file.file,
+                content_type=content_type,
+                metadata=metadata,
+            )
+        return await store.put_bytes(
+            key,
+            await file.read(),
+            content_type=content_type,
+            metadata=metadata,
+        )
+
+    async def _drive_after_object_enqueue(managed_tasks: set) -> None:
+        async def _drive_after_upload(started):
+            started.set()
+            await drive_pipeline(rag)
+
+        async def _drive_backstop():
+            pass
+
+        await start_background_task(
+            rag,
+            managed_tasks,
+            work=_drive_after_upload,
+            backstop_release=_drive_backstop,
+        )
+
     @router.post(
         "/uploads/presign",
         response_model=ObjectUploadPresignResponse,
@@ -4951,7 +5091,10 @@ def create_document_routes(
         response_model=InsertResponse,
         dependencies=[Depends(combined_auth)],
     )
-    async def complete_object_upload(request: ObjectUploadCompleteRequest):
+    async def complete_object_upload(
+        request: ObjectUploadCompleteRequest,
+        managed_tasks: set = Depends(get_managed_background_tasks),
+    ):
         """Verify a direct object upload and enqueue it as an object-backed document."""
 
         store, sessions = _require_object_upload_components()
@@ -4997,64 +5140,11 @@ def create_document_routes(
             except ObjectStoreError as exc:
                 raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-            existing_doc_data = await get_existing_doc_by_file_path_candidates(
-                rag.doc_status, Path(completed.canonical_file_path)
-            )
-            if existing_doc_data:
-                status = get_doc_status_value(existing_doc_data) or "unknown"
-                raise HTTPException(
-                    status_code=409,
-                    detail=(
-                        f"Document storage already contains '{completed.canonical_file_path}' "
-                        f"(Status: {status}). Delete the existing record before re-uploading."
-                    ),
-                )
-
             directives = resolve_parser_directives(completed.filename)
-            active_strategy = parse_process_options(directives.process_options).chunking
-            hint_chunk_options = None
-            hint_chunk_params = directives.chunk_params.get(active_strategy)
-            if hint_chunk_params:
-                try:
-                    strategy_key = chunk_strategy_key(directives.process_options)
-                    hint_chunk_options = resolve_chunk_options(
-                        rag.addon_params, process_options=directives.process_options
-                    )
-                    hint_chunk_options[strategy_key].update(hint_chunk_params)
-                    _validate_effective_chunk_overlap(
-                        hint_chunk_options, strategy_key, strategy_key
-                    )
-                except ValueError as exc:
-                    raise HTTPException(
-                        status_code=422,
-                        detail=f"Invalid chunking configuration: {exc}",
-                    ) from exc
-            parse_engine_field = encode_parse_engine(
-                directives.engine, directives.engine_params
-            )
             track_id = generate_track_id("upload")
-            object_source = {
-                "source_kind": "s3_object",
-                "bucket": completed.bucket,
-                "object_key": completed.object_key,
-                "etag": completed.object_etag,
-                "size": completed.object_size,
-                "content_type": completed.object_content_type or completed.content_type,
-                "checksum_sha256": completed.checksum_sha256,
-                "upload_id": completed.upload_id,
-            }
-            enqueue_kwargs: dict[str, Any] = {
-                "input": "",
-                "file_paths": completed.canonical_file_path,
-                "track_id": track_id,
-                "docs_format": FULL_DOCS_FORMAT_PENDING_PARSE,
-                "parse_engine": parse_engine_field,
-                "process_options": directives.process_options,
-                "object_source": object_source,
-            }
-            if hint_chunk_options is not None:
-                enqueue_kwargs["chunk_options"] = hint_chunk_options
-            await rag.apipeline_enqueue_documents(**enqueue_kwargs)
+            await _enqueue_completed_object_upload_session(
+                completed, directives, track_id=track_id
+            )
             try:
                 await sessions.mark_enqueued(
                     completed.upload_id,
@@ -5069,15 +5159,134 @@ def create_document_routes(
                     completed.upload_id,
                     session_error,
                 )
-            await drive_pipeline(rag)
+        # Keep /documents/uploads/complete a control-plane request: object HEAD,
+        # metadata validation and enqueue happen before the response, while the
+        # potentially long parse/LLM/index drive follows the same managed
+        # background-task pattern as /documents/upload and /documents/text.
+        await _drive_after_object_enqueue(managed_tasks)
+        return InsertResponse(
+            status="success",
+            message=(
+                f"Object '{completed.canonical_file_path}' uploaded successfully. "
+                "Processing will continue in background."
+            ),
+            track_id=track_id,
+        )
+
+    async def _upload_to_object_store(
+        *,
+        file: UploadFile,
+        managed_tasks: set,
+        http_request: Request | None,
+    ) -> InsertResponse:
+        store, sessions = _require_object_upload_components()
+        enqueue_token, admission_adopted = _adopt_or_new_enqueue_token(http_request)
+        reserved = False
+        session = None
+        object_created = False
+        enqueued = False
+        try:
+            if not admission_adopted:
+                reserved = await _reserve_enqueue_slot(rag, enqueue_token)
+
+            safe_filename, directives = _validate_object_upload_filename(
+                file.filename or ""
+            )
+            existing_doc_data = await get_existing_doc_by_file_path_candidates(
+                rag.doc_status, Path(normalize_file_path(safe_filename))
+            )
+            if existing_doc_data:
+                status = get_doc_status_value(existing_doc_data) or "unknown"
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Document storage already contains '{normalize_file_path(safe_filename)}' "
+                        f"(Status: {status}). Delete the existing record before re-uploading."
+                    ),
+                )
+
+            size = await _resolve_upload_file_size(file, safe_filename)
+            content_type = file.content_type or "application/octet-stream"
+            ttl = getattr(global_args, "s3_upload_session_ttl_seconds", 3600)
+            async with _object_upload_operation(rag, "official_object_upload"):
+                session = await sessions.create_session(
+                    workspace=getattr(rag, "workspace", "") or "",
+                    filename=safe_filename,
+                    content_type=content_type,
+                    size=size,
+                    checksum_sha256=None,
+                    ttl_seconds=ttl,
+                )
+                metadata = await _put_upload_file_to_object_store(
+                    store,
+                    session.object_key,
+                    file,
+                    content_type=content_type,
+                    size=size,
+                )
+                object_created = True
+                completed = await sessions.complete_session(
+                    session.upload_id,
+                    workspace=getattr(rag, "workspace", "") or "",
+                    object_key=session.object_key,
+                    metadata=metadata,
+                )
+                track_id = generate_track_id("upload")
+                await _enqueue_completed_object_upload_session(
+                    completed, directives, track_id=track_id
+                )
+                enqueued = True
+                try:
+                    await sessions.mark_enqueued(
+                        completed.upload_id,
+                        workspace=getattr(rag, "workspace", "") or "",
+                        track_id=track_id,
+                    )
+                except Exception as session_error:
+                    logger.warning(
+                        "Object upload session %s completed but its track_id "
+                        "could not be recorded; repeated official upload may "
+                        "need source dedup to avoid duplicate enqueue: %s",
+                        completed.upload_id,
+                        session_error,
+                    )
+
+            await _drive_after_object_enqueue(managed_tasks)
             return InsertResponse(
                 status="success",
                 message=(
-                    f"Object '{completed.canonical_file_path}' uploaded successfully. "
+                    f"File '{safe_filename}' uploaded successfully. "
                     "Processing will continue in background."
                 ),
                 track_id=track_id,
             )
+        except ObjectStoreUnavailableError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ObjectStoreError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        except UploadSessionExpiredError as exc:
+            raise HTTPException(
+                status_code=409, detail="Upload session has expired"
+            ) from exc
+        except UploadSessionMismatchError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        finally:
+            if object_created and session is not None:
+                # No cleanup is needed after a successful enqueue; otherwise
+                # best-effort removal prevents a rejected official upload from
+                # leaving a durable object without a document record.
+                if not enqueued:
+                    try:
+                        await store.delete_object(session.object_key)
+                    except Exception as cleanup_error:
+                        logger.warning(
+                            "Could not clean up object for rejected official "
+                            "upload %s: %s",
+                            safe_log_value(session.object_key),
+                            cleanup_error,
+                        )
+            if reserved or admission_adopted:
+                await _release_enqueue_slot(rag, enqueue_token)
 
     @router.post(
         "/scan",
@@ -5843,10 +6052,7 @@ def create_document_routes(
     @router.post(
         "/upload",
         response_model=InsertResponse,
-        dependencies=[
-            Depends(combined_auth),
-            Depends(_require_local_file_ingestion_enabled),
-        ],
+        dependencies=[Depends(combined_auth)],
     )
     @http_operation(
         rag, resource=lambda kwargs: normalize_file_path(kwargs["file"].filename or "")
@@ -5932,7 +6138,12 @@ def create_document_routes(
                 chunking configuration (an explicit ``C`` selector without a
                 custom ``LightRAG.chunking_func``), 500 other errors.
         """
-        _ensure_local_file_ingestion_enabled()
+        if not getattr(global_args, "enable_local_file_ingestion", True):
+            return await _upload_to_object_store(
+                file=file,
+                managed_tasks=managed_tasks,
+                http_request=http_request,
+            )
 
         enqueue_token, admission_adopted = _adopt_or_new_enqueue_token(http_request)
         handed_off = False
