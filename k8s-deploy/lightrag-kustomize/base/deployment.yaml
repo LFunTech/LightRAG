@@ -70,6 +70,8 @@ spec:
               value: "false"
             - name: LIGHTRAG_OBJECT_STORAGE
               value: s3
+            - name: ENABLE_LOCAL_FILE_INGESTION
+              value: "false"
             - name: LIGHTRAG_DEPLOYMENT_ID
               value: lightrag_test
             - name: LIGHTRAG_COORDINATION_POOL_MODE

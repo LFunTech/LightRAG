@@ -231,6 +231,8 @@ storage_profile_env_yaml() {
               value: "false"
             - name: LIGHTRAG_OBJECT_STORAGE
               value: s3
+            - name: ENABLE_LOCAL_FILE_INGESTION
+              value: "false"
             - name: LIGHTRAG_DEPLOYMENT_ID
               value: ${LIGHTRAG_INSTANCE_DEPLOYMENT_ID}
             - name: LIGHTRAG_COORDINATION_POOL_MODE

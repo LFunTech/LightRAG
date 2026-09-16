@@ -108,6 +108,7 @@ def _make_client(
     *,
     with_object_store=True,
     max_upload_size=100,
+    local_file_ingestion_enabled=True,
     runtime=None,
     session_manager=None,
 ):
@@ -131,6 +132,7 @@ def _make_client(
             InMemoryUploadSessionStore(), bucket="docs", prefix="lightrag"
         )
     routes_module_args = SimpleNamespace(
+        enable_local_file_ingestion=local_file_ingestion_enabled,
         max_upload_size=max_upload_size,
         s3_presign_ttl_seconds=600,
         s3_upload_session_ttl_seconds=1800,
@@ -210,6 +212,25 @@ def test_presign_issues_server_owned_key_and_secret_safe_url(monkeypatch, tmp_pa
     assert body["headers"]["Content-Type"].startswith("application/vnd")
     assert "secret-key" not in response.text
     assert "access-key" not in response.text
+
+
+def test_presign_stays_available_when_local_file_ingestion_is_disabled(
+    monkeypatch, tmp_path
+):
+    client, _, _ = _make_client(
+        monkeypatch,
+        tmp_path,
+        local_file_ingestion_enabled=False,
+    )
+
+    response = client.post(
+        "/documents/uploads/presign",
+        headers=_HEADERS,
+        json={"filename": "report.pdf", "content_type": "application/pdf", "size": 5},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["object_key"].startswith("lightrag/uploads/tenant_a/")
 
 
 def test_presign_records_upload_session_inside_distributed_operation(

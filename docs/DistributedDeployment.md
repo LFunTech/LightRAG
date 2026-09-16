@@ -45,7 +45,9 @@ workers materialize source objects and remote sidecars into per-Pod scratch
 `INPUT_DIR` PVC. This does not make object storage a substitute for PG/pgvector,
 HugeGraph, KV/doc-status, or any remaining file-backed business storage. Local
 `/documents/upload` and `/documents/scan` still require a filesystem visible to
-the Pod that will process those local files.
+the Pod that will process those local files; set
+`ENABLE_LOCAL_FILE_INGESTION=false` in object-store-only environments to refuse
+those local entry points.
 
 Use UTC/NTP on application nodes and PG. One-shot retry selection compares
 `doc_status.updated_at` with `pipeline_requests.target_cutoff_at`, captured from

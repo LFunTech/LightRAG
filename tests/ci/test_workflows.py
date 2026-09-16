@@ -460,6 +460,7 @@ def test_deploy_test_script_generates_per_instance_kustomize_overlay_profile():
     assert "env.[name=LIGHTRAG_DEPLOYMENT_ID].value" in script
     assert "fieldPath: data.s3ObjectPrefix" in script
     assert "env.[name=S3_OBJECT_PREFIX].value" in script
+    assert "ENABLE_LOCAL_FILE_INGESTION" in script
 
 
 def test_deploy_test_script_derives_hugegraph_auth_method_from_credentials():

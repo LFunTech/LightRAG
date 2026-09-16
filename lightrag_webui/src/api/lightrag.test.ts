@@ -28,6 +28,7 @@ const storageMock = () => {
 }
 
 let apiModule: LightragApiModule
+const realXMLHttpRequest = globalThis.XMLHttpRequest
 
 beforeAll(async () => {
   Object.defineProperty(globalThis, 'localStorage', {
@@ -43,8 +44,69 @@ beforeAll(async () => {
 })
 
 afterEach(() => {
+  apiModule.__setAxiosAdapterForTests(undefined)
   apiModule.__resetPaginatedDocumentRequestsForTests()
+  globalThis.XMLHttpRequest = realXMLHttpRequest
 })
+
+type CapturedObjectPut = {
+  method: string
+  url: string
+  headers: Record<string, string>
+  body: unknown
+}
+
+const parseAxiosData = (data: unknown): unknown => {
+  if (typeof data !== 'string') return data
+  return JSON.parse(data)
+}
+
+const installSuccessfulObjectPut = (status = 204): CapturedObjectPut[] => {
+  const puts: CapturedObjectPut[] = []
+
+  class FakeXMLHttpRequest {
+    upload: { onprogress: ((event: ProgressEvent) => void) | null } = {
+      onprogress: null
+    }
+
+    status = status
+    responseText = ''
+    onload: (() => void) | null = null
+    onerror: (() => void) | null = null
+    onabort: (() => void) | null = null
+
+    private method = ''
+    private url = ''
+    private headers: Record<string, string> = {}
+
+    open(method: string, url: string) {
+      this.method = method
+      this.url = url
+    }
+
+    setRequestHeader(name: string, value: string) {
+      this.headers[name] = value
+    }
+
+    send(body?: unknown) {
+      puts.push({
+        method: this.method,
+        url: this.url,
+        headers: { ...this.headers },
+        body
+      })
+      this.upload.onprogress?.({
+        lengthComputable: true,
+        loaded: 11,
+        total: 11
+      } as ProgressEvent)
+      this.onload?.()
+    }
+  }
+
+  globalThis.XMLHttpRequest = FakeXMLHttpRequest as unknown as typeof XMLHttpRequest
+  return puts
+}
 
 describe('getDocumentsPaginated', () => {
   test('issues a fresh request after aborting a timed-out in-flight request', async () => {
@@ -303,6 +365,179 @@ describe('response interceptor', () => {
     expect(error.status).toBe(422)
     expect(error.message).toContain('422 Unprocessable Entity')
     expect(error.message).toContain('/documents/paginated')
+  })
+})
+
+describe('uploadDocument', () => {
+  test('uses object-store presign, direct PUT, and complete instead of multipart upload', async () => {
+    const objectPuts = installSuccessfulObjectPut()
+    const backendRequests: Array<{ url?: string; method?: string; data: unknown }> = []
+    const uploadUrl = 'https://objects.example.com/docs/report.pdf?signature=abc'
+    const objectKey = 'lightrag/uploads/tenant_a/upload_1/report.pdf'
+
+    apiModule.__setAxiosAdapterForTests(async (config: any) => {
+      backendRequests.push({
+        url: config.url,
+        method: config.method,
+        data: parseAxiosData(config.data)
+      })
+
+      if (config.url === '/documents/uploads/presign') {
+        return {
+          data: {
+            upload_id: 'upload_1',
+            object_key: objectKey,
+            upload_url: uploadUrl,
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/pdf',
+              'x-amz-meta-size': '11'
+            },
+            expires_in: 900,
+            expires_at: '2026-09-16T00:15:00+00:00',
+            max_size: 104857600
+          },
+          status: 200,
+          statusText: 'OK',
+          headers: { 'content-type': 'application/json' },
+          config
+        }
+      }
+
+      if (config.url === '/documents/uploads/complete') {
+        return {
+          data: {
+            status: 'success',
+            message: 'Object uploaded successfully.',
+            track_id: 'track-1'
+          },
+          status: 200,
+          statusText: 'OK',
+          headers: { 'content-type': 'application/json' },
+          config
+        }
+      }
+
+      throw new Error(`unexpected backend request: ${config.url}`)
+    })
+
+    const progress: number[] = []
+    const file = new File(['hello world'], 'report.pdf', { type: 'application/pdf' })
+
+    const result = await apiModule.uploadDocument(file, (percent) => {
+      progress.push(percent)
+    })
+
+    expect(result.track_id).toBe('track-1')
+    expect(backendRequests.map((request) => request.url)).toEqual([
+      '/documents/uploads/presign',
+      '/documents/uploads/complete'
+    ])
+    expect(backendRequests[0].data).toEqual({
+      filename: 'report.pdf',
+      content_type: 'application/pdf',
+      size: 11
+    })
+    expect(backendRequests[1].data).toEqual({
+      upload_id: 'upload_1',
+      object_key: objectKey
+    })
+    expect(objectPuts).toHaveLength(1)
+    expect(objectPuts[0]).toEqual({
+      method: 'PUT',
+      url: uploadUrl,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'x-amz-meta-size': '11'
+      },
+      body: file
+    })
+    expect(progress.includes(100)).toBe(true)
+  })
+
+  test('falls back to local multipart upload only when object ingestion is not configured', async () => {
+    const objectPuts = installSuccessfulObjectPut()
+    const backendRequests: Array<{ url?: string; data: unknown }> = []
+
+    apiModule.__setAxiosAdapterForTests(async (config: any) => {
+      backendRequests.push({ url: config.url, data: config.data })
+
+      if (config.url === '/documents/uploads/presign') {
+        throw {
+          response: {
+            status: 503,
+            statusText: 'Service Unavailable',
+            data: { detail: 'Object-store document ingestion is not configured.' }
+          },
+          config
+        }
+      }
+
+      if (config.url === '/documents/upload') {
+        return {
+          data: {
+            status: 'success',
+            message: 'File uploaded successfully.',
+            track_id: 'legacy-track'
+          },
+          status: 200,
+          statusText: 'OK',
+          headers: { 'content-type': 'application/json' },
+          config
+        }
+      }
+
+      throw new Error(`unexpected backend request: ${config.url}`)
+    })
+
+    const file = new File(['hello world'], 'report.pdf', { type: 'application/pdf' })
+
+    const result = await apiModule.uploadDocument(file)
+
+    expect(result.track_id).toBe('legacy-track')
+    expect(backendRequests.map((request) => request.url)).toEqual([
+      '/documents/uploads/presign',
+      '/documents/upload'
+    ])
+    expect(backendRequests[1].data).toBeInstanceOf(FormData)
+    expect(objectPuts).toHaveLength(0)
+  })
+
+  test('does not hide presign service failures behind local multipart upload', async () => {
+    const objectPuts = installSuccessfulObjectPut()
+    const backendRequests: Array<{ url?: string }> = []
+
+    apiModule.__setAxiosAdapterForTests(async (config: any) => {
+      backendRequests.push({ url: config.url })
+
+      if (config.url === '/documents/uploads/presign') {
+        throw {
+          response: {
+            status: 503,
+            statusText: 'Service Unavailable',
+            data: {
+              detail: {
+                error: 'CoordinationUnavailableError',
+                message: 'Coordination transaction failed'
+              }
+            }
+          },
+          config
+        }
+      }
+
+      throw new Error(`unexpected backend request: ${config.url}`)
+    })
+
+    const file = new File(['hello world'], 'report.pdf', { type: 'application/pdf' })
+
+    await expect(apiModule.uploadDocument(file)).rejects.toThrow(
+      'Coordination transaction failed'
+    )
+    expect(backendRequests.map((request) => request.url)).toEqual([
+      '/documents/uploads/presign'
+    ])
+    expect(objectPuts).toHaveLength(0)
   })
 })
 

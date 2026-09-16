@@ -4,7 +4,10 @@ Object-store ingestion is an optional document source for deployments that want
 clients to upload large files directly to S3-compatible storage. It is additive:
 local `/documents/upload`, `/documents/scan`, SDK text insertion, local
 `INPUT_DIR`, and local parsed sidecars keep their existing behavior when this
-feature is disabled.
+feature is disabled. Operators can separately set
+`ENABLE_LOCAL_FILE_INGESTION=false` for object-store-only environments; that
+leaves the presign/complete and text-ingestion APIs available but rejects
+`/documents/upload` and `/documents/scan`.
 
 The public third-party integration guide is published as a WebUI static page at
 `/webui/docs/third-party-object-upload-integration/`. That page contains only
@@ -28,6 +31,8 @@ S3_OBJECT_PREFIX=lightrag/documents
 S3_PRESIGN_TTL_SECONDS=900
 S3_UPLOAD_SESSION_TTL_SECONDS=3600
 S3_SCRATCH_DIR=/tmp/lightrag-object-scratch
+# Object-store-only deployment option
+ENABLE_LOCAL_FILE_INGESTION=false
 ```
 
 Inject access credentials from a secret manager or Kubernetes Secret. Do not put
@@ -38,6 +43,14 @@ When `LIGHTRAG_OBJECT_STORAGE=s3` is enabled, startup initializes the upload
 session KV namespace and runs an object-store preflight. Missing endpoint, bucket,
 access key, secret key, or unusable bucket permissions fail closed; the server
 does not silently fall back to local upload for object-backed requests.
+
+The bundled WebUI upload dialog uses this flow automatically when object
+ingestion is configured. If the server explicitly reports that object ingestion
+is not configured, the WebUI keeps the existing local `/documents/upload` path
+only when local file ingestion is enabled; object-store-only deployments will
+receive the server's 403 local-ingress refusal instead. Other presign or
+object-store failures are surfaced instead of being hidden by a local-upload
+fallback.
 
 ## Client flow
 
@@ -81,7 +94,9 @@ For the object-backed distributed profile, use:
 
 Local `/documents/upload` and `/documents/scan` still need a filesystem visible to
 the Pod that processes those local files. Removing the shared `INPUT_DIR` PVC is
-safe only for acceptance paths that use the object-backed APIs.
+safe only for acceptance paths that use the object-backed APIs; set
+`ENABLE_LOCAL_FILE_INGESTION=false` in that profile so a client cannot re-enter
+the local `INPUT_DIR` path by mistake.
 
 ## Cleanup and retry
 

@@ -40,6 +40,7 @@ from lightrag.api.utils_api import (
 )
 from lightrag.api.admission_middleware import AdmissionMiddleware
 from lightrag.api.body_limit_middleware import BodyLimitMiddleware, resolve_body_limits
+from lightrag.api.local_file_ingestion_middleware import LocalFileIngestionMiddleware
 from .config import (
     global_args,
     normalize_api_prefix,
@@ -1894,6 +1895,16 @@ def create_app(args):
     if body_limits is not None:
         app.add_middleware(BodyLimitMiddleware, api_prefix=api_prefix, **body_limits)
 
+    # Object-store-only deployments must not accept local INPUT_DIR entry
+    # points. Added after the body-limit/admission middleware so it ends up
+    # outside them and refuses /documents/upload before multipart parsing,
+    # without taking a capacity slot. CORS is still added last and wraps it.
+    app.add_middleware(
+        LocalFileIngestionMiddleware,
+        enabled=getattr(args, "enable_local_file_ingestion", True),
+        api_prefix=api_prefix,
+    )
+
     # Add CORS middleware
     cors_origins = get_cors_origins()
     # Per the Fetch spec, the wildcard origin "*" and credentialed requests are
@@ -3096,6 +3107,9 @@ def create_app(args):
                         "doc_status_storage": args.doc_status_storage,
                         "graph_storage": args.graph_storage,
                         "vector_storage": args.vector_storage,
+                        "local_file_ingestion_enabled": getattr(
+                            args, "enable_local_file_ingestion", True
+                        ),
                         "enable_llm_cache_for_extract": args.enable_llm_cache_for_extract,
                         "enable_llm_cache": args.enable_llm_cache,
                         "vlm_process_enable": args.vlm_process_enable,

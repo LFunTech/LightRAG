@@ -133,6 +133,9 @@ from lightrag.utils import (
 from lightrag.kg.shared_storage import append_pipeline_history
 from lightrag.utils_pipeline import count_active_documents, read_source_file_basename
 from lightrag.api.admission import adopt_admission_ticket
+from lightrag.api.local_file_ingestion_middleware import (
+    LOCAL_FILE_INGESTION_DISABLED_DETAIL,
+)
 from lightrag.api.utils_api import get_combined_auth_dependency
 from lightrag.object_storage import (
     ObjectNotFoundError,
@@ -4847,6 +4850,16 @@ def create_document_routes(
     # Create combined auth dependency for document routes
     combined_auth = get_combined_auth_dependency(api_key)
 
+    def _ensure_local_file_ingestion_enabled() -> None:
+        if not getattr(global_args, "enable_local_file_ingestion", True):
+            raise HTTPException(
+                status_code=403,
+                detail=LOCAL_FILE_INGESTION_DISABLED_DETAIL,
+            )
+
+    def _require_local_file_ingestion_enabled() -> None:
+        _ensure_local_file_ingestion_enabled()
+
     def _require_object_upload_components() -> tuple[ObjectStore, UploadSessionManager]:
         if object_store is None or upload_session_manager is None:
             raise HTTPException(
@@ -5067,7 +5080,12 @@ def create_document_routes(
             )
 
     @router.post(
-        "/scan", response_model=ScanResponse, dependencies=[Depends(combined_auth)]
+        "/scan",
+        response_model=ScanResponse,
+        dependencies=[
+            Depends(combined_auth),
+            Depends(_require_local_file_ingestion_enabled),
+        ],
     )
     async def scan_for_new_documents(
         managed_tasks: set = Depends(get_managed_background_tasks),
@@ -5124,6 +5142,8 @@ def create_document_routes(
                 (all records are valid RUNNING jobs), 409 on a track-id
                 collision, 503 when the job store is unavailable.
         """
+        _ensure_local_file_ingestion_enabled()
+
         from lightrag.exceptions import PipelineNotInitializedError
         from lightrag.kg.pipeline_ingress import (
             ManualRetryPublishResult,
@@ -5821,7 +5841,12 @@ def create_document_routes(
         )
 
     @router.post(
-        "/upload", response_model=InsertResponse, dependencies=[Depends(combined_auth)]
+        "/upload",
+        response_model=InsertResponse,
+        dependencies=[
+            Depends(combined_auth),
+            Depends(_require_local_file_ingestion_enabled),
+        ],
     )
     @http_operation(
         rag, resource=lambda kwargs: normalize_file_path(kwargs["file"].filename or "")
@@ -5907,6 +5932,7 @@ def create_document_routes(
                 chunking configuration (an explicit ``C`` selector without a
                 custom ``LightRAG.chunking_func``), 500 other errors.
         """
+        _ensure_local_file_ingestion_enabled()
 
         enqueue_token, admission_adopted = _adopt_or_new_enqueue_token(http_request)
         handed_off = False

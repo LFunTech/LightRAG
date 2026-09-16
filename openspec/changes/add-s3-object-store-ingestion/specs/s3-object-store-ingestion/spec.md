@@ -15,6 +15,11 @@ The system SHALL provide object-store ingestion as an opt-in capability without 
 - **WHEN** the server starts with object-store ingestion configured
 - **THEN** clients can use the new object-store upload flow while existing local upload and scan clients continue to work unless an operator separately disables those legacy entry points
 
+#### Scenario: Operator disables local file entry points
+- **WHEN** the server starts with object-store ingestion configured and `ENABLE_LOCAL_FILE_INGESTION=false`
+- **THEN** `POST /documents/upload` and `POST /documents/scan` are rejected with a forbidden response without writing a local upload or scheduling an input-directory scan
+- **AND** `POST /documents/uploads/presign`, `POST /documents/uploads/complete`, and text insertion remain available according to their own configuration and validation rules
+
 ### Requirement: Presigned upload sessions
 The system SHALL allow an authenticated client to create a bounded upload session for one document object and receive a presigned S3-compatible upload URL plus the headers and expiry needed to upload directly to object storage.
 
@@ -122,3 +127,4 @@ The system SHALL expose object-store configuration as explicit runtime configura
 #### Scenario: Test deployment without shared input PVC
 - **WHEN** the Kubernetes test deployment is configured to exercise object-store ingestion
 - **THEN** it can run multiple Pods without a shared `INPUT_DIR` PVC, using object storage for source files and parsed artifacts and local ephemeral storage only for scratch processing
+- **AND** local `/documents/upload` and `/documents/scan` entry points are disabled for that test profile

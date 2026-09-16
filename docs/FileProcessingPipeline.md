@@ -85,7 +85,7 @@ LIGHTRAG_PARSER=*:native-teP,*:legacy-R
 
 **1. Check the routing before spending a parse.** A malformed `LIGHTRAG_PARSER` already fails startup (§2.7). Once the server is up, `GET /documents/supported_file_types` returns the extension allowlist and the engine-to-suffix mapping **as the server actually resolved them**, which answers "did my rule take effect" without ingesting anything.
 
-**2. Get the file in.** Either `POST /documents/upload` (the file is stored under `INPUT_DIR` and the response carries a `track_id`), or drop files into `INPUT_DIR` and call `POST /documents/scan`. If `LIGHTRAG_OBJECT_STORAGE=s3` is enabled, a third path is available for external applications: call `POST /documents/uploads/presign`, upload the bytes directly to the returned S3-compatible URL, then call `POST /documents/uploads/complete`; LightRAG's API only handles the control-plane metadata for that path, not the file body. The operator runbook is [S3ObjectStoreIngestion.md](./S3ObjectStoreIngestion.md). To try different settings on a single file without touching `.env`, rename it with a hint: `report.[native-teP].docx` (§2.5).
+**2. Get the file in.** Either `POST /documents/upload` (the file is stored under `INPUT_DIR` and the response carries a `track_id`), or drop files into `INPUT_DIR` and call `POST /documents/scan`. If `LIGHTRAG_OBJECT_STORAGE=s3` is enabled, the WebUI and external applications use a third path: call `POST /documents/uploads/presign`, upload the bytes directly to the returned S3-compatible URL, then call `POST /documents/uploads/complete`; LightRAG's API only handles the control-plane metadata for that path, not the file body. Object-store-only deployments can set `ENABLE_LOCAL_FILE_INGESTION=false` to make `/documents/upload` and `/documents/scan` return 403 while leaving the object-backed path available. The operator runbook is [S3ObjectStoreIngestion.md](./S3ObjectStoreIngestion.md). To try different settings on a single file without touching `.env`, rename it with a hint: `report.[native-teP].docx` (§2.5).
 
 **3. Watch it.** `GET /documents/track_status/{track_id}` for that upload, `GET /documents/pipeline_status` for the live log, `GET /documents/status_counts` for the batch view. The status ladder is `PENDING → PARSING → ANALYZING → PROCESSING → PROCESSED`.
 
@@ -1138,6 +1138,7 @@ Before a document reaches any of the mechanisms above, the server may refuse it 
 | --- | --- | --- |
 | `MAX_UPLOAD_SIZE` | `104857600` (100 MB) | `413` — a single uploaded file is too large |
 | `MAX_REQUEST_BODY_BYTES` | `1048576` (1 MiB) | `413` — the raw request body is too large. It applies to **all** routes, in tiers: ordinary routes take this value, `/documents/text` and `/documents/texts` take a built-in 50 MiB **when the variable is unset**, and `/documents/upload` derives its limit from `MAX_UPLOAD_SIZE` + 1 MiB. Setting any positive value explicitly (including the 1 MiB default) applies it uniformly to every non-upload route. `0` disables all of them |
+| `ENABLE_LOCAL_FILE_INGESTION` | `true` | `403` — `/documents/upload` and `/documents/scan` are disabled for object-store-only deployments |
 | `MAX_TEXTS_PER_REQUEST` | `0` (off) | `413` — too many texts in a single `/documents/texts` call |
 | `MAX_PENDING_DOCUMENTS` | `0` (off) | `429` — too many documents already in PENDING / PARSING / ANALYZING / PROCESSING |
 

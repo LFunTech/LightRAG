@@ -85,7 +85,7 @@ LIGHTRAG_PARSER=*:native-teP,*:legacy-R
 
 **1. 先验证路由，别浪费一次解析。** 写错的 `LIGHTRAG_PARSER` 在启动时就会失败（§2.7）。服务起来后，`GET /documents/supported_file_types` 返回**服务端实际解析出的**后缀白名单与引擎-后缀映射，不入库一个文件就能确认规则是否生效。
 
-**2. 把文件送进来。** 要么 `POST /documents/upload`（文件存入 `INPUT_DIR`，响应带 `track_id`），要么把文件放进 `INPUT_DIR` 后调 `POST /documents/scan`。如果启用了 `LIGHTRAG_OBJECT_STORAGE=s3`，外部应用还可以先调 `POST /documents/uploads/presign`，把字节直接上传到返回的 S3-compatible URL，再调 `POST /documents/uploads/complete`；这条路径里 LightRAG API 只承载控制面 metadata，不承载文件正文。运维手册见 [S3ObjectStoreIngestion-zh.md](./S3ObjectStoreIngestion-zh.md)。想对单个文件试不同配置又不改 `.env`，就用文件名 hint：`report.[native-teP].docx`（§2.5）。
+**2. 把文件送进来。** 要么 `POST /documents/upload`（文件存入 `INPUT_DIR`，响应带 `track_id`），要么把文件放进 `INPUT_DIR` 后调 `POST /documents/scan`。如果启用了 `LIGHTRAG_OBJECT_STORAGE=s3`，外部应用还可以先调 `POST /documents/uploads/presign`，把字节直接上传到返回的 S3-compatible URL，再调 `POST /documents/uploads/complete`；这条路径里 LightRAG API 只承载控制面 metadata，不承载文件正文。object-store-only 部署可设置 `ENABLE_LOCAL_FILE_INGESTION=false`，使 `/documents/upload` 与 `/documents/scan` 返回 403，同时保留对象链路可用。运维手册见 [S3ObjectStoreIngestion-zh.md](./S3ObjectStoreIngestion-zh.md)。想对单个文件试不同配置又不改 `.env`，就用文件名 hint：`report.[native-teP].docx`（§2.5）。
 
 **3. 看进度。** `GET /documents/track_status/{track_id}` 看这次上传，`GET /documents/pipeline_status` 看实时日志，`GET /documents/status_counts` 看整批。状态阶梯是 `PENDING → PARSING → ANALYZING → PROCESSING → PROCESSED`。
 
@@ -1138,6 +1138,7 @@ PENDING ─►├─ parse_queues["mineru"]  ─► [mineru 池  × N2] ─┼�
 | --- | --- | --- |
 | `MAX_UPLOAD_SIZE` | `104857600`（100 MB） | `413` —— 单个上传文件过大 |
 | `MAX_REQUEST_BODY_BYTES` | `1048576`（1 MiB） | `413` —— 原始请求体过大。作用于**所有**路由且分档：普通路由取该值，`/documents/text` 与 `/documents/texts` 在**未设置该变量时**取内置 50 MiB，`/documents/upload` 由 `MAX_UPLOAD_SIZE` + 1 MiB 派生。显式配置任意正值（含 1 MiB 默认值）会让它统一作用于所有非上传路由。设为 `0` 则全部关闭 |
+| `ENABLE_LOCAL_FILE_INGESTION` | `true` | `403` —— object-store-only 部署禁用 `/documents/upload` 与 `/documents/scan` |
 | `MAX_TEXTS_PER_REQUEST` | `0`（关闭） | `413` —— 单次 `/documents/texts` 携带的文本条数过多 |
 | `MAX_PENDING_DOCUMENTS` | `0`（关闭） | `429` —— 处于 PENDING / PARSING / ANALYZING / PROCESSING 的文档已过多 |
 

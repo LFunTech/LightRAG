@@ -11,6 +11,7 @@
 - 新增原生 S3-compatible 对象摄取链路，并保持现有本地上传、目录扫描、SDK raw insert 和本地 sidecar 行为兼容。
 - 让上传数据面绕过 LightRAG API：API 只签发上传会话、校验对象元数据、写入文档状态并触发 pipeline。
 - 取消 object-backed 链路对共享 `INPUT_DIR` PVC 的依赖；多 Pod 只依赖相同对象存储、数据库和 HugeGraph 配置。
+- 允许 object-store-only 部署显式关闭本地 `/documents/upload` 与 `/documents/scan` 入口，确保测试环境不会回退到本地 `INPUT_DIR`。
 - 明确对象源、解析 artifact、retry/delete/clear 的所有权与失败语义，避免把远程对象当成本地路径误删或误报。
 - 使用可测试的抽象支持 S3-compatible 服务，测试中可用 in-memory/fake object store 覆盖错误路径。
 
@@ -26,7 +27,7 @@
 
 ### 1. 新增 ObjectStore 抽象，而不是改造本地上传为 S3
 
-选择新增可选对象存储抽象，默认 `disabled`。对象摄取 API 只在配置启用且 preflight 通过时可用；本地上传/扫描继续使用原路径。这样满足“扩展而不是修改现有行为”，并让 K8s 测试部署可以选择只验收对象链路、逐步取消共享 input PVC。
+选择新增可选对象存储抽象，默认 `disabled`。对象摄取 API 只在配置启用且 preflight 通过时可用；本地上传/扫描默认继续使用原路径。这样满足“扩展而不是修改现有行为”，并让 K8s 测试部署可以选择只验收对象链路、逐步取消共享 input PVC。object-store-only profile 额外设置 `ENABLE_LOCAL_FILE_INGESTION=false`，由 ASGI 预 body guard 和路由 guard 同时拒绝本地 `/documents/upload` 与 `/documents/scan`，但不影响 presign/complete、`/documents/text` 和 `/documents/texts`。
 
 备选方案 A 是直接把 `/documents/upload` 写入 S3，并让 `/documents/scan` 扫 S3 prefix。这会改变现有客户端和文件运维习惯，且 scan 的排序、冲突修复、手工放文件流程都会变成破坏性迁移。备选方案 B 是在上传完成后把 S3 对象下载回 `INPUT_DIR`，这能少改代码但仍依赖共享 PVC，本质是短期过渡方案，已被用户排除。
 
@@ -74,7 +75,7 @@ object-backed pending-parse 文档被 worker 领取后，source resolver 将对�
 
 新增配置项覆盖 provider enable、endpoint URL、bucket、region、path-style、access key/secret、presign TTL、upload/session TTL、scratch dir、可选 SSE、最大上传大小和 object prefix。S3 实现延迟导入客户端库；未启用时缺失依赖不影响现有服务。启用后 preflight 必须验证 bucket 可访问、head/put/delete 权限满足最小需求，失败则对象摄取不可用或启动失败，不能静默回落成本地文件上传。
 
-K8s 通过 Secret 注入凭据，通过 env/configmap 注入非密配置。测试部署的目标形态是：PG/pgvector、HugeGraph、对象存储、`emptyDir` scratch；不再为 object-backed 链路创建共享 `INPUT_DIR` PVC。保留 `WORKING_DIR` 是否仍需 PVC 要单独基于其他本地文件用途评估，不能因为对象摄取完成就误称所有 PVC 均可删除。
+K8s 通过 Secret 注入凭据，通过 env/configmap 注入非密配置。测试部署的目标形态是：PG/pgvector、HugeGraph、对象存储、`emptyDir` scratch、`ENABLE_LOCAL_FILE_INGESTION=false`；不再为 object-backed 链路创建共享 `INPUT_DIR` PVC，也不允许客户端通过本地上传/scan 重新依赖该路径。保留 `WORKING_DIR` 是否仍需 PVC 要单独基于其他本地文件用途评估，不能因为对象摄取完成就误称所有 PVC 均可删除。
 
 ## Risks / Trade-offs
 
@@ -89,6 +90,6 @@ K8s 通过 Secret 注入凭据，通过 env/configmap 注入非密配置。测�
 
 1. 默认发布为关闭状态：现有本地上传、scan、WebUI 上传和 SDK raw insert 不改变。
 2. 在本地 fake object store 与 MinIO/COS 测试环境中启用对象摄取，验证 presign、direct PUT、complete、pipeline、retry、delete 和 clear。
-3. Kubernetes 测试部署注入对象存储 Secret，并把 object-backed 验收加入 Woodpecker；该链路使用 `emptyDir` scratch，不挂载共享 `INPUT_DIR` PVC。
+3. Kubernetes 测试部署注入对象存储 Secret，并把 object-backed 验收加入 Woodpecker；该链路使用 `emptyDir` scratch，不挂载共享 `INPUT_DIR` PVC，并设置 `ENABLE_LOCAL_FILE_INGESTION=false`。
 4. 确认对象链路验收稳定后，再把测试环境常规文档输入切到 presigned flow；保留旧 `/documents/upload` 作为兼容入口。
 5. 回退方式是关闭对象摄取配置并保留现有本地上传/scan；已完成的 object-backed 文档仍保留 metadata，可在对象存储恢复后 retry/delete，不需要把对象复制回 `INPUT_DIR`。

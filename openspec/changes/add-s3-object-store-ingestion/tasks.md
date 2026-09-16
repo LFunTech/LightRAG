@@ -39,6 +39,7 @@
 - [x] 6.2 更新 Kustomize 测试部署：通过 Secret 注入对象存储凭据，object-backed 链路使用 `emptyDir` scratch，不创建共享 `INPUT_DIR` PVC。
 - [x] 6.3 更新 Woodpecker 部署验收：在 test 集群通过 presigned upload 或等价控制面直传对象、complete、处理、查询/状态、retry/delete 的最小真实链路。
 - [x] 6.4 确认 pipeline 日志不输出 presigned URL、access key、secret key、checksum 明文以外的敏感材料；失败日志只包含安全对象标识。
+- [x] 6.5 测试环境切换为 object-store-only profile：设置 `ENABLE_LOCAL_FILE_INGESTION=false`，并在服务端拒绝本地 `/documents/upload` 与 `/documents/scan`。
 
 ## 7. 验证与收口
 
@@ -66,6 +67,7 @@
 - WebUI 公开对接页序列图：页面与图都使用可用宽度，取消序列图桌面最大宽度上限；SVG 设计画布由 1180px 拓宽到 1500px，泳道中心距由约 235px 拉开到 318px，避免仅靠整体缩放模拟变宽；图内基础字号控制为标题 18px、消息主标签 10.5px、备注 8px，并隐藏大块标签背景，改用文字描边保证可读性，避免文本框遮挡图中连线。Playwright CLI 在 1440px、1920px 与 390px 视口确认 `main` 全宽，桌面图随容器展开，窄屏只在图容器内部滚动，页面级无横向溢出。
 - WebUI 公开对接页交互：Playwright CLI 在 1440px 视口确认文档中心标题为“LightRAG 第三方 API 对接指南”、左侧目录树有 8 个文档入口、默认显示总览；点击“知识检索与问答”后只显示 `query-api` 文档并包含 `POST /query` / `POST /query/stream`，点击“对象上传流程”后切回 `sequence` 文档并显示 1500px SVG；390px 视口下目录改为单列静态位置，页面级无横向溢出。
 - 2026-09-15 分布式 object upload session runtime 修复验证：先新增 RED 回归，确认 `_build_object_upload_components` 未给 `upload_sessions` KV storage 绑定 distributed runtime、启动初始化 helper 缺失，且 `/documents/uploads/presign` / `/documents/uploads/complete` 的 session 写入会因缺少 active operation 失败（`./scripts/test.sh tests/api/config/test_object_storage_server.py tests/api/routes/test_object_upload_routes.py -q` → 4 failed, 14 passed）；修复后同一目标测试 18 passed，扩大到 `./scripts/test.sh tests/api/routes tests/api/config/test_object_storage_server.py tests/api/test_distributed_lifespan.py -q` → 653 passed, 27 skipped；`uv run ruff check lightrag/api/lightrag_server.py lightrag/api/routers/document_routes.py tests/api/config/test_object_storage_server.py tests/api/routes/test_object_upload_routes.py`、`openspec validate add-s3-object-store-ingestion --strict`、`openspec validate add-woodpecker-test-delivery --strict`、`git diff --check` 均通过。
+- 2026-09-16 test 环境 object-store-only local ingress 禁用验证：先新增 RED 回归，确认缺少 `lightrag.api.local_file_ingestion_middleware` 且本地入口无禁用开关；修复后 `./scripts/test.sh tests/api/config/test_api_config_local_file_ingestion.py tests/api/test_local_file_ingestion_middleware.py tests/api/routes/test_local_file_ingestion_gate.py tests/api/routes/test_object_upload_routes.py tests/ci/test_kustomize_delivery.py tests/ci/test_test_environment_assets.py tests/ci/test_workflows.py` → 75 passed；扩大到 `./scripts/test.sh tests/api` → 1325 passed, 37 skipped；`./scripts/test.sh tests/ci` → 81 passed；`bun install --frozen-lockfile && bun test && bunx tsc --noEmit && bun run lint` → 638 frontend tests passed、typecheck passed、lint 0 errors/1 existing warning；`uv run ruff check ...`、`sh -n scripts/ci/deploy-test.sh`、`openspec validate add-s3-object-store-ingestion --strict`、`openspec validate --all --strict`、`git diff --check` 均通过。
 
 ## 未完成/待远端验证
 

@@ -1,6 +1,6 @@
 # S3-compatible 对象存储摄取运维手册
 
-对象存储摄取是可选文档来源，适用于希望客户端把大文件直接上传到 S3-compatible 存储的部署。它是增量能力：未启用时，本地 `/documents/upload`、`/documents/scan`、SDK 文本写入、`INPUT_DIR` 和本地 parsed sidecar 行为保持不变。
+对象存储摄取是可选文档来源，适用于希望客户端把大文件直接上传到 S3-compatible 存储的部署。它是增量能力：未启用时，本地 `/documents/upload`、`/documents/scan`、SDK 文本写入、`INPUT_DIR` 和本地 parsed sidecar 行为保持不变。运维也可以额外设置 `ENABLE_LOCAL_FILE_INGESTION=false` 进入 object-store-only 模式：保留 presign/complete 与文本摄取接口，但拒绝 `/documents/upload` 和 `/documents/scan`。
 
 面向第三方应用的公开对接文档通过 WebUI 静态路径发布：
 `/webui/docs/third-party-object-upload-integration/`。该页面只包含调用流程与示例占位符，不包含真实密钥、Secret 名称或环境专用连接信息。
@@ -20,11 +20,15 @@ S3_OBJECT_PREFIX=lightrag/documents
 S3_PRESIGN_TTL_SECONDS=900
 S3_UPLOAD_SESSION_TTL_SECONDS=3600
 S3_SCRATCH_DIR=/tmp/lightrag-object-scratch
+# object-store-only 部署选项
+ENABLE_LOCAL_FILE_INGESTION=false
 ```
 
 访问凭据必须来自 Secret 管理器或 Kubernetes Secret，不要写入提交到仓库的 `.env`、命令行、日志、OpenSpec artifact 或证据记录。
 
 启用后，服务启动会初始化 upload session KV namespace 并执行对象存储 preflight。缺少 endpoint、bucket、access key、secret key，或 bucket 权限不可用时会 fail closed，不会把 object-backed 请求静默回退为本地上传。
+
+内置 WebUI 的上传弹窗会在对象存储摄取已配置时自动使用该流程。只有服务端明确返回“对象存储文档摄取未配置”且本地文件摄取仍启用时，WebUI 才保留既有的本地 `/documents/upload` 路径；object-store-only 部署会收到服务端 403 本地入口拒绝。其它 presign 或对象存储错误会直接暴露，不会被本地上传 fallback 掩盖。
 
 ## 客户端流程
 
@@ -52,7 +56,7 @@ object-backed 分布式 profile 使用：
 - Kubernetes Secret 注入 S3-compatible 凭据；
 - `S3_SCRATCH_DIR` 使用每 Pod 的 `emptyDir` 等临时存储。
 
-本地 `/documents/upload` 与 `/documents/scan` 仍需要处理该本地文件的 Pod 可见对应文件系统。只有验收路径完全使用 object-backed API 时，移除共享 `INPUT_DIR` PVC 才是安全的。
+本地 `/documents/upload` 与 `/documents/scan` 仍需要处理该本地文件的 Pod 可见对应文件系统。只有验收路径完全使用 object-backed API 时，移除共享 `INPUT_DIR` PVC 才是安全的；此时应设置 `ENABLE_LOCAL_FILE_INGESTION=false`，避免客户端误入本地 `INPUT_DIR` 链路。
 
 ## 清理与重试
 

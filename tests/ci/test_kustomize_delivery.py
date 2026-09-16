@@ -130,6 +130,7 @@ def test_kustomize_deployment_preserves_distributed_profile_without_plaintext_se
     assert env["WORKERS"] == "1"
     assert env["LIGHTRAG_SHARED_STORAGE"] == "false"
     assert env["LIGHTRAG_OBJECT_STORAGE"] == "s3"
+    assert env["ENABLE_LOCAL_FILE_INGESTION"] == "false"
     assert env["S3_OBJECT_PREFIX"] == "lightrag/test-object-ingestion"
     assert env["S3_SCRATCH_DIR"] == "/app/data/object-scratch"
     assert env["LIGHTRAG_GRAPH_STORAGE"] == "HugeGraphStorage"

@@ -78,6 +78,7 @@ export type LightragStatus = {
     doc_status_storage: string
     graph_storage: string
     vector_storage: string
+    local_file_ingestion_enabled?: boolean
     workspace?: string
     storage_workspaces?: {
       kv_storage?: string | null
@@ -268,6 +269,17 @@ export type DocActionResponse = {
   status: 'success' | 'partial_success' | 'failure'
   message: string
   track_id?: string
+}
+
+type ObjectUploadPresignResponse = {
+  upload_id: string
+  object_key: string
+  upload_url: string
+  method: string
+  headers: Record<string, string>
+  expires_in: number
+  expires_at: string
+  max_size?: number | null
 }
 
 export type ScanResponse = {
@@ -1000,7 +1012,16 @@ export const insertTexts = async (texts: string[]): Promise<DocActionResponse> =
   return response.data
 }
 
-export const uploadDocument = async (
+const objectUploadNotConfiguredMessage = 'Object-store document ingestion is not configured'
+
+const isObjectUploadNotConfigured = (error: unknown): boolean => {
+  return (
+    (error as HttpRequestError | undefined)?.status === 503 &&
+    errorMessage(error).includes(objectUploadNotConfiguredMessage)
+  )
+}
+
+const uploadDocumentToInputDir = async (
   file: File,
   onUploadProgress?: (percentCompleted: number) => void
 ): Promise<DocActionResponse> => {
@@ -1021,6 +1042,88 @@ export const uploadDocument = async (
         : undefined
   })
   return response.data
+}
+
+const putPresignedObject = async (
+  presign: ObjectUploadPresignResponse,
+  file: File,
+  onUploadProgress?: (percentCompleted: number) => void
+): Promise<void> => {
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    let lastProgress = -1
+
+    const reportProgress = (percent: number) => {
+      if (percent === lastProgress) return
+      lastProgress = percent
+      onUploadProgress?.(percent)
+    }
+
+    xhr.open(presign.method, presign.upload_url, true)
+    Object.entries(presign.headers || {}).forEach(([name, value]) => {
+      xhr.setRequestHeader(name, value)
+    })
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable || event.total <= 0) return
+      reportProgress(Math.round((event.loaded * 100) / event.total))
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        reportProgress(100)
+        resolve()
+        return
+      }
+      reject(
+        new Error(
+          `Object upload failed with status ${xhr.status}: ${xhr.responseText || xhr.statusText}`
+        )
+      )
+    }
+    xhr.onerror = () => {
+      reject(new Error('Object upload failed'))
+    }
+    xhr.onabort = () => {
+      reject(new DOMException('Object upload aborted', 'AbortError'))
+    }
+    reportProgress(0)
+    xhr.send(file)
+  })
+}
+
+const uploadDocumentViaObjectStore = async (
+  file: File,
+  onUploadProgress?: (percentCompleted: number) => void
+): Promise<DocActionResponse> => {
+  const contentType = file.type || 'application/octet-stream'
+  const presign = (
+    await axiosInstance.post('/documents/uploads/presign', {
+      filename: file.name,
+      content_type: contentType,
+      size: file.size
+    })
+  ).data as ObjectUploadPresignResponse
+
+  await putPresignedObject(presign, file, onUploadProgress)
+
+  const response = await axiosInstance.post('/documents/uploads/complete', {
+    upload_id: presign.upload_id,
+    object_key: presign.object_key
+  })
+  return response.data
+}
+
+export const uploadDocument = async (
+  file: File,
+  onUploadProgress?: (percentCompleted: number) => void
+): Promise<DocActionResponse> => {
+  try {
+    return await uploadDocumentViaObjectStore(file, onUploadProgress)
+  } catch (error) {
+    if (isObjectUploadNotConfigured(error)) {
+      return await uploadDocumentToInputDir(file, onUploadProgress)
+    }
+    throw error
+  }
 }
 
 export const batchUploadDocuments = async (

@@ -10,6 +10,7 @@
 - 新增 object source resolver：解析 worker 在处理 object-backed 文档时，从对象存储下载到 Pod 本地 scratch 目录供现有 parser 使用；解析输出和 sidecar 上传回对象存储并以远程 URI 记录。
 - 新增删除、重试、重复检测、清理 orphan upload、可观测状态与错误处理规则，保证对象引用和 doc_status/KV 状态一致可恢复。
 - 新增 Kubernetes/Woodpecker 配套：测试环境可选择原生 S3 链路并移除共享 `INPUT_DIR` PVC；Pod 只需要本地临时 scratch，不以 RWX PVC 作为多副本文档源同步机制。
+- 新增可选的 `ENABLE_LOCAL_FILE_INGESTION=false` 运行时开关；测试环境使用 object-store-only profile 时显式拒绝本地 `/documents/upload` 与 `/documents/scan`，避免重新进入本地 `INPUT_DIR` 链路。
 - 不删除现有文件上传、目录扫描、parser hint、local sidecar 或 SDK raw insert 路径；本 change 是 additive extension，不做破坏性替换。
 
 ## Capabilities
