@@ -433,6 +433,26 @@ def test_deploy_test_script_bootstraps_namespace_secrets_migration_and_snapshot_
     assert "create configmap lightrag-test-environment" in script
 
 
+def test_deploy_test_script_recovers_fenced_workspace_before_bootstrap():
+    script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
+    assert "recover_coordination_if_fenced()" in script
+    assert '"lightrag.distributed",' in script
+    assert '"inspect",' in script
+    assert '"recover",' in script
+    assert '"--expected-generation",' in script
+    assert 'generation = str(snapshot["generation"])' in script
+    assert "--confirm-writers-stopped" in script
+    assert "--confirm-inflight-finished" in script
+    assert "--confirm-state-audited" in script
+    deploy_body = script.split("deploy_one_instance() {", 1)[1]
+    assert deploy_body.index("migrate_coordination_schema") < deploy_body.index(
+        "recover_coordination_if_fenced"
+    )
+    assert deploy_body.index("recover_coordination_if_fenced") < deploy_body.index(
+        "bootstrap_storage_profile"
+    )
+
+
 def test_deploy_test_script_loops_over_configurable_numbered_instances():
     script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
     assert 'LIGHTRAG_TEST_INSTANCES="${LIGHTRAG_TEST_INSTANCES:-01,02,03,04,05}"' in script

@@ -451,6 +451,157 @@ YAML
   kubectl -n "$NAMESPACE" delete job lightrag-coordination-migrate --wait=true
 }
 
+recover_coordination_if_fenced() {
+  echo "Inspecting LightRAG coordination state before bootstrap"
+  kubectl -n "$NAMESPACE" delete job lightrag-coordination-recover --ignore-not-found --wait=true
+  cat <<YAML | kubectl -n "$NAMESPACE" apply -f -
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: lightrag-coordination-recover
+  labels:
+    app.kubernetes.io/name: lightrag
+    app.kubernetes.io/instance: lightrag
+    app.kubernetes.io/component: coordination-recover
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lightrag
+        app.kubernetes.io/instance: lightrag
+        app.kubernetes.io/component: coordination-recover
+    spec:
+      restartPolicy: Never
+      imagePullSecrets:
+        - name: lightrag-registry-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: recover
+          image: ${LIGHTRAG_IMAGE_REF}
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              python - <<'PY'
+              import json
+              import os
+              import subprocess
+              import sys
+
+              deployment_id = os.environ["LIGHTRAG_DEPLOYMENT_ID"]
+              workspace = os.environ["WORKSPACE"]
+
+              inspect = subprocess.run(
+                  [
+                      sys.executable,
+                      "-m",
+                      "lightrag.distributed",
+                      "inspect",
+                      "--deployment-id",
+                      deployment_id,
+                      "--workspace",
+                      workspace,
+                  ],
+                  check=False,
+                  capture_output=True,
+                  text=True,
+              )
+              if inspect.returncode != 0:
+                  message = (inspect.stderr or "") + (inspect.stdout or "")
+                  if "Workspace is not registered" in message:
+                      print("coordination recovery not required: workspace is not registered")
+                      raise SystemExit(0)
+                  sys.stderr.write(inspect.stderr)
+                  sys.stderr.write(inspect.stdout)
+                  raise SystemExit(inspect.returncode)
+
+              snapshot = json.loads(inspect.stdout)
+              operations = snapshot.get("operations", [])
+              pending_mutations = [
+                  mutation
+                  for mutation in snapshot.get("mutations", [])
+                  if mutation.get("state") == "pending"
+              ]
+              orphaned_operations = snapshot.get("orphaned_operations", [])
+              print(
+                  "coordination inspection: "
+                  f"generation={snapshot.get('generation')} "
+                  f"fenced={snapshot.get('fenced')} "
+                  f"operations={len(operations)} "
+                  f"pending_mutations={len(pending_mutations)} "
+                  f"orphaned_operations={len(orphaned_operations)}"
+              )
+
+              if not snapshot.get("fenced") and not orphaned_operations:
+                  print("coordination recovery not required: workspace is not fenced")
+                  raise SystemExit(0)
+
+              generation = str(snapshot["generation"])
+              recover = subprocess.run(
+                  [
+                      sys.executable,
+                      "-m",
+                      "lightrag.distributed",
+                      "recover",
+                      "--deployment-id",
+                      deployment_id,
+                      "--workspace",
+                      workspace,
+                      "--expected-generation",
+                      generation,
+                      "--actor",
+                      "woodpecker",
+                      "--reason",
+                      "test-deploy-drained-writers-before-bootstrap",
+                      "--confirm-writers-stopped",
+                      "--confirm-inflight-finished",
+                      "--confirm-state-audited",
+                  ],
+                  check=False,
+                  capture_output=True,
+                  text=True,
+              )
+              if recover.returncode != 0:
+                  sys.stderr.write(recover.stderr)
+                  sys.stderr.write(recover.stdout)
+                  raise SystemExit(recover.returncode)
+
+              recovered = json.loads(recover.stdout)
+              if recovered.get("fenced"):
+                  raise SystemExit("coordination recovery finished but workspace remains fenced")
+              print(
+                  "coordination recovery verified: "
+                  f"old_generation={snapshot.get('generation')} "
+                  f"new_generation={recovered.get('generation')}"
+              )
+              PY
+          envFrom:
+            - secretRef:
+                name: lightrag-runtime
+$(storage_profile_env_yaml)
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+YAML
+
+  if ! wait_for_job_terminal lightrag-coordination-recover 600 coordination-recover "Coordination recovery"; then
+    exit 1
+  fi
+
+  kubectl -n "$NAMESPACE" logs job/lightrag-coordination-recover --tail=120 || true
+  kubectl -n "$NAMESPACE" delete job lightrag-coordination-recover --wait=true
+}
+
 bootstrap_storage_profile() {
   echo "Bootstrapping LightRAG test storage profile with verified image ${LIGHTRAG_IMAGE_DIGEST}"
   kubectl -n "$NAMESPACE" delete job lightrag-storage-bootstrap --ignore-not-found --wait=true
@@ -774,6 +925,7 @@ apply_runtime_secret
 kubectl -n "$NAMESPACE" delete job \
   lightrag-storage-preflight \
   lightrag-coordination-migrate \
+  lightrag-coordination-recover \
   lightrag-storage-bootstrap \
   --ignore-not-found \
   --wait=true
@@ -793,6 +945,7 @@ fi
 
 kubectl -n "$NAMESPACE" apply -f "$BASE_NETWORK_POLICY"
 migrate_coordination_schema
+recover_coordination_if_fenced
 bootstrap_storage_profile
 apply_environment_snapshot
 
