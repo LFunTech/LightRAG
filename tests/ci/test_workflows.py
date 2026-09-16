@@ -453,6 +453,15 @@ def test_deploy_test_script_recovers_fenced_workspace_before_bootstrap():
     )
 
 
+def test_deploy_test_script_allows_cold_image_pull_during_rollout():
+    script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
+    assert 'DEPLOYMENT_ROLLOUT_TIMEOUT_SECONDS="${LIGHTRAG_TEST_ROLLOUT_TIMEOUT_SECONDS:-1200}"' in script
+    assert '--timeout=${DEPLOYMENT_ROLLOUT_TIMEOUT_SECONDS}s' in script
+    deploy_body = script.split("deploy_one_instance() {", 1)[1]
+    assert 'rollout status "deployment/$DEPLOYMENT" --timeout=${DEPLOYMENT_ROLLOUT_TIMEOUT_SECONDS}s' in deploy_body
+    assert 'wait --for=condition=Ready pod -l "$LABEL_SELECTOR" --timeout=${DEPLOYMENT_ROLLOUT_TIMEOUT_SECONDS}s' in deploy_body
+
+
 def test_deploy_test_script_loops_over_configurable_numbered_instances():
     script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
     assert 'LIGHTRAG_TEST_INSTANCES="${LIGHTRAG_TEST_INSTANCES:-01,02,03,04,05}"' in script

@@ -25,6 +25,7 @@ LIGHTRAG_TEST_DOMAIN="${LIGHTRAG_TEST_DOMAIN:-f123.pub}"
 LIGHTRAG_TEST_INGRESS_CLASS="${LIGHTRAG_TEST_INGRESS_CLASS:-nginx}"
 LIGHTRAG_TEST_PUBLIC_SCHEME="${LIGHTRAG_TEST_PUBLIC_SCHEME:-http}"
 LABEL_SELECTOR="app.kubernetes.io/name=lightrag,app.kubernetes.io/instance=lightrag"
+DEPLOYMENT_ROLLOUT_TIMEOUT_SECONDS="${LIGHTRAG_TEST_ROLLOUT_TIMEOUT_SECONDS:-1200}"
 KUBECONFIG_FILE="${KUBECONFIG_FILE:-/tmp/lightrag-test-kubeconfig}"
 ROUTE_PAUSE_PATCH='{"spec":{"selector":{"lightrag.openai.com/routing-paused":"true"}}}'
 ROUTE_RESTORE_PATCH='{"spec":{"selector":{"app.kubernetes.io/name":"lightrag","app.kubernetes.io/instance":"lightrag","lightrag.openai.com/routing-paused":null}}}'
@@ -965,8 +966,8 @@ write_instance_kustomize_overlay
 
 kubectl -n "$NAMESPACE" apply -k "$OVERLAY"
 wait_for_pvc_bound lightrag-test-working-rwx
-kubectl -n "$NAMESPACE" rollout status "deployment/$DEPLOYMENT" --timeout=600s
-kubectl -n "$NAMESPACE" wait --for=condition=Ready pod -l "$LABEL_SELECTOR" --timeout=600s
+kubectl -n "$NAMESPACE" rollout status "deployment/$DEPLOYMENT" --timeout=${DEPLOYMENT_ROLLOUT_TIMEOUT_SECONDS}s
+kubectl -n "$NAMESPACE" wait --for=condition=Ready pod -l "$LABEL_SELECTOR" --timeout=${DEPLOYMENT_ROLLOUT_TIMEOUT_SECONDS}s
 kubectl -n "$NAMESPACE" get pods -l "$LABEL_SELECTOR" -o json > "$INSTANCE_RELEASE_DIR/pods.json"
 
 POD_NAMES="$(kubectl -n "$NAMESPACE" get pods -l "$LABEL_SELECTOR" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')"
