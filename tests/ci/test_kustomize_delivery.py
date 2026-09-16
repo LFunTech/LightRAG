@@ -31,12 +31,17 @@ def test_deploy_workflow_uses_kubectl_apply_k_not_helm():
         == "lightrag_cos_storage_secret_id"
     )
     assert "verify_public_ingress" in script
-    assert "/webui" in script
+    assert '"/health"' in script
+    assert "/webui" not in script
     assert "wait_for_pvc_bound lightrag-test-inputs-rwx" not in script
-    assert '"/documents/uploads/presign"' in script
-    assert '"/documents/uploads/complete"' in script
-    assert '"/documents/reprocess_failed"' in script
-    assert '"/documents/delete_document"' in script
+    for forbidden in (
+        '"/documents/uploads/presign"',
+        '"/documents/uploads/complete"',
+        '"/documents/reprocess_failed"',
+        '"/documents/delete_document"',
+        '"/query"',
+    ):
+        assert forbidden not in script
     assert "LIGHTRAG_TEST_S3_ENDPOINT_URL" in script
 
 

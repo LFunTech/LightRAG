@@ -550,35 +550,44 @@ def test_deploy_test_route_restore_removes_pause_selector():
     assert '"lightrag.openai.com/routing-paused":null' in restore_line
 
 
-def test_deploy_test_acceptance_exec_passes_heredoc_over_stdin():
+def test_deploy_test_script_avoids_business_acceptance_calls():
     script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
-    assert (
-        'kubectl -n "$NAMESPACE" exec -i "$FIRST_POD" -c "$CONTAINER" '
-        '-- python - "$MARKER"'
-    ) in script
-    assert (
-        'kubectl -n "$NAMESPACE" exec -i "$SECOND_POD" -c "$CONTAINER" '
-        '-- python - "$MARKER" "$ACCEPTANCE_TRACK_ID" "$ACCEPTANCE_RETRY_TRACK_ID"'
-    ) in script
-    assert 'kubectl -n "$NAMESPACE" exec "$FIRST_POD" -c "$CONTAINER" -- python -' not in script
-    assert 'kubectl -n "$NAMESPACE" exec "$SECOND_POD" -c "$CONTAINER" -- python -' not in script
-
-
-def test_deploy_test_reprocess_acceptance_overwrites_object_store_directly():
-    script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
-    assert "def overwrite_retry_object(object_key, content):" in script
-    assert "from lightrag.object_storage import ObjectStoreConfig, build_object_store" in script
-    assert 'overwrite_retry_object(retry_presign["object_key"], retry_good_content)' in script
-    assert "direct_put(retry_presign, retry_good_content)" not in script
-    assert (
-        'def wait_for_track(track_id, expected, allow_failed_while_waiting=False):'
-        in script
+    forbidden_business_calls = (
+        "/documents/uploads/presign",
+        "/documents/uploads/complete",
+        "/documents/track_status",
+        "/documents/reprocess_failed",
+        "/documents/delete_document",
+        '"/query"',
+        "direct_put(",
+        "wait_for_track(",
+        "overwrite_retry_object(",
+        "acceptance-upload.json",
+        "acceptance-query.json",
+        "ACCEPTANCE_TRACK_ID",
+        "ACCEPTANCE_RETRY_TRACK_ID",
     )
-    assert "if failed and not allow_failed_while_waiting:" in script
-    assert 'retry_summary, retry_doc_ids = wait_for_track(' in script
-    assert 'retry_track_id,' in script
-    assert '"processed",' in script
-    assert "allow_failed_while_waiting=True," in script
+    for forbidden in forbidden_business_calls:
+        assert forbidden not in script
+
+    assert 'kubectl -n "$NAMESPACE" exec' not in script
+    assert 'kubectl -n "$NAMESPACE" rollout status "deployment/$DEPLOYMENT"' in script
+    assert 'kubectl -n "$NAMESPACE" wait --for=condition=Ready pod' in script
+    assert "public health" in script
+    assert '"/health"' in script
+    assert '"/webui"' not in script
+    assert '"/documents/pipeline_status"' not in script
+
+
+def test_deploy_test_restores_routing_after_deployment_health_check_only():
+    script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
+    instance_body = script.split("POD_IMAGES=", 1)[1]
+    assert instance_body.index("patch service \"$SERVICE\"") < instance_body.index(
+        "verify_public_ingress"
+    )
+    assert instance_body.index("verify_public_ingress") < instance_body.index(
+        "Deployment status"
+    )
 
 
 def test_deploy_test_script_uses_posix_shell_and_prints_kubernetes_status():

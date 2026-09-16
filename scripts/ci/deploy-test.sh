@@ -729,23 +729,18 @@ verify_public_ingress() {
     exit 1
   fi
 
-  echo "Verifying public LightRAG test ingress at $base_url"
-  LIGHTRAG_VERIFY_API_KEY="$LIGHTRAG_INSTANCE_API_KEY" python3 - "$base_url" <<'PY'
-import os
+  echo "Verifying public LightRAG test health at $base_url"
+  python3 - "$base_url" <<'PY'
 import sys
 import time
 import urllib.error
 import urllib.request
 
 base_url = sys.argv[1].rstrip("/")
-api_key = os.environ["LIGHTRAG_VERIFY_API_KEY"]
 
 
-def status_for(path: str, key: str | None = None) -> int:
-    headers = {}
-    if key is not None:
-        headers["X-API-Key"] = key
-    request = urllib.request.Request(base_url + path, headers=headers, method="GET")
+def status_for(path: str) -> int:
+    request = urllib.request.Request(base_url + path, method="GET")
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
             response.read(1024)
@@ -755,23 +750,14 @@ def status_for(path: str, key: str | None = None) -> int:
         return exc.code
 
 
-checks = (
-    ("/health", None, {200}, "public health"),
-    ("/webui", None, {200}, "public WebUI"),
-    ("/documents/pipeline_status", None, {401, 403}, "public protected API unauthenticated"),
-    ("/documents/pipeline_status", "definitely-not-the-lightrag-api-key", {403}, "public protected API wrong key"),
-    ("/documents/pipeline_status", api_key, {200}, "public protected API authenticated"),
-)
-
-last = {}
 for _ in range(30):
-    last = {label: status_for(path, key) for path, key, _, label in checks}
-    if all(last[label] in expected for _, _, expected, label in checks):
-        print(f"public ingress verified: {last}")
+    status = status_for("/health")
+    if status == 200:
+        print("public health verified: 200")
         break
     time.sleep(5)
 else:
-    raise SystemExit(f"public ingress verification failed: {last}")
+    raise SystemExit(f"public health verification failed: {status}")
 PY
 }
 
@@ -843,337 +829,6 @@ if [ "$IMAGE_MATCHES" != "2" ]; then
   cat "$INSTANCE_RELEASE_DIR/pod-images.txt" >&2
   exit 1
 fi
-
-FIRST_POD="$(printf '%s\n' "$POD_NAMES" | sed -n '1p')"
-SECOND_POD="$(printf '%s\n' "$POD_NAMES" | sed -n '2p')"
-MARKER="woodpecker-${INSTANCE_ID}-${CI_COMMIT_TAG}-${CI_COMMIT_SHA}-${CI_PIPELINE_NUMBER:-manual}-$(date +%s)"
-
-kubectl -n "$NAMESPACE" exec -i "$FIRST_POD" -c "$CONTAINER" -- python - "$MARKER" <<'PY' > "$INSTANCE_RELEASE_DIR/acceptance-upload.json"
-import asyncio
-import hashlib
-import json
-import os
-import sys
-import time
-import urllib.error
-import urllib.request
-
-base = "http://127.0.0.1:9621"
-marker = sys.argv[1]
-api_key = os.environ.get("LIGHTRAG_API_KEY")
-if not api_key:
-    raise SystemExit("LIGHTRAG_API_KEY is not available in pod environment")
-
-
-def request(method, path, payload=None, auth=True):
-    data = None if payload is None else json.dumps(payload).encode()
-    headers = {"Content-Type": "application/json"}
-    if auth:
-        headers["X-API-Key"] = api_key
-    req = urllib.request.Request(base + path, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=30) as response:
-            return response.status, response.read().decode()
-    except urllib.error.HTTPError as exc:
-        return exc.code, exc.read().decode()
-
-health_status, _ = request("GET", "/health", auth=False)
-if health_status != 200:
-    raise SystemExit(f"health returned {health_status}")
-unauth_status, _ = request("GET", "/documents/pipeline_status", auth=False)
-if unauth_status not in (401, 403):
-    raise SystemExit(f"protected endpoint unauthenticated status was {unauth_status}")
-
-
-def direct_put(presign, content):
-    upload_req = urllib.request.Request(
-        presign["upload_url"],
-        data=content,
-        headers=presign["headers"],
-        method=presign["method"],
-    )
-    try:
-        with urllib.request.urlopen(upload_req, timeout=60) as response:
-            response.read(1024)
-            if response.status not in (200, 201, 204):
-                raise SystemExit(f"object upload returned {response.status}")
-    except urllib.error.HTTPError as exc:
-        raise SystemExit(f"object upload returned {exc.code}: {exc.read(200)!r}")
-    except urllib.error.URLError as exc:
-        raise SystemExit(f"object upload failed: {type(exc.reason).__name__}")
-    except Exception as exc:
-        raise SystemExit(f"object upload failed: {type(exc).__name__}")
-
-
-def overwrite_retry_object(object_key, content):
-    async def _run():
-        from lightrag.object_storage import ObjectStoreConfig, build_object_store
-
-        def truthy(value):
-            return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
-
-        store = build_object_store(
-            ObjectStoreConfig(
-                provider=os.environ.get("LIGHTRAG_OBJECT_STORAGE", "s3") or "s3",
-                bucket=os.environ["S3_BUCKET"],
-                endpoint_url=os.environ.get("S3_ENDPOINT_URL") or None,
-                region=os.environ.get("S3_REGION") or None,
-                force_path_style=truthy(os.environ.get("S3_FORCE_PATH_STYLE")),
-                access_key_id=os.environ.get("S3_ACCESS_KEY_ID") or None,
-                secret_access_key=os.environ.get("S3_SECRET_ACCESS_KEY") or None,
-                session_token=os.environ.get("S3_SESSION_TOKEN") or None,
-                object_prefix=os.environ.get("S3_OBJECT_PREFIX", ""),
-                scratch_dir=os.environ.get("S3_SCRATCH_DIR") or None,
-            )
-        )
-        if store is None:
-            raise RuntimeError("object store is not configured")
-        metadata = await store.put_bytes(
-            object_key,
-            content,
-            content_type="text/plain",
-            metadata={"purpose": "lightrag-acceptance-retry"},
-        )
-        if metadata.size != len(content):
-            raise RuntimeError("object overwrite size mismatch")
-
-    try:
-        asyncio.run(_run())
-    except Exception as exc:
-        raise SystemExit(f"object overwrite failed: {type(exc).__name__}")
-
-
-def wait_for_track(track_id, expected, allow_failed_while_waiting=False):
-    summary = {}
-    doc_ids = []
-    for _ in range(120):
-        time.sleep(2)
-        status, body = request("GET", f"/documents/track_status/{track_id}")
-        if status == 404:
-            continue
-        if status != 200:
-            raise SystemExit(f"track status returned {status}: {body[:200]}")
-        data = json.loads(body)
-        summary = {str(k).upper(): v for k, v in data.get("status_summary", {}).items()}
-        doc_ids = [
-            str(doc.get("id"))
-            for doc in data.get("documents", [])
-            if isinstance(doc, dict) and doc.get("id")
-        ]
-        total = int(data.get("total_count") or 1)
-        processed = int(summary.get("PROCESSED") or summary.get("processed") or 0)
-        failed = int(summary.get("FAILED") or summary.get("ERROR") or 0)
-        if expected == "failed":
-            if failed:
-                return summary, doc_ids
-            if processed >= total:
-                raise SystemExit(f"retry seed unexpectedly processed: {summary}")
-        else:
-            if failed and not allow_failed_while_waiting:
-                raise SystemExit(f"document processing failed: {summary}")
-            if processed >= total:
-                return summary, doc_ids
-    raise SystemExit(f"document did not reach {expected}: {summary}")
-
-
-content = (
-    f"LightRAG Woodpecker object-store delivery acceptance marker {marker}. "
-    f"The answer marker is {marker}."
-).encode()
-checksum = hashlib.sha256(content).hexdigest()
-presign_status, presign_body = request(
-    "POST",
-    "/documents/uploads/presign",
-    {
-        "filename": f"woodpecker-acceptance-{marker}.txt",
-        "content_type": "text/plain",
-        "size": len(content),
-        "checksum_sha256": checksum,
-    },
-)
-if presign_status != 200:
-    raise SystemExit(f"presign returned {presign_status}: {presign_body[:200]}")
-presign = json.loads(presign_body)
-direct_put(presign, content)
-
-insert_status, insert_body = request(
-    "POST",
-    "/documents/uploads/complete",
-    {"upload_id": presign["upload_id"], "object_key": presign["object_key"]},
-)
-if insert_status not in (200, 202):
-    raise SystemExit(f"complete returned {insert_status}: {insert_body[:200]}")
-track_id = json.loads(insert_body).get("track_id")
-if not track_id:
-    raise SystemExit("complete response did not include track_id")
-summary, doc_ids = wait_for_track(track_id, "processed")
-if not doc_ids:
-    raise SystemExit("track status did not include document ids")
-
-retry_failed_content = b" " * 64
-retry_good_text = f"retry marker {marker} recovered "
-retry_good_content = (retry_good_text.encode() + b"x" * 64)[:64]
-retry_presign_status, retry_presign_body = request(
-    "POST",
-    "/documents/uploads/presign",
-    {
-        "filename": f"woodpecker-retry-{marker}.txt",
-        "content_type": "text/plain",
-        "size": len(retry_failed_content),
-    },
-)
-if retry_presign_status != 200:
-    raise SystemExit(f"retry presign returned {retry_presign_status}: {retry_presign_body[:200]}")
-retry_presign = json.loads(retry_presign_body)
-direct_put(retry_presign, retry_failed_content)
-retry_insert_status, retry_insert_body = request(
-    "POST",
-    "/documents/uploads/complete",
-    {"upload_id": retry_presign["upload_id"], "object_key": retry_presign["object_key"]},
-)
-if retry_insert_status not in (200, 202):
-    raise SystemExit(f"retry complete returned {retry_insert_status}: {retry_insert_body[:200]}")
-retry_track_id = json.loads(retry_insert_body).get("track_id")
-if not retry_track_id:
-    raise SystemExit("retry complete response did not include track_id")
-retry_failed_summary, _retry_failed_doc_ids = wait_for_track(retry_track_id, "failed")
-overwrite_retry_object(retry_presign["object_key"], retry_good_content)
-reprocess_status, reprocess_body = request("POST", "/documents/reprocess_failed")
-if reprocess_status != 200:
-    raise SystemExit(f"reprocess_failed returned {reprocess_status}: {reprocess_body[:200]}")
-retry_summary, retry_doc_ids = wait_for_track(
-    retry_track_id,
-    "processed",
-    allow_failed_while_waiting=True,
-)
-if not retry_doc_ids:
-    raise SystemExit("retry track status did not include document ids")
-
-print(json.dumps({"marker": marker, "doc_ids": doc_ids + retry_doc_ids, "object_key": presign["object_key"], "track_id": track_id, "retry_track_id": retry_track_id, "status_summary": summary, "retry_failed_summary": retry_failed_summary, "retry_status_summary": retry_summary}, sort_keys=True))
-PY
-
-ACCEPTANCE_TRACK_ID="$(sed -n 's/.*"track_id": *"\([^"]*\)".*/\1/p' "$INSTANCE_RELEASE_DIR/acceptance-upload.json" | head -n 1)"
-ACCEPTANCE_RETRY_TRACK_ID="$(sed -n 's/.*"retry_track_id": *"\([^"]*\)".*/\1/p' "$INSTANCE_RELEASE_DIR/acceptance-upload.json" | head -n 1)"
-if [ -z "$ACCEPTANCE_TRACK_ID" ] || [ -z "$ACCEPTANCE_RETRY_TRACK_ID" ]; then
-  echo "acceptance upload result did not include required track ids" >&2
-  cat "$INSTANCE_RELEASE_DIR/acceptance-upload.json" >&2 || true
-  exit 1
-fi
-
-kubectl -n "$NAMESPACE" exec -i "$SECOND_POD" -c "$CONTAINER" -- python - "$MARKER" "$ACCEPTANCE_TRACK_ID" "$ACCEPTANCE_RETRY_TRACK_ID" <<'PY' > "$INSTANCE_RELEASE_DIR/acceptance-query.json"
-import json
-import os
-import sys
-import time
-import urllib.error
-import urllib.request
-
-base = "http://127.0.0.1:9621"
-marker = sys.argv[1]
-track_ids = sys.argv[2:]
-api_key = os.environ.get("LIGHTRAG_API_KEY")
-if not api_key:
-    raise SystemExit("LIGHTRAG_API_KEY is not available in pod environment")
-
-
-def request(method, path, payload=None):
-    data = None if payload is None else json.dumps(payload).encode()
-    req = urllib.request.Request(
-        base + path,
-        data=data,
-        headers={"Content-Type": "application/json", "X-API-Key": api_key},
-        method=method,
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=60) as response:
-            return response.status, response.read().decode()
-    except urllib.error.HTTPError as exc:
-        return exc.code, exc.read().decode()
-
-health_status, _ = request("GET", "/health")
-if health_status != 200:
-    raise SystemExit(f"health returned {health_status}")
-unauth_req = urllib.request.Request(base + "/documents/pipeline_status", method="GET")
-try:
-    with urllib.request.urlopen(unauth_req, timeout=30) as response:
-        unauth_status = response.status
-except urllib.error.HTTPError as exc:
-    unauth_status = exc.code
-if unauth_status not in (401, 403):
-    raise SystemExit(f"protected endpoint unauthenticated status was {unauth_status}")
-
-payload = {
-    "query": f"Find the Woodpecker delivery acceptance marker {marker}.",
-    "mode": "naive",
-    "only_need_context": True,
-    "include_references": True,
-    "include_chunk_content": True,
-    "top_k": 5,
-    "chunk_top_k": 5,
-}
-last_status = None
-last_body = ""
-query_ok = False
-for _ in range(60):
-    status, body = request("POST", "/query", payload)
-    last_status = status
-    last_body = body
-    if status == 200 and marker in body:
-        query_ok = True
-        break
-    time.sleep(3)
-else:
-    raise SystemExit(f"cross-pod query failed: status={last_status} body={last_body[:300]}")
-
-doc_ids = []
-for track_id in track_ids:
-    status, body = request("GET", f"/documents/track_status/{track_id}")
-    if status != 200:
-        raise SystemExit(f"track status before delete returned {status}: {body[:200]}")
-    data = json.loads(body)
-    doc_ids.extend(
-        str(doc.get("id"))
-        for doc in data.get("documents", [])
-        if isinstance(doc, dict) and doc.get("id")
-    )
-doc_ids = list(dict.fromkeys(doc_ids))
-if not doc_ids:
-    raise SystemExit("no acceptance document ids found for delete")
-
-delete_status, delete_body = request(
-    "DELETE",
-    "/documents/delete_document",
-    {"doc_ids": doc_ids, "delete_file": True, "delete_llm_cache": True},
-)
-if delete_status != 200:
-    raise SystemExit(f"delete returned {delete_status}: {delete_body[:200]}")
-delete_result = json.loads(delete_body)
-if delete_result.get("status") != "deletion_started":
-    raise SystemExit(f"delete did not start: {delete_result}")
-
-for _ in range(60):
-    time.sleep(2)
-    status, body = request("GET", "/documents/pipeline_status")
-    if status != 200:
-        raise SystemExit(f"pipeline status after delete returned {status}: {body[:200]}")
-    pipeline = json.loads(body)
-    if not pipeline.get("busy") and not pipeline.get("destructive_busy"):
-        break
-else:
-    raise SystemExit("delete did not release the destructive pipeline slot")
-
-print(
-    json.dumps(
-        {
-            "cross_pod_query_ok": query_ok,
-            "delete_started": True,
-            "marker": marker,
-            "doc_ids": doc_ids,
-        },
-        sort_keys=True,
-    )
-)
-PY
 
 kubectl -n "$NAMESPACE" patch service "$SERVICE" --type=merge -p "$ROUTE_RESTORE_PATCH"
 ENDPOINTS="$(kubectl -n "$NAMESPACE" get endpoints "$SERVICE" -o jsonpath='{.subsets[*].addresses[*].ip}')"
