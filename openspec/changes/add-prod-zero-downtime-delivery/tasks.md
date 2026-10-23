@@ -400,3 +400,17 @@ Git 发布与生产放行分开：runtime/operator 引用、生产域名/TLS、�
 用户对准确域名、HTTP80回源、云侧免费证书、五项缓存/流式规则及阿里云单条CNAME分别明确批准。实际已完成域名已生效/证书已部署、精确HOST专属规则启用及DNS权威/递归核验；未改全站/参考域名、启用付费项或创建K8s TLS。实现侧补显式EO分支、prod源标签/工作目录及配置类型回归；定向460 passed/60 skipped/2既有warning。见[实际云配置及本地验证](verification/2026-10-23-edgeone-browser-delivery.md)。
 
 当前仍47/59、12项真实待办，capability共66场景。角色/观测身份、首次初始化及首发流水线串接、资源/ACL与真实端到端/SLO门禁未满足；EO配置不等于应用部署，不勾9.2–9.4，不以浏览器截图代替CI API证据，不再打只构建而不部署的tag。原test和两个候选保持不变。
+
+## 12. 首次上线专用账号共用例外（用户明确批准，2026-10-23）
+
+- [x] 12.1 增加默认拒绝的版本化例外，绑定批准ID/scope/profile/正式tag/PG数据库及PG图用户；配置/schema/环境和迁移计划纳入hash，测试缺项/漂移/跨环境。
+- [x] 12.2 初始化CLI允许显式准确共用身份，保留独立凭据输入和额外执行确认；检查真实PG无超级/CREATEROLE等权限，不创建角色、不改旧迁移SQL/checksum。
+- [x] 12.3 贯通migration/verify/register及只读runtime，保留schema/profile/CRUD/注册验证；实例只允许首个Blue，持久release policy绑定例外，test默认不变。
+- [x] 12.4 生产render/产物入口核对准确tag，普通发布/Green/回退在副作用前拒绝例外，不把首次授权延伸到后续版本。
+- [x] 12.5 运行定向回归和隔离本地PG权限/完整迁移链验证，补默认拒绝/错误身份/漂移/首次例外正例；运行静态/打包/OpenSpec核验与新鲜审查。
+- [x] 12.6 同步运行手册和实际证据，区分专用性与权限分离风险、准确记录尚未执行的prod步骤；不因本地完成勾选原真实上线/性能任务。
+
+
+第12节本地实施完成：仅豁免已批准首发的运行/迁移身份分离，不再索取CREATEROLE或额外运行角色。当前 **53/65**，仍有原 **12项真实任务未完成**、68场景。定向646 passed/144 skipped、独立本地PG联合240 passed（两组重叠、不相加）；唯一审查3 Important均经21项RED→GREEN和一次fix pass修复。20文件Ruff/format、干净wheel/sdist各17项源码/资源、OpenSpec与原test/SQL基线核验通过，见[本轮验证](verification/2026-10-23-first-shared-credentials-local.md)及[审查修复](verification/2026-10-23-first-shared-credentials-review.md)。
+
+本轮未操作prod/原test/两个候选，未导入密钥或创建tag。首发初始化与4×1 Blue的真实流水线串接仍是实现侧待办，合格EO/CLB只读引用/审阅hash及S3/入口/资源/真实验收仍需完成；不把账户例外或本地通过当上线，不勾原9.2–9.4/性能任务，prod gate保持false。

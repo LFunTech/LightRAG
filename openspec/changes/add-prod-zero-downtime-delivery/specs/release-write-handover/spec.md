@@ -140,6 +140,8 @@ detached 后台任务 MUST 在交接前取得独立 durable ticket；父命令�
 
 发布控制 SHALL 仅对获准运维身份开放，普通业务认证不能自行切换 slot、打开闸门、转移写权或清除记录。进度 SHALL 提供不含凭据或业务正文的阶段、owner、队列数量、等待时长和错误分类，支持持续查询与写入演练的可验证结论。
 
+用户单独批准的首发专用账号共用例外 SHALL 明确承认应用PG身份拥有DDL/控制数据权限，不得伪报数据库级运行/控制隔离。该例外 MUST 仅绑定初始Blue、准确tag与持久批准，普通发布和Green MUST 拒绝，恢复独立身份之前不得据此执行4+4升级；HTTP业务认证的发布控制边界及test默认行为仍须保留。
+
 #### Scenario: An ordinary API client attempts to control release
 - **WHEN** 普通业务客户端试图修改发布状态或取得写 owner 身份
 - **THEN** 拒绝该操作且不改变路由、准入、队列或协调状态

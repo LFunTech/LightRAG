@@ -46,6 +46,9 @@ def labels(config, slot=None):
 
 
 def render_slot(config, identity, slot, *, image, environment):
+    from .credentials import validate_slot
+
+    validate_slot(config, identity, slot, environment)
     if environment.get("SSL", "false") != "false" or any(
         environment.get(field) for field in ("SSL_CERTFILE", "SSL_KEYFILE")
     ):

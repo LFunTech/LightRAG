@@ -118,3 +118,11 @@ K8s/CLB/入口 fake。真实 4/8 Pod、TKE/CLB、多节点存储、故障/容量
 | EdgeOne terminates public HTTPS without Kubernetes TLS | `tests/ci/test_prod_edgeone.py`：显式HTTP80 profile、无CLB证书/HTTPS注解、独立只读签名与observer接线；真实Transport拒绝TLS漂移 | EO域名/云证书/阿里云DNS/专属规则已实际配置，见[本轮记录](2026-10-23-edgeone-browser-delivery.md)；未部署app，不签署真实SSE/4+4 |
 | EdgeOne configuration is incomplete or drifts | 同文件：域名/源站/状态/证书、settings/rules hash漂移、分页/计数/返回类型、缺观察器拒绝；原qcloud全目标/健康验证保留 | 本地Mock通过；云API只读身份未补齐，不用截图冒充API hash或规则语义证明 |
 | Malformed ingress discriminators are rejected safely | 同文件：mode/protocol数组/对象/空值/bool/数值，先4 RED后10 GREEN，真实配置解析路径 | 只输出字段级ProdConfigError，不触发集群变更；不代表其他未知JSON字段获准 |
+
+
+## prod-delivery 已批准的首发共用身份（新增2项，总计68场景）
+
+| 场景 | 本地实现/证据 | 边界/未验证部分 |
+| --- | --- | --- |
+| A dedicated non-superuser initializes the approved first Blue | `tests/provisioning/test_shared_credentials.py`：隔离本地PG中无CREATEROLE等权限的专用owner实际apply/重复/verify/register、7项MockHTTP图DDL；实际release store持久批准及runtime注册；`tests/ci/test_prod_shared_credentials.py`：显式Job确认、配置hash及4×1 Blue渲染 | 共用owner的DDL/控制表风险已获批准；真实prod未迁移/登记/部署，MockHTTP不代表HugeGraph实测，初始流水线编排仍待实现 |
+| A shared credential exception is reused or drifts | 三份`test_shared_credentials.py`：缺失/畸形/跨scope/profile/tag/身份拒绝、current/session用户与权限、持久policy/epoch/phase漂移、5个初始化写入口副作用前拒绝、enroll DSN host/port连接前拒绝、Job独立boolean执行确认及普通pipeline/deliver/store升级副作用前拒绝 | 默认test无例外路径不变；不是永久权限豁免，真实后续4+4需先完成身份整改及另行验收 |

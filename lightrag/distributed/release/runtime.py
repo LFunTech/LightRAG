@@ -137,11 +137,14 @@ class ReleaseRuntime:
             instance_id=self.config.instance_id,
         )
         await self.store.verify_schema()
+        exception = getattr(self.config, "credential_exception", None)
+        if exception is not None:
+            await self.refresh()
         if getattr(self.runtime, "release_require_privileges", False):
             from .migrations import verify_runtime_role
 
             async with self.store.connection() as connection:
-                await verify_runtime_role(connection)
+                await verify_runtime_role(connection, credential_exception=exception)
         await self.store.register(
             slot=self.config.slot,
             config_hash=self.config.config_hash,
@@ -155,6 +158,11 @@ class ReleaseRuntime:
     async def refresh(self):
         async with self.store.connection() as connection:
             self.scope_state = await self.store._scope(connection, self.config.scope)
+        exception = getattr(self.config, "credential_exception", None)
+        if exception is not None:
+            exception.verify_scope_state(self.scope_state)
+        elif "first_release_credential_exception" in self.scope_state.get("policy", {}):
+            raise ValueError("Persistent first-release credential approval is required")
         return self.scope_state
 
     async def probe(self):

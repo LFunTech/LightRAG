@@ -50,9 +50,10 @@ class MigrationPlan:
     scope: tuple[str, str]
     dimension: int
     index_type: str
+    credential_exception: object = None
 
     def summary(self):
-        return {
+        summary = {
             "version": 1,
             "profile_hash": self.profile_hash,
             "checksum": self.checksum,
@@ -63,10 +64,16 @@ class MigrationPlan:
             "dimension": self.dimension,
             "index_type": self.index_type,
         }
+        if self.credential_exception is not None:
+            summary["credential_exception"] = self.credential_exception.as_dict()
+        return summary
 
 
 def build_plan(environment):
     profile = physical_profile_hash(environment)
+    from lightrag_delivery.credentials import from_environment
+
+    credential_exception = from_environment(environment)
     for name in ("HUGEGRAPH_GRAPHSPACE", "HUGEGRAPH_GRAPH"):
         validate_graph_name(environment[name])
     for name in ("LIGHTRAG_DEPLOYMENT_ID", "WORKSPACE"):
@@ -159,4 +166,5 @@ def build_plan(environment):
         (environment["LIGHTRAG_DEPLOYMENT_ID"], environment["WORKSPACE"]),
         dimension,
         kind,
+        credential_exception,
     )

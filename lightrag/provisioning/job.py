@@ -37,9 +37,15 @@ def render_job(settings, environment):
         "expected_plan_hash",
         "expected_manifest_hash",
     }
-    if not isinstance(settings, dict) or set(settings) != fields:
+    if (
+        not isinstance(settings, dict)
+        or set(settings) - {"confirm_shared_credentials"} != fields
+    ):
         raise ValueError("Explicit complete initialization Job settings required")
     s = settings
+    shared_confirmation = s.get("confirm_shared_credentials")
+    if "confirm_shared_credentials" in s and type(shared_confirmation) is not bool:
+        raise ValueError("Explicit boolean shared credential confirmation required")
     if s["phase"] not in {"apply", "verify", "register"}:
         raise ValueError("Explicit operator phase required")
     for key in (
@@ -97,6 +103,15 @@ def render_job(settings, environment):
     if environment.get("LIGHTRAG_OBJECT_STORAGE") != "s3":
         raise ValueError("Production provisioning requires the approved S3 profile")
     plan = build_plan(environment)
+    if plan.credential_exception is not None and s["phase"] != "verify":
+        if shared_confirmation is not True:
+            raise ValueError(
+                "Explicit shared first-release execution confirmation required"
+            )
+    elif plan.credential_exception is None and shared_confirmation is True:
+        raise ValueError(
+            "Shared credential confirmation requires an approved exception"
+        )
     if s["expected_profile_hash"] != plan.profile_hash or s[
         "expected_plan_hash"
     ] != digest(plan.summary()):
@@ -116,6 +131,8 @@ def render_job(settings, environment):
         "--graph-wait-seconds",
         str(wait),
     ]
+    if plan.credential_exception is not None and s["phase"] != "verify":
+        args += ["--confirm-shared-credentials"]
     if s["phase"] != "verify":
         args += ["--confirm-maintenance"]
     if s["phase"] == "apply":

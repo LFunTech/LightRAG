@@ -434,3 +434,17 @@
 - 已按逐项批准通过浏览器实际完成EO专属域名/免费证书/缓存与120s空闲超时规则，并在阿里云仅新增llm-rag CNAME；权威/递归返回正确值，EO最终已生效/证书已部署。没有全站、参考域名、K8s/后端/test变更。真实app/SSE/容量未验，不以云配置保存冒充上线。
 - 新鲜EO补丁审查0 Critical/0 Important/1 Minor；补非字符串mode/protocol回归4 RED/6 GREEN后修复类型短路，10 GREEN；定向目录最终460 passed/60 skipped/2既有warning。原test/built阶段基线diff为空，scoped Ruff/format/strict workflow/shell/OpenSpec通过。详见[本轮证据及阻断](2026-10-23-edgeone-browser-delivery.md)。
 - Ruling: 首发无已运行Blue时，不能伪造enrollment或让普通升级器绕过实例核验；迁移、登记/enroll、首次4×1流水线串接仍须补齐，明确是实现待办而非让用户提供虚构基线。原权限/观测/ACL及真实验证门禁保持，47/59/12剩余不改。
+
+## 2026-10-23 已批准首发共用专用账号：本地实施
+
+- 用户已确认首次上线共用现有LightRAG专用PG/HugeGraph运行/迁移账号，仅豁免角色分离；不再要求CREATEROLE或额外运行角色。OpenSpec第12节为唯一计划；正常最小权限模式仍默认拒绝runtime DDL。
+- Ruling: 将例外绑定版本化批准ID、准确scope/physical profile/正式tag/PG用户及库/图用户，并进入配置与计划hash、持久release policy — 首发授权不应变成永久`skip_privilege_checks` — 代价是后续普通升级/Green必须先另行完成身份整改，不能直接移除policy冒充已整改。
+- Ruling: 共用专用PG owner可改表及发布控制数据是用户明确接受的风险，不宣称数据库角色隔离 — 无法在同一DB角色上用Secret名制造权限分离 — K8s runtime/operator引用仍分开，避免云控制凭据进入应用；实际current_user/session_user/目标库及无superuser/CREATEROLE/CREATEDB/REPLICATION/BYPASSRLS检查不豁免。
+- TDD证据位于忽略的`temp/prod-first-shared-20261023/`：策略24 RED→24 GREEN；provisioning3 RED/5 GREEN→组合41 GREEN/1 skip；runtime9 RED/2 GREEN→GREEN；raw-store拒绝测试修正假阳性后1 RED→GREEN；普通pipeline1 RED→26 CI GREEN；session_user冒用1 RED→23 GREEN/1 skip。CLI额外确认/显式图输入、Blue正例、原行为和本地PG整链补测。
+- 本地PG初次受sandbox的shmat限制未启动；随后仅在仓库temp独立cluster、随机loopback端口运行。先后两次失败为新测试夹具读取asyncpg私有属性、Mock图plan目标未同步，均改测试而不放松产品约束。当前联合组213 passed/2既有warning，退出trap及pg_ctl status确认已停止；未接触共享本地5432、test/prod或两个候选。
+- 当前定向组619 passed/144 skipped/2既有warning（4.97s）；PG联合组213 passed（8.08s）与其有重叠，不相加。19文件Ruff/format、5份workflow strict lint、prod脚本shell及OpenSpec strict通过；迁移SQL/checksum、test workflow/脚本/overlay未改，prod gate仍false。干净导出1673文件构建wheel/sdist，各16项受影响源码/迁移资源逐字节一致，无密钥/工作站目录。
+- 新鲜最终审查已按executing-plans要求仅派一名只读reviewer，补丁SHA256 `09ef84cfcd652f94b9ff6d489092e061e3e4b639eb934d20560a26310af6c507`；结果和必要一次fix pass待补。本地实现不等于首发实际编排/应用验收或容量达标，不勾原12项真实待办。
+
+- Final review: 0 Critical/3 Important/0 Minor。逐项核对均可达：初始化写未查持久scope、enroll DSN未绑物理host/port、Job自动代填执行确认。同一fix pass补21项反例，先21 RED；自动缩进错误造成19 passed/2语法failed后立即修复，21 GREEN，不把语法失败当行为RED。新增持久首发状态统一检查（PG/图/登记/授权入口）、连接前精确DSN检查及Job独立boolean确认，默认旧Job不强制新增字段。
+- Final: 补准确operator目标enroll接线正例、只读Job及类型/未批准反例；真实隔离PG中同持久批准可重复apply、后续epoch/Green/COMPLETED立即拒绝，7项图POST未增加。定向最终646 passed/144 skipped/2既有warning（5.33s），PG联合240 passed/2既有warning（8.00s），PG已停；20文件Ruff/format、5配置strict lint、17项源码/资源wheel/sdist比对及scoped OpenSpec通过。无复审，见本轮审查报告。
+- Task 12.1–12.6: complete（本地能力）；当前53/65、68场景，原12真实待办不变。Ruling: 不因共用账号获准就启用尚无首次初始化编排的普通prod升级流水线或再打只构建tag — 不虚构Blue且云只读观测仍被拒绝 — 应用仍未上线；不再把第二套账号/CREATEROLE当首发阻断。未知预算/hash不填fixture，本轮无prod/test/候选访问或密钥导入，Git交付沿用已获必要commit/push授权。

@@ -60,6 +60,33 @@ async def run(args):
         r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", args.scope
     ):
         raise ValueError("Invalid release scope")
+    exception = None
+    if args.command == "enroll":
+        from pathlib import Path
+        from lightrag_delivery.config import load_prod_config
+        from lightrag_delivery.profile import physical_profile_hash
+        from lightrag_delivery.render import content_hash
+
+        config = load_prod_config(Path(args.config))
+        environment = json.loads(Path(args.environment).read_text())
+        scope = config.target["deployment_id"] + "/" + config.target["workspace"]
+        if physical_profile_hash(environment) != config.onboarding["profile_hash"]:
+            raise ValueError("Physical profile differs")
+        from lightrag_delivery.credentials import (
+            for_onboarding,
+            from_environment,
+            ONBOARDING_KEY,
+            ENV_KEY,
+        )
+        from lightrag.provisioning.__main__ import check_dsn
+
+        exception = for_onboarding(config)
+        if exception is not None:
+            if from_environment(environment) != exception or args.active_slot != "blue":
+                raise ValueError("First-release enrollment approval differs")
+        elif ENV_KEY in environment:
+            raise ValueError("Unapproved first-release credential exception")
+        check_dsn(dsn, environment, confirm_shared=exception is not None)
     import asyncpg
 
     connection = None
@@ -74,16 +101,6 @@ async def run(args):
         store = ReleaseStore(connection)
         await store.verify_schema()
         if args.command == "enroll":
-            from pathlib import Path
-            from lightrag_delivery.config import load_prod_config
-            from lightrag_delivery.profile import physical_profile_hash
-            from lightrag_delivery.render import content_hash
-
-            config = load_prod_config(Path(args.config))
-            environment = json.loads(Path(args.environment).read_text())
-            scope = config.target["deployment_id"] + "/" + config.target["workspace"]
-            if physical_profile_hash(environment) != config.onboarding["profile_hash"]:
-                raise ValueError("Physical profile differs")
             async with connection.transaction():
                 baseline = await connection.fetchrow(
                     "SELECT manifest_hash,fenced FROM lightrag_coordination.workspaces WHERE deployment_id=$1 AND workspace=$2 FOR UPDATE",
@@ -102,6 +119,11 @@ async def run(args):
                 ):
                     raise ValueError("Audited quiescent protocol baseline is required")
                 policy = dict(config.budget, writers=config.writers)
+                if exception is not None:
+                    await exception.verify_principal(
+                        connection, exception.postgres_user
+                    )
+                    policy[ONBOARDING_KEY] = exception.as_dict()
                 await store.onboard(
                     scope,
                     active_slot=args.active_slot,

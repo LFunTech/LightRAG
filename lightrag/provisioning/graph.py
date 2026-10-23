@@ -190,6 +190,10 @@ class GraphProvisioner:
                 "Graph intent must commit before remote DDL; no caller transaction allowed"
             )
         async with migration_lock(connection):
+            if self.plan.credential_exception is not None:
+                await self.plan.credential_exception.verify_initialization_state(
+                    connection
+                )
             await verify(connection, self.plan, require_graph=False)
             if await connection.fetchval(
                 "SELECT graph_complete FROM lightrag_storage.migrations"

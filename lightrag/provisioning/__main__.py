@@ -19,6 +19,7 @@ def parser():
     result.add_argument("--environment", required=True)
     result.add_argument("--confirm-maintenance", action="store_true")
     result.add_argument("--confirm-empty-target", action="store_true")
+    result.add_argument("--confirm-shared-credentials", action="store_true")
     result.add_argument("--expected-profile-hash")
     result.add_argument("--expected-plan-hash")
     result.add_argument("--expected-manifest-hash")
@@ -26,9 +27,14 @@ def parser():
     return result
 
 
-def check_dsn(dsn, environment):
+def check_dsn(dsn, environment, *, confirm_shared=False):
     try:
         from urllib.parse import unquote
+        from lightrag_delivery.credentials import from_environment
+
+        policy = from_environment(environment)
+        if confirm_shared and policy is None:
+            raise ValueError()
 
         uri = urlsplit(dsn)
         query = parse_qs(uri.query, keep_blank_values=True)
@@ -40,7 +46,11 @@ def check_dsn(dsn, environment):
             or not uri.path.startswith("/")
             or unquote(uri.path[1:]) != environment["POSTGRES_DATABASE"]
             or not uri.username
-            or unquote(uri.username) == environment["POSTGRES_USER"]
+            or (
+                unquote(uri.username) == environment["POSTGRES_USER"]
+                and (policy is None or not confirm_shared)
+            )
+            or (policy is not None and unquote(uri.username) != policy.postgres_user)
             or uri.fragment
             or set(query) - {"sslmode", "sslrootcert", "sslcert", "sslkey", "sslcrl"}
             or any(len(v) != 1 for v in query.values())
@@ -60,6 +70,15 @@ async def run(args, environment, plan, dsn):
     from .graph import GraphProvisioner
 
     readonly = args.command == "verify"
+    policy = plan.credential_exception
+    if (
+        policy is not None
+        and not readonly
+        and not getattr(args, "confirm_shared_credentials", False)
+    ):
+        raise ValueError(
+            "Explicit shared first-release credential confirmation required"
+        )
     username = (
         environment.get("HUGEGRAPH_USERNAME")
         if readonly
@@ -71,7 +90,16 @@ async def run(args, environment, plan, dsn):
         else os.getenv("LIGHTRAG_GRAPH_MIGRATION_PASSWORD")
     )
     if not readonly and (
-        not username or username == environment.get("HUGEGRAPH_USERNAME")
+        not username
+        or not password
+        or (policy is None and username == environment.get("HUGEGRAPH_USERNAME"))
+        or (
+            policy is not None
+            and (
+                username != policy.hugegraph_user
+                or password != environment.get("HUGEGRAPH_PASSWORD")
+            )
+        )
     ):
         raise ValueError(
             "Dedicated graph provisioning identity must differ from runtime"
@@ -163,7 +191,12 @@ def main(argv=None):
         ):
             raise ValueError("Explicit graph wait budget required")
         dsn = os.getenv("LIGHTRAG_STORAGE_MIGRATION_DSN", "")
-        check_dsn(dsn, environment)
+        check_dsn(
+            dsn,
+            environment,
+            confirm_shared=args.confirm_shared_credentials
+            or (args.command == "verify" and plan.credential_exception is not None),
+        )
         print(
             json.dumps(asyncio.run(run(args, environment, plan, dsn)), sort_keys=True)
         )

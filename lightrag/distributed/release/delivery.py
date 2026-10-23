@@ -29,6 +29,8 @@ class DeliverySession:
 async def delivery_session(*, config_path, identity_path, environment_path, image):
     """Hold the original operator connection/lock until the caller finishes."""
     config = load_prod_config(Path(config_path))
+    if "first_release_credential_exception" in config.onboarding:
+        raise ValueError("First-release credentials cannot enter ordinary delivery")
     identity = ReleaseIdentity(**json.loads(Path(identity_path).read_text()))
     environment = json.loads(Path(environment_path).read_text())
     actual_hash = content_hash(

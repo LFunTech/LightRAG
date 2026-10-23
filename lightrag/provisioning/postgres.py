@@ -22,7 +22,12 @@ async def migration_lock(connection):
         await connection.execute("SELECT pg_advisory_unlock($1)", LOCK)
 
 
-async def audit_runtime_role(connection, role, *, operator=True):
+async def audit_runtime_role(
+    connection, role, *, operator=True, credential_exception=None
+):
+    if credential_exception is not None:
+        await credential_exception.verify_principal(connection, role)
+        return
     if not isinstance(role, str) or not re.fullmatch("[a-z][a-z0-9_]{0,62}", role):
         raise ValueError("Explicit existing runtime role required")
     row = await connection.fetchrow(
@@ -75,7 +80,9 @@ async def audit_runtime_role(connection, role, *, operator=True):
 
 async def verify_runtime_access(connection, plan, role):
     """Check every required grant independently; privilege lists mean ANY in PG."""
-    await audit_runtime_role(connection, role, operator=False)
+    await audit_runtime_role(
+        connection, role, operator=False, credential_exception=plan.credential_exception
+    )
     for table in plan.tables:
         for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE"):
             if not await connection.fetchval(
@@ -184,7 +191,11 @@ async def verify(connection, plan, *, require_graph=True):
 
 
 async def grant_runtime(connection, plan, role):
-    await audit_runtime_role(connection, role)
+    await audit_runtime_role(
+        connection, role, credential_exception=plan.credential_exception
+    )
+    if plan.credential_exception is not None:
+        await plan.credential_exception.verify_initialization_state(connection)
     await connection.execute(
         f'GRANT USAGE ON SCHEMA public,lightrag_storage TO "{role}"'
     )
@@ -198,9 +209,13 @@ async def grant_runtime(connection, plan, role):
 
 
 async def migrate(connection, plan, runtime_role, *, confirm_empty=False):
-    await audit_runtime_role(connection, runtime_role)
+    await audit_runtime_role(
+        connection, runtime_role, credential_exception=plan.credential_exception
+    )
     async with migration_lock(connection):
         async with connection.transaction():
+            if plan.credential_exception is not None:
+                await plan.credential_exception.verify_initialization_state(connection)
             await connection.execute("SET LOCAL lock_timeout='5s'")
             await connection.execute("SET LOCAL statement_timeout='60s'")
             exists = await connection.fetchval(

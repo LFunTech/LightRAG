@@ -14,6 +14,7 @@ class ReleaseConfig:
     profile_hash: str
     protocol_version: int = 1
     usage_final_path: str | None = None
+    credential_exception: object = None
 
     @classmethod
     def from_env(cls, *, distributed_writes=None):
@@ -54,6 +55,16 @@ class ReleaseConfig:
             raise ValueError(
                 "Only the explicit native termination usage path is supported"
             )
+        from lightrag_delivery.credentials import from_environment
+
+        exception = from_environment(os.environ)
+        if exception is not None and (
+            values["LIGHTRAG_RELEASE_SLOT"] != "blue"
+            or values["LIGHTRAG_RELEASE_PROFILE_HASH"] != exception.profile_hash
+        ):
+            raise ValueError(
+                "First-release credential exception requires the pinned Blue"
+            )
         return cls(
             values["LIGHTRAG_DEPLOYMENT_ID"] + "/" + values["WORKSPACE"],
             values["LIGHTRAG_RELEASE_SLOT"],
@@ -61,4 +72,5 @@ class ReleaseConfig:
             values["LIGHTRAG_RELEASE_CONFIG_HASH"],
             values["LIGHTRAG_RELEASE_PROFILE_HASH"],
             usage_final_path=final_path or None,
+            credential_exception=exception,
         )

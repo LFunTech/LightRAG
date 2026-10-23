@@ -314,6 +314,55 @@
         },
         "write_compatible": {
           "type": "boolean"
+        },
+        "first_release_credential_exception": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "approval_id",
+            "scope",
+            "profile_hash",
+            "release_tag",
+            "postgres_user",
+            "postgres_database",
+            "hugegraph_user",
+            "accepted_risk"
+          ],
+          "properties": {
+            "version": {
+              "const": 1,
+              "type": "integer"
+            },
+            "approval_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.-]{1,128}$"
+            },
+            "scope": {
+              "type": "string"
+            },
+            "profile_hash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "release_tag": {
+              "type": "string",
+              "pattern": "^v[0-9]+[.][0-9]+[.][0-9]+$"
+            },
+            "postgres_user": {
+              "type": "string"
+            },
+            "postgres_database": {
+              "type": "string"
+            },
+            "hugegraph_user": {
+              "type": "string"
+            },
+            "accepted_risk": {
+              "const": true,
+              "type": "boolean"
+            }
+          }
         }
       }
     },

@@ -470,7 +470,13 @@ def validate_delivery_profile(data):
     import ipaddress
 
     _keys(data["runtime"], RUNTIME_FIELDS, "runtime")
-    _keys(data["onboarding"], ONBOARDING_FIELDS, "onboarding")
+    optional = (
+        {"first_release_credential_exception"}
+        if isinstance(data["onboarding"], dict)
+        and "first_release_credential_exception" in data["onboarding"]
+        else set()
+    )
+    _keys(data["onboarding"], ONBOARDING_FIELDS | optional, "onboarding")
     ingress_fields = INGRESS_FIELDS
     if isinstance(data["ingress"], dict) and data["ingress"].get("mode") == "edgeone":
         ingress_fields = ingress_fields | {"edgeone"}
@@ -517,7 +523,22 @@ def validate_delivery_profile(data):
     ):
         _text(i[field], "ingress." + field)
     for field, value in o.items():
-        if field in {"read_compatible", "write_compatible"}:
+        if field == "first_release_credential_exception":
+            from .credentials import CredentialException
+
+            policy = CredentialException.parse(
+                value,
+                scope=data["target"]["deployment_id"]
+                + "/"
+                + data["target"]["workspace"],
+                profile_hash=o["profile_hash"],
+            )
+            if (
+                policy.postgres_user != o["runtime_role"]
+                or policy.postgres_database != data["target"]["postgres_database"]
+            ):
+                raise ProdConfigError("onboarding: first-release identity differs")
+        elif field in {"read_compatible", "write_compatible"}:
             if value is not True:
                 raise ProdConfigError(
                     "onboarding: explicit compatibility approval required"

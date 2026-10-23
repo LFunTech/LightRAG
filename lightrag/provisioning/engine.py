@@ -46,7 +46,9 @@ async def verify_all(connection, plan, graph, runtime_role):
     await verify_coordination(connection)
     await verify_release(connection)
     await postgres.verify_runtime_access(connection, plan, runtime_role)
-    await verify_runtime_role(connection, runtime_role)
+    await verify_runtime_role(
+        connection, runtime_role, credential_exception=plan.credential_exception
+    )
     await graph.verify()
 
 
@@ -60,7 +62,11 @@ async def apply_all(connection, plan, graph, runtime_role, *, confirm_empty):
     )
 
     async with postgres.migration_lock(connection):
-        await postgres.audit_runtime_role(connection, runtime_role)
+        if plan.credential_exception is not None:
+            await plan.credential_exception.verify_initialization_state(connection)
+        await postgres.audit_runtime_role(
+            connection, runtime_role, credential_exception=plan.credential_exception
+        )
         await quiescent(connection)
         await graph.preflight()
         async with connection.transaction():
@@ -89,7 +95,9 @@ async def apply_all(connection, plan, graph, runtime_role, *, confirm_empty):
                 await connection.execute(
                     f'GRANT INSERT,UPDATE,DELETE ON lightrag_coordination.{name} TO "{runtime_role}"'
                 )
-            await grant_runtime(connection, runtime_role)
+            await grant_runtime(
+                connection, runtime_role, credential_exception=plan.credential_exception
+            )
         await graph.apply(connection)
         await verify_all(connection, plan, graph, runtime_role)
 
@@ -104,10 +112,14 @@ async def register_workspace(
     if expected_manifest_hash != manifest_hash(environment):
         raise ValueError("Approved workspace manifest differs")
     async with postgres.migration_lock(connection):
+        if plan.credential_exception is not None:
+            await plan.credential_exception.verify_initialization_state(connection)
         await verify_all(connection, plan, graph, environment["POSTGRES_USER"])
         await quiescent(connection)
         await graph.verify_empty_scope(plan.scope[1])
         async with connection.transaction():
+            if plan.credential_exception is not None:
+                await plan.credential_exception.verify_initialization_state(connection)
             await quiescent(connection)
             for table in plan.tables:
                 if await connection.fetchval(

@@ -104,6 +104,22 @@ prod SHALL 独立声明集群身份、namespace、域名/TLS、workspace、数�
 - **WHEN** 空生产环境已完成单独批准的初始化和首次验收
 - **THEN** 允许开放首个版本，不要求不存在的旧实例参与交接，也不将初始化伪装为已经验证的零停机升级
 
+### Requirement: Scope approved shared credentials to the first release
+
+默认运行与迁移身份 SHALL 保持分离。用户明确接受风险后，首次空环境上线 MAY 使用现有LightRAG专用PG/图账号共用身份，但 MUST 以版本化批准记录绑定scope、物理profile、准确正式tag、PG数据库/用户、图用户及风险确认，并纳入配置与迁移计划hash。连接审计 MUST 拒绝高权限角色/继承及不同session_user冒名，MUST NOT 创建账号或授予CREATEROLE。CLI MUST 显式提供迁移凭据和额外执行确认，MUST NOT 静默借用runtime凭据。
+
+此例外仅豁免对象所有权/DDL/发布控制表权限的分离，MUST 保留版本/checksum/结构、完整CRUD、目标/图状态、空环境登记、只读启动及其余生产门禁。首次Blue SHALL 与持久scope policy逐字段一致，且仅允许初始epoch/IDLE状态；同一批准的Blue可重建，但普通升级/Green/回退 MUST 拒绝例外，不得自动拓展到后续版本或关闭协调保护。原test及默认分离模式 MUST 保持原行为。
+
+初始化写入口 SHALL 在任何持久变更前确认scope尚未enroll，或已有批准与Blue/epoch1/IDLE/open/no-owner完全匹配；enroll SHALL 在连接前核对operator DSN准确host/port/database/user。Job的共用身份写确认 SHALL 来自显式本次执行输入，不从静态风险批准推导。
+
+#### Scenario: A dedicated non-superuser initializes the approved first Blue
+- **WHEN** 获准的专用账号在准确目标以显式迁移凭据/确认执行初始化，再登记初始Blue
+- **THEN** 无CREATEROLE也可按原版本化迁移完成schema/图意图及verify/register/enroll，runtime仅只读验证结构/权限，持久批准一致后才登记实例；不伪称独立数据库权限隔离仍成立
+
+#### Scenario: A shared credential exception is reused or drifts
+- **WHEN** 请求Green、不同tag/账号/scope/profile、不同会话身份、持久批准漂移或普通升级
+- **THEN** 拒绝越界使用，不继续创建普通控制Job或执行发布状态变更，不降低未知写/入口/验收门禁，保留已确认首发实例和证据
+
 ### Requirement: Preserve continuous query routing during cutover
 
 生产发布 SHALL 先保持 Blue 服务并启动 Green 待命，通过兼容及业务验收后再切换稳定入口。切换过程中 MUST 保持可用查询端点，MUST NOT 暂停全部查询路由、缩容全部服务到零或仅凭资源更新成功报告切流成功。已有流式连接 SHALL 由原实例完成。
@@ -253,7 +269,7 @@ Embedding输入预处理 SHALL 不阻塞事件循环并在取消时join；同次
 - **THEN** PG事务记录版本/checksum/profile/结构指纹，图逐项记录意图和最终状态；相同迁移重复执行仅验证，不自动升级模型/索引或改旧coordination checksum
 
 #### Scenario: Existing storage or migration evidence is incompatible
-- **WHEN** 发现无版本业务表、checksum/profile不匹配、结构漂移、runtime拥有DDL权限或并发迁移
+- **WHEN** 发现无版本业务表、checksum/profile不匹配、结构漂移、runtime拥有未经首发例外批准的DDL权限或并发迁移
 - **THEN** 在进一步结构变更前拒绝，不自动采纳旧结构、清记录、扩权或把IF NOT EXISTS当兼容性证明
 
 #### Scenario: Graph schema mutation has an uncertain result

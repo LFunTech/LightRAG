@@ -358,3 +358,13 @@ PG 业务池、coordination 池/witness、HugeGraph 客户端池以及 LLM/embed
 - 每次路由传播观测同时核对 EO 配置未漂移和 CLB 全部已知 Pod 目标/健康，公开 HTTPS 仍必须返回实际候选身份。EO/CLB 权限失败均 fail-closed，不借用 S3/COS key 或控制器凭据。
 - EO HTTP Ingress 不含 HTTPS/证书注解；CLB HTTPS 模式不因新增分支而放宽。原 test 流水线与运行配置不变。
 - 首次初始化和首次 Blue 4×1 仍必须由获准流水线使用独立身份执行；本地适配不等于这些真实操作已经完成。当前未预置合格 runtime/观测身份时不解除静态部署 gate，也不以反复打 tag 代替接入。
+
+## 13. 已批准的首次上线专用账号共用例外（2026-10-23）
+
+用户确认prod清单中的PG/HugeGraph账号专供LightRAG，并明确接受首次上线运行/迁移共用及相应DDL/发布控制数据权限风险。本变更仅豁免账号分离，不授予CREATEROLE/超级权限、不改变版本化迁移、只读启动、云侧TLS、隔离、入口或容量门禁。保留独立身份默认路径；不把“专用账号”等同于最小权限。
+
+采用显式、版本化且非敏感的first-release credential exception：绑定批准ID、scope、物理profile、准确正式tag和PG数据库/运行用户名及图用户名，要求风险确认true。缺省、字段缺失/越界/类型错误、跨scope/profile/tag/账号均拒绝；配置hash及迁移plan记录该例外。仅首个Blue可使用，同版本同批准可重建；普通升级/Green/回退不接受例外，后续升级须先恢复独立身份，不能将此次确认泛化为永久关闭权限保护。
+
+迁移CLI仍显式传入operator DSN/图迁移凭据；例外仅允许准确共用，不做runtime凭据隐式fallback。真实PG连接检查当前数据库/账号及非superuser、无CREATEROLE/CREATEDB/复制/BYPASSRLS和高权限继承；仅豁免专用对象所有权/DDL/控制表权限。原SQL/checksum不改、migration/verify/register/enroll不合并为应用启动DDL，不生成角色或密码。生产runtime以只读事务核验schema/完整CRUD/批准scope，release初始化核验持久policy与例外完全一致，普通发布器在任何网络/变更前拒绝该例外。
+
+本轮按既有OpenSpec实施：先反例回归，再贯通清单→环境→初始化/登记→runtime/持久enroll及普通升级拒绝，补独立本地PG测试。初始化写入口还需先读取批准scope的持久状态：允许未enroll，或准确相同批准的Blue/epoch1/IDLE/open/no-owner，其余在GRANT/DDL/图操作前拒绝；enroll在网络连接前核对DSN host/显式port/数据库/用户。Job渲染的`confirm_shared_credentials=true`必须来自独立本次执行输入，不能由静态批准自动生成，只读verify不要求该写确认。实际prod初始化、首发流水线串接、EO/CLB自动观测和真实验收仍是原独立前置；不得以本例外复用测试凭据、假造入口hash/已运行Blue或取消其他门禁。

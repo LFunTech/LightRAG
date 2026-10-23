@@ -47,6 +47,17 @@ class ReleaseStore:
             await verify(connection)
 
     async def onboard(self, scope, *, active_slot, profile_hash, config_hash, policy):
+        exception = None
+        if "first_release_credential_exception" in policy:
+            from lightrag_delivery.credentials import CredentialException
+
+            exception = CredentialException.parse(
+                policy["first_release_credential_exception"],
+                scope=scope,
+                profile_hash=profile_hash,
+            )
+            if active_slot != "blue":
+                raise ReleaseConflict("First-release credentials require initial Blue")
         if (
             active_slot not in {"blue", "green"}
             or not isinstance(policy.get("queue_capacity"), int)
@@ -74,11 +85,17 @@ class ReleaseStore:
                     or json_value(row["policy"]) != policy
                 ):
                     raise ReleaseConflict("Existing release enrollment differs")
+                if exception is not None:
+                    exception.verify_scope_state(row_dict(row))
 
     async def begin(self, identity, *, expected_epoch):
         async with self.connection() as connection:
             async with connection.transaction():
                 row = await self._scope(connection, identity.scope, lock=True)
+                if "first_release_credential_exception" in row["policy"]:
+                    raise ReleaseConflict(
+                        "First-release credentials cannot enter ordinary upgrade"
+                    )
                 existing = await connection.fetchrow(
                     "SELECT identity,phase,previous FROM lightrag_release.releases WHERE scope=$1 AND release_id=$2",
                     identity.scope,

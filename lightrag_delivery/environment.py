@@ -112,6 +112,15 @@ def runtime_environment(config, secrets):
     if profile != config.onboarding["profile_hash"]:
         raise ProdConfigError("onboarding: physical profile differs from enrollment")
     environment["LIGHTRAG_RELEASE_PROFILE_HASH"] = profile
+    from .credentials import ENV_KEY, for_onboarding, from_environment
+
+    exception = for_onboarding(config)
+    if exception is not None:
+        import json
+
+        environment[ENV_KEY] = json.dumps(exception.as_dict(), sort_keys=True)
+        environment["LIGHTRAG_RELEASE_TAG"] = exception.release_tag
+        from_environment(environment)
     return environment, content_hash(
         {"configuration": config.config_hash, "environment": environment}
     )

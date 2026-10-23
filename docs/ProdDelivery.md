@@ -266,3 +266,13 @@ CI 等待超时不会删除 Job、清 owner 或自动 undo。重入必须观察�
 这些文档不是本环境验收。必须核实真实 TKE/controller/kubelet 能力、TLS、全部代理的 buffering/
 request/idle timeout、后端连接保持/强制断流参数、Service selector 传播和长 SSE，在各阶段及
 故障注入时持续观测连接、错误、延迟、排队/幂等/最终存储事实。未经过此演练不能开放生产 gate。
+
+## 已批准首发共用专用账号（2026-10-23）
+
+用户明确批准首次上线复用现有LightRAG专用PG/HugeGraph账号作为运行与迁移身份，接受应用进程可改表及发布控制数据的风险。这是对身份分离的有限例外，不是关闭所有权限检查，也不是要求给应用CREATEROLE；真实云入口、隔离、只读启动、版本化迁移及其他验收仍须通过。
+
+- 默认配置不包含`onboarding.first_release_credential_exception`，保持独立最小权限模式。例外必须完整提供`version=1`、批准ID、准确scope/profile、正式release_tag、PG用户/数据库、图用户和`accepted_risk=true`；全部值来自获准的生产输入，不复制单测fixture。批准进入配置hash与migration plan hash，实际环境中仅用非敏感JSON字段`LIGHTRAG_FIRST_RELEASE_CREDENTIAL_EXCEPTION`及准确`LIGHTRAG_RELEASE_TAG`传递。
+- 初始化仍通过独立`python -m lightrag.provisioning plan/apply/verify/register`和`python -m lightrag.distributed.release enroll`步骤。`apply/register`除原维护/空库/plan确认外，增加`--confirm-shared-credentials`；离线Job的`settings.confirm_shared_credentials`也须显式为true，不能由静态批准自动代填，只读verify无需该执行确认。迁移DSN和图账号/密码必须显式提供专用输入；即便与runtime相同也不隐式从runtime环境兜底。K8s运行与operator Secret引用继续分开，避免把云控制凭据注入应用；它不再被描述为数据库角色分离。
+- PG连接必须同时核对current_user/session_user和目标库，并拒绝superuser、CREATEROLE/CREATEDB、复制、BYPASSRLS及相关继承。只放行已经接受的专用对象所有权/DDL/控制表权限；不创建角色、不改原migration SQL/checksum或使用启动DDL补建。版本/profile/结构漂移和完整CRUD验证不豁免。
+- 首次release policy持久化同一批准，只允许Blue/epoch1/IDLE/open且无owner。实例启动/刷新重新核对，缺失或漂移拒绝；初始化所有写入口在迁移/授权/图操作前同样拒绝后续epoch、Green或批准漂移，尚未enroll才允许首发准备。enroll在连接前核对operator DSN的准确host/显式port/库/用户，不允许同名库克隆冒充目标；批准相同的首版Blue可重建。普通`prod_deploy`/`deliver`及持久store升级入口拒绝该例外，不能静默开Green或把它用于后续tag。未来4+4升级前需单独安排身份分离/权限整改及复验，不能直接删批准记录冒充已整改。
+- 本地完成该能力不代表已部署。首发实际流水线还需显式初始化→verify→register/enroll→4×1 Blue及入口验收串接，云API观测权限/审阅hash与其他前置也必须齐备；不调用普通升级器假造一个已运行Blue，不用共用账号批准免除这些工作。

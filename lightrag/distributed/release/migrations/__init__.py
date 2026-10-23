@@ -77,7 +77,10 @@ async def migrate(connection):
         await verify(connection)
 
 
-async def grant_runtime(connection, role):
+async def grant_runtime(connection, role, *, credential_exception=None):
+    if credential_exception is not None:
+        await credential_exception.verify_principal(connection, role)
+        return
     if (
         not isinstance(role, str)
         or not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", role)
@@ -101,9 +104,12 @@ async def grant_runtime(connection, role):
     )
 
 
-async def verify_runtime_role(connection, role=None):
+async def verify_runtime_role(connection, role=None, *, credential_exception=None):
     if role is None:
         role = await connection.fetchval("SELECT current_user")
+    if credential_exception is not None:
+        await credential_exception.verify_principal(connection, role)
+        return
     unsafe = await connection.fetchval(
         """
         SELECT EXISTS(SELECT 1 FROM pg_roles r WHERE

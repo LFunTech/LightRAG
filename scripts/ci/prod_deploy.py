@@ -64,6 +64,10 @@ class Kubectl:
 def verified_inputs(
     config, *, image_record, source_archive, source_record, environment
 ):
+    if "first_release_credential_exception" in config.onboarding:
+        raise ProdConfigError(
+            "First-release credentials require explicit initial delivery, not ordinary upgrade"
+        )
     event, tag, commit, pipeline, repo = (
         environment.get(k, "")
         for k in (
@@ -115,6 +119,10 @@ def verified_inputs(
 
 
 def render_control_job(config, identity, environment, *, image, attempt):
+    if "first_release_credential_exception" in config.onboarding:
+        raise ProdConfigError(
+            "First-release credentials cannot create an ordinary control Job"
+        )
     ns = config.target["namespace"]
     version = content_hash(identity)[:24]
     config_name = "lightrag-release-" + version
