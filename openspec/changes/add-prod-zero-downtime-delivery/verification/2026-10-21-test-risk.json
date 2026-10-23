@@ -1,0 +1,832 @@
+{
+  "assessment": "add-prod-zero-downtime-delivery / current-code multi-Pod risk audit",
+  "recorded_at": "2026-10-21T02:26:32.591546+00:00",
+  "authorization_scope": "Read current code and run isolated tests in test; no prod access or existing-test recovery",
+  "git_head": "beb4d64681c06d393255c577cdf0d988fdeecbfb",
+  "tested_environment": {
+    "namespace": "lightrag-risk-20261021",
+    "scope": "lightrag_risk_20261021",
+    "image": "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca",
+    "model_fixture": true,
+    "source_overlay_sha256": {
+      "lightrag/api/lightrag_server.py": "9c38d580df7db2f75b8c9bf0f06d040d4be9af2d5cde4b0111273ca7dfb2e3a8",
+      "lightrag/api/routers/query_routes.py": "cfb2de62e00569e7eb6820685d04defa168d7f9b7a9fae76db612635ffc37c4c",
+      "lightrag/llm/openai.py": "0eb0d97a21058539570374a5d9205fcf2be740a3dbfeef425cb2cebd17959761",
+      "lightrag/query_accounting.py": "66fbf20508abb33bd43f2165585fda001b635055e7bec07ed6160b3c5141a0d6"
+    }
+  },
+  "source_match": {
+    "all_package_python_matches_current_worktree": true,
+    "remote_python_files": 191,
+    "local_python_files": 191,
+    "aggregate_sha256": "6ab861671f015c8bb89cf0b2051513ab7bc90a119d96178c2f9afc04238ec8b1"
+  },
+  "fixture_and_backend_boundaries": {
+    "real_backends": [
+      "PostgreSQL",
+      "pgvector",
+      "HugeGraph",
+      "S3"
+    ],
+    "model_http_sse_fixture": true,
+    "real_model_quota_or_capacity_tested": false,
+    "scope_and_workspace": "lightrag_risk_20261021",
+    "s3_prefix": "lightrag/risk-audit-20261021/object-ingestion",
+    "query_max_async_llm_per_pod": 1,
+    "postgres_business_pool_limit_per_pod": 4,
+    "hugegraph_max_connections_per_pod": 1,
+    "embedding_concurrency_per_pod": 2,
+    "poll_interval_seconds": 2,
+    "public_ingress_created": false,
+    "fault_target": "Independent SDK probe process, not an application Pod",
+    "llm_cache_enabled": false
+  },
+  "isolated_checks": {
+    "four_pod_startup": {
+      "pod_count": 4,
+      "workers_per_pod": 1,
+      "nodes": [
+        "test-worker1",
+        "test-worker2",
+        "test-worker4",
+        "test-worker6"
+      ],
+      "ready": 4
+    },
+    "current_source_match": {
+      "all_match": true,
+      "files": {
+        "api/lightrag_server.py": true,
+        "api/routers/query_routes.py": true,
+        "llm/openai.py": true,
+        "query_accounting.py": true,
+        "distributed/runtime.py": true,
+        "distributed/coordinator.py": true,
+        "llm_roles.py": true,
+        "utils.py": true
+      }
+    },
+    "initial_health": {
+      "statuses": [
+        200,
+        200,
+        200,
+        200
+      ]
+    },
+    "single_pod_nonstream_limit_1": {
+      "provider_max_active": 1,
+      "requests": [
+        {
+          "status": 200,
+          "seconds": 2.546
+        },
+        {
+          "status": 200,
+          "seconds": 2.702
+        },
+        {
+          "status": 200,
+          "seconds": 2.812
+        }
+      ]
+    },
+    "four_pod_nonstream_aggregate": {
+      "configured_query_limit_per_pod": 1,
+      "provider_max_active": 4,
+      "active_query_operations": 4,
+      "requests": [
+        {
+          "status": 200,
+          "seconds": 8.313
+        },
+        {
+          "status": 200,
+          "seconds": 8.348
+        },
+        {
+          "status": 200,
+          "seconds": 8.326
+        },
+        {
+          "status": 200,
+          "seconds": 8.339
+        }
+      ]
+    },
+    "stream_limit_and_operation_lifetime": {
+      "configured_query_limit_per_pod": 1,
+      "provider_max_active_streams": 4,
+      "active_query_operations_while_streaming": 0,
+      "requests": [
+        {
+          "status": 200,
+          "chunks": 4,
+          "stream_errors": 0,
+          "seconds": 7.593
+        },
+        {
+          "status": 200,
+          "chunks": 4,
+          "stream_errors": 0,
+          "seconds": 7.593
+        },
+        {
+          "status": 200,
+          "chunks": 4,
+          "stream_errors": 0,
+          "seconds": 7.593
+        },
+        {
+          "status": 200,
+          "chunks": 4,
+          "stream_errors": 0,
+          "seconds": 7.589
+        }
+      ]
+    },
+    "idle_instance_finalization_under_peer_query": {
+      "status": "CoordinationBusyError",
+      "elapsed_seconds": 1.007,
+      "probe_wait_timeout_seconds": 1,
+      "runtime_closed_before_manual_probe_cleanup": false,
+      "peer_query": {
+        "status": 200,
+        "seconds": 9.073
+      }
+    },
+    "four_pod_small_mixed_workload": {
+      "writes": [
+        {
+          "status": 200,
+          "track_id": "insert_20261021_020833_b53e8348",
+          "source": "audit_contribution_0.txt"
+        },
+        {
+          "status": 200,
+          "track_id": "insert_20261021_020833_9bfbfd46",
+          "source": "audit_contribution_1.txt"
+        },
+        {
+          "status": 200,
+          "track_id": "insert_20261021_020833_e3348c23",
+          "source": "audit_contribution_2.txt"
+        },
+        {
+          "status": 200,
+          "track_id": "insert_20261021_020833_38144233",
+          "source": "audit_contribution_3.txt"
+        }
+      ],
+      "tracks": {
+        "insert_20261021_020833_b53e8348": {
+          "http_status": 200,
+          "statuses": [
+            "processed"
+          ]
+        },
+        "insert_20261021_020833_9bfbfd46": {
+          "http_status": 200,
+          "statuses": [
+            "processed"
+          ]
+        },
+        "insert_20261021_020833_e3348c23": {
+          "http_status": 200,
+          "statuses": [
+            "processed"
+          ]
+        },
+        "insert_20261021_020833_38144233": {
+          "http_status": 200,
+          "statuses": [
+            "processed"
+          ]
+        }
+      },
+      "queries": [
+        {
+          "status": 200,
+          "seconds": 0.51
+        },
+        {
+          "status": 200,
+          "seconds": 0.564
+        },
+        {
+          "status": 200,
+          "seconds": 0.613
+        },
+        {
+          "status": 200,
+          "seconds": 0.531
+        },
+        {
+          "status": 200,
+          "seconds": 0.643
+        },
+        {
+          "status": 200,
+          "seconds": 0.681
+        },
+        {
+          "status": 200,
+          "seconds": 0.67
+        },
+        {
+          "status": 200,
+          "seconds": 0.697
+        }
+      ]
+    },
+    "coordination_before_fault": {
+      "before": {
+        "fenced": false,
+        "active_kinds": [],
+        "pending_mutations": 0,
+        "orphaned_operations": 0,
+        "operation_counts": [
+          {
+            "kind": "bootstrap",
+            "state": "completed",
+            "n": 1
+          },
+          {
+            "kind": "finalize",
+            "state": "completed",
+            "n": 1
+          },
+          {
+            "kind": "initialize",
+            "state": "completed",
+            "n": 4
+          },
+          {
+            "kind": "initialize_upload_sessions",
+            "state": "completed",
+            "n": 4
+          },
+          {
+            "kind": "pipeline",
+            "state": "completed",
+            "n": 291
+          }
+        ]
+      },
+      "after": {
+        "fenced": false,
+        "active_kinds": [],
+        "pending_mutations": 0,
+        "orphaned_operations": 0,
+        "operation_counts": [
+          {
+            "kind": "aquery_llm",
+            "state": "completed",
+            "n": 20
+          },
+          {
+            "kind": "bootstrap",
+            "state": "completed",
+            "n": 1
+          },
+          {
+            "kind": "finalize",
+            "state": "completed",
+            "n": 1
+          },
+          {
+            "kind": "initialize",
+            "state": "completed",
+            "n": 5
+          },
+          {
+            "kind": "initialize_upload_sessions",
+            "state": "completed",
+            "n": 4
+          },
+          {
+            "kind": "insert_text",
+            "state": "completed",
+            "n": 4
+          },
+          {
+            "kind": "pipeline",
+            "state": "completed",
+            "n": 376
+          },
+          {
+            "kind": "pipeline_index_texts",
+            "state": "completed",
+            "n": 4
+          }
+        ]
+      }
+    },
+    "healthy_pods_after_workload": {
+      "health_statuses": [
+        200,
+        200,
+        200,
+        200
+      ]
+    },
+    "cross_pod_real_s3_upload": {
+      "presign_http": 200,
+      "put_http": 200,
+      "complete_http": 200,
+      "presign_and_complete_different_pods": true,
+      "track_statuses": [
+        "processed"
+      ],
+      "object_key_sha256": "73a494ec557ade99d29432748c9e97b7718ce77c0506012fe0698f6f77933a6b"
+    },
+    "real_pg_hugegraph_retrieval": [
+      {
+        "http_status": 200,
+        "nonempty_response": true,
+        "has_fixture_answer": true
+      },
+      {
+        "http_status": 200,
+        "nonempty_response": true,
+        "has_fixture_answer": true
+      },
+      {
+        "http_status": 200,
+        "nonempty_response": true,
+        "has_fixture_answer": true
+      },
+      {
+        "http_status": 200,
+        "nonempty_response": true,
+        "has_fixture_answer": true
+      }
+    ],
+    "attribution_and_vectors": {
+      "processed_documents": 5,
+      "entity_real_sources": 5,
+      "relation_real_sources": 5,
+      "relation_weight": 5.0,
+      "tracked_entity_chunks": 5,
+      "entity_anchor_rows": 5,
+      "relation_anchor_rows": 5,
+      "entity_vector_present": true,
+      "fenced": false,
+      "pending_mutations": 0
+    },
+    "owner_loss_fence_and_readiness": {
+      "intentional_process_exit_code": 73,
+      "fault_kind": "owner process died after durable admission, before physical business mutation",
+      "before_fenced": false,
+      "after_fenced": true,
+      "orphaned_operations": 1,
+      "pending_mutations": 0,
+      "http_health_statuses": [
+        200,
+        200,
+        200,
+        200
+      ],
+      "query_statuses": [
+        503,
+        503,
+        503,
+        503
+      ],
+      "kubernetes_ready_pods": 4,
+      "automatic_recovery_executed": false
+    }
+  },
+  "embedding_manifest_probe": {
+    "different_document_prefix_same_manifest_hash": true,
+    "same_model": true,
+    "same_dimension": true,
+    "business_storage_initialized": false,
+    "embedding_requests_sent": 0
+  },
+  "existing_test_baseline": {
+    "lightrag-test-01": {
+      "deployment_uid": "7a827e9e-e0ef-4ebf-9e3b-080d4f6be893",
+      "spec_sha256": "69a74bc70347a2dd56e5020b40438f9609ed348d0ce799c42f2dda7f1cb0225f",
+      "pod_uids": [
+        "935fedb0-48aa-4b2f-8d18-0222111724e9",
+        "d4afdf0e-51b4-4479-96c5-765d1e01b785"
+      ],
+      "replicas": 2,
+      "ready": 2
+    },
+    "lightrag-test-02": {
+      "deployment_uid": "c756fe67-268d-421d-8b17-1077ba372df6",
+      "spec_sha256": "94ceeaab042e780433e54e539a69a88c601912cb72da170bbb9d95d70a3680dd",
+      "pod_uids": [
+        "c17ebefd-a3f9-49f4-9769-6236bdf58c1e",
+        "ec5abb0d-8389-44c3-8489-3bfa8c493868"
+      ],
+      "replicas": 2,
+      "ready": 2
+    },
+    "lightrag-test-03": {
+      "deployment_uid": "163ab772-697a-48af-85d8-173c9c8ef33f",
+      "spec_sha256": "cf714ddb0dd993a1a0122d1574edd4fb03d0f54c3fe0821147120be3e6d43507",
+      "pod_uids": [
+        "0dd63e19-cf09-4215-87b4-093f4b97c3cf",
+        "3a4a3a38-6331-4165-92e2-4dd697e9d0fb"
+      ],
+      "replicas": 2,
+      "ready": 2
+    },
+    "lightrag-test-04": {
+      "deployment_uid": "2291d070-a964-449a-893d-b3dbfe5f28a4",
+      "spec_sha256": "28995405fb7002259d96367028a1ed9f9064b42909ed58b9925d4494888139b6",
+      "pod_uids": [
+        "56ce540d-070e-4652-95ef-bf77192793d4",
+        "aa06bde6-263c-4877-9c53-3d7eccb6844b"
+      ],
+      "replicas": 2,
+      "ready": 2
+    },
+    "lightrag-test-05": {
+      "deployment_uid": "8bec4872-cb9d-4b35-bb12-6eafb6efad17",
+      "spec_sha256": "98929f4c46c7e947ad9bf5def0aede7cac49d40c1f4bdafe90fc6692abdde339",
+      "pod_uids": [
+        "872a576b-8b23-447b-b08a-14e38722a75f",
+        "f63b1ac1-92a3-4091-8e85-bb762be08478"
+      ],
+      "replicas": 2,
+      "ready": 2
+    }
+  },
+  "existing_test_scope_inspection": {
+    "lightrag_test_01": {
+      "workspace": {
+        "deployment_id": "lightrag_test_01",
+        "workspace": "lightrag_test_01",
+        "fenced": false,
+        "fence_reason": null,
+        "generation": 1
+      },
+      "active_operations": []
+    },
+    "lightrag_test_02": {
+      "workspace": {
+        "deployment_id": "lightrag_test_02",
+        "workspace": "lightrag_test_02",
+        "fenced": false,
+        "fence_reason": null,
+        "generation": 1
+      },
+      "active_operations": []
+    },
+    "lightrag_test_03": {
+      "workspace": {
+        "deployment_id": "lightrag_test_03",
+        "workspace": "lightrag_test_03",
+        "fenced": false,
+        "fence_reason": null,
+        "generation": 2
+      },
+      "active_operations": []
+    },
+    "lightrag_test_04": {
+      "workspace": {
+        "deployment_id": "lightrag_test_04",
+        "workspace": "lightrag_test_04",
+        "fenced": false,
+        "fence_reason": null,
+        "generation": 1
+      },
+      "active_operations": []
+    },
+    "lightrag_test_05": {
+      "workspace": {
+        "deployment_id": "lightrag_test_05",
+        "workspace": "lightrag_test_05",
+        "fenced": false,
+        "fence_reason": null,
+        "generation": 1
+      },
+      "active_operations": []
+    }
+  },
+  "existing_test_business_diagnostics": {
+    "pod_diagnostics": {
+      "lightrag-test-01": [
+        {
+          "pod": "lightrag-7bd8fd4f5-cmtpv",
+          "statuses": {
+            "/health": {
+              "http": 200,
+              "error_type": null,
+              "recognized_message": null
+            },
+            "/documents/pipeline_status": {
+              "http": 503,
+              "error_type": "CoordinationUnavailableError",
+              "recognized_message": "Coordinator is not available"
+            }
+          }
+        },
+        {
+          "pod": "lightrag-7bd8fd4f5-dr7nf",
+          "statuses": {
+            "/health": {
+              "http": 200,
+              "error_type": null,
+              "recognized_message": null
+            },
+            "/documents/pipeline_status": {
+              "http": 503,
+              "error_type": "CoordinationUnavailableError",
+              "recognized_message": "Coordinator is not available"
+            }
+          }
+        }
+      ],
+      "lightrag-test-02": [
+        {
+          "pod": "lightrag-79fb9488cf-5ncn6",
+          "statuses": {
+            "/health": {
+              "http": 200,
+              "error_type": null,
+              "recognized_message": null
+            },
+            "/documents/pipeline_status": {
+              "http": 503,
+              "error_type": "CoordinationUnavailableError",
+              "recognized_message": "Coordinator is not available"
+            }
+          }
+        },
+        {
+          "pod": "lightrag-79fb9488cf-dnkx9",
+          "statuses": {
+            "/health": {
+              "http": 200,
+              "error_type": null,
+              "recognized_message": null
+            },
+            "/documents/pipeline_status": {
+              "http": 503,
+              "error_type": "CoordinationUnavailableError",
+              "recognized_message": "Coordinator is not available"
+            }
+          }
+        }
+      ],
+      "lightrag-test-03": [
+        {
+          "pod": "lightrag-7ffd9bb78c-cnpgs",
+          "statuses": {
+            "/health": {
+              "http": 200,
+              "error_type": null,
+              "recognized_message": null
+            },
+            "/documents/pipeline_status": {
+              "http": 503,
+              "error_type": "CoordinationUnavailableError",
+              "recognized_message": "Coordinator is not available"
+            }
+          }
+        },
+        {
+          "pod": "lightrag-7ffd9bb78c-d827c",
+          "statuses": {
+            "/health": {
+              "http": 200,
+              "error_type": null,
+              "recognized_message": null
+            },
+            "/documents/pipeline_status": {
+              "http": 503,
+              "error_type": "CoordinationUnavailableError",
+              "recognized_message": "Coordinator is not available"
+            }
+          }
+        }
+      ],
+      "lightrag-test-04": [
+        {
+          "pod": "lightrag-657678fbdc-lztb4",
+          "statuses": {
+            "/health": {
+              "http": 200,
+              "error_type": null,
+              "recognized_message": null
+            },
+            "/documents/pipeline_status": {
+              "http": 503,
+              "error_type": "CoordinationUnavailableError",
+              "recognized_message": "Coordinator is not available"
+            }
+          }
+        },
+        {
+          "pod": "lightrag-657678fbdc-n7q9j",
+          "statuses": {
+            "/health": {
+              "http": 200,
+              "error_type": null,
+              "recognized_message": null
+            },
+            "/documents/pipeline_status": {
+              "http": 503,
+              "error_type": "CoordinationUnavailableError",
+              "recognized_message": "Coordinator is not available"
+            }
+          }
+        }
+      ],
+      "lightrag-test-05": [
+        {
+          "pod": "lightrag-cdd7685f9-q8h26",
+          "statuses": {
+            "/health": {
+              "http": 200,
+              "error_type": null,
+              "recognized_message": null
+            },
+            "/documents/pipeline_status": {
+              "http": 503,
+              "error_type": "CoordinationUnavailableError",
+              "recognized_message": "Coordinator is not available"
+            }
+          }
+        },
+        {
+          "pod": "lightrag-cdd7685f9-vzwwl",
+          "statuses": {
+            "/health": {
+              "http": 200,
+              "error_type": null,
+              "recognized_message": null
+            },
+            "/documents/pipeline_status": {
+              "http": 503,
+              "error_type": "CoordinationUnavailableError",
+              "recognized_message": "Coordinator is not available"
+            }
+          }
+        }
+      ]
+    },
+    "pipeline_history": {
+      "lightrag_test_01": {
+        "first_pipeline": "2026-09-15 12:05:00.583467+00:00",
+        "latest_pipeline": "2026-10-18 13:29:24.052295+00:00",
+        "pipeline_rows": 5449545
+      },
+      "lightrag_test_02": {
+        "first_pipeline": "2026-09-16 01:17:18.836043+00:00",
+        "latest_pipeline": "2026-10-18 13:29:23.820469+00:00",
+        "pipeline_rows": 5360468
+      },
+      "lightrag_test_03": {
+        "first_pipeline": "2026-09-16 01:19:25.223084+00:00",
+        "latest_pipeline": "2026-10-18 13:29:24.062117+00:00",
+        "pipeline_rows": 5345618
+      },
+      "lightrag_test_04": {
+        "first_pipeline": "2026-09-16 01:21:29.479070+00:00",
+        "latest_pipeline": "2026-10-18 13:29:24.110689+00:00",
+        "pipeline_rows": 5358870
+      },
+      "lightrag_test_05": {
+        "first_pipeline": "2026-09-16 01:27:02.784646+00:00",
+        "latest_pipeline": "2026-10-18 13:29:24.073844+00:00",
+        "pipeline_rows": 5364016
+      }
+    },
+    "existing_state_not_repaired": true
+  },
+  "existing_test_final_structure": {
+    "lightrag-test-01": {
+      "deployment_uid_unchanged": true,
+      "spec_sha256": "69a74bc70347a2dd56e5020b40438f9609ed348d0ce799c42f2dda7f1cb0225f",
+      "pod_uids_unchanged": true,
+      "replicas": 2,
+      "ready_replicas": 2,
+      "pod_restarts": 0,
+      "deployment_spec_unchanged": true
+    },
+    "lightrag-test-02": {
+      "deployment_uid_unchanged": true,
+      "spec_sha256": "94ceeaab042e780433e54e539a69a88c601912cb72da170bbb9d95d70a3680dd",
+      "pod_uids_unchanged": true,
+      "replicas": 2,
+      "ready_replicas": 2,
+      "pod_restarts": 0,
+      "deployment_spec_unchanged": true
+    },
+    "lightrag-test-03": {
+      "deployment_uid_unchanged": true,
+      "spec_sha256": "cf714ddb0dd993a1a0122d1574edd4fb03d0f54c3fe0821147120be3e6d43507",
+      "pod_uids_unchanged": true,
+      "replicas": 2,
+      "ready_replicas": 2,
+      "pod_restarts": 0,
+      "deployment_spec_unchanged": true
+    },
+    "lightrag-test-04": {
+      "deployment_uid_unchanged": true,
+      "spec_sha256": "28995405fb7002259d96367028a1ed9f9064b42909ed58b9925d4494888139b6",
+      "pod_uids_unchanged": true,
+      "replicas": 2,
+      "ready_replicas": 2,
+      "pod_restarts": 0,
+      "deployment_spec_unchanged": true
+    },
+    "lightrag-test-05": {
+      "deployment_uid_unchanged": true,
+      "spec_sha256": "98929f4c46c7e947ad9bf5def0aede7cac49d40c1f4bdafe90fc6692abdde339",
+      "pod_uids_unchanged": true,
+      "replicas": 2,
+      "ready_replicas": 2,
+      "pod_restarts": 0,
+      "deployment_spec_unchanged": true
+    }
+  },
+  "diagnostic_followup": {
+    "full_snapshot_attempts": {
+      "lightrag_test_01": {
+        "error_type": "CoordinationUnavailableError"
+      },
+      "lightrag_test_02": {
+        "error_type": "CoordinationUnavailableError"
+      },
+      "lightrag_test_03": {
+        "error_type": "CoordinationUnavailableError"
+      },
+      "lightrag_test_04": {
+        "error_type": "CoordinationUnavailableError"
+      },
+      "lightrag_test_05": {
+        "error_type": "CoordinationUnavailableError"
+      }
+    },
+    "full_snapshot_failure_cause_confirmed": false,
+    "fresh_readonly_initialization_and_bounded_read": {
+      "stage": "complete",
+      "initialize": "ok",
+      "initialize_seconds": 0.08,
+      "bounded_read": "ok",
+      "workspace": {
+        "generation": 1,
+        "fenced": false
+      }
+    },
+    "operations_relation_size_bytes_all_scopes": {
+      "table_bytes": 5096701952,
+      "index_bytes": 1514217472,
+      "total_bytes": 6612336640
+    },
+    "pipeline_rows_five_existing_scopes": 26878517,
+    "historical_transport_loss_trigger_confirmed": false
+  },
+  "unit_tests": {
+    "command": "./scripts/test.sh tests/distributed tests/ci tests/setup/test_distributed_chart.py tests/llm/test_global_concurrency_queue.py tests/llm/test_llm_role_runtime.py tests/llm/test_query_accounting.py tests/api/routes/test_query_accounting_routes.py tests/llm/openai_impl/test_query_usage_source.py -q",
+    "summary": "282 passed, 83 skipped in 8.10s",
+    "passed": 282,
+    "skipped": 83,
+    "failed": 0,
+    "run_exit_code": 0,
+    "integration_skips_do_not_count_as_live_integration": true
+  },
+  "cleanup": {
+    "audit_namespace_absent": true,
+    "retained_pv": {
+      "name": "pvc-6bbfb014-83b6-4bd3-92cf-2fa4111ccb4e",
+      "phase": "Released",
+      "reclaim_policy": "Retain",
+      "claim_namespace": "lightrag-risk-20261021",
+      "capacity": "2Gi"
+    },
+    "backend_workspace_and_s3_evidence_retained": true,
+    "recovery_executed": false
+  },
+  "one_shot_probe_sources": {
+    "prepare_cluster.py": "2f42d7eadce2c539c88831e548331d637bd495210c2fb4177016416540fb802d",
+    "provider.py": "42e68cded3a721be4e18c088b92001c4417a5a1f9835906cef3cac217c34885d",
+    "run_checks.py": "a1f9c21a6d0a885e60e6920b66c9fa47085c57139fd87d2665f54b35b644d198",
+    "extra_checks.py": "779ecb16f6fd7e4a763725a6f3baf6a5c17d2409c5b95cb9d4bdd1054664ec5d",
+    "fault_check.py": "9e068e12d3267d91f9d31cda27ffe99e041ca0cb98d1f55f17454574c53439f3"
+  },
+  "limitations": [
+    "Deterministic model fixture; no real-provider QPM/TPM or performance claim",
+    "Four Pods only; no eight-Pod mixed-version handover protocol exists yet",
+    "Fault injection is a separate final phase after preserving healthy evidence",
+    "No normal eight-Pod blue-green deployment or persistent write handover was implemented or tested",
+    "No real application Pod/worker/node kill or backend lost-ACK experiment",
+    "No high-load SLO/capacity claim; held requests are not latency benchmarks",
+    "No destructive writes to existing test scopes; no restart/recover/fence removal",
+    "Full diagnostic snapshot failures were not assumed to prove PostgreSQL connectivity failure"
+  ],
+  "artifact_checks": {
+    "evidence_assertions": "passed",
+    "documentation_links": "passed",
+    "no_trailing_whitespace": "passed",
+    "product_source_overlays_unchanged": "passed",
+    "implementation_tasks_still_unchecked": 45
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "environment": "isolated",
+  "operation": "full_rag",
+  "target_qps": 1000,
+  "online_users": 10000,
+  "duration_seconds": null,
+  "max_inflight": null,
+  "max_requests": null,
+  "max_response_bytes": null,
+  "request_timeout_seconds": null,
+  "stream_fraction": null,
+  "history_fraction": null,
+  "slo": {
+    "p95_seconds": null,
+    "p99_seconds": null,
+    "ttft_p95_seconds": null,
+    "error_rate": null,
+    "max_client_drop_rate": null
+  },
+  "isolation": {
+    "evidence_id": null,
+    "profile_hash": null,
+    "config_hashes": []
+  }
+}

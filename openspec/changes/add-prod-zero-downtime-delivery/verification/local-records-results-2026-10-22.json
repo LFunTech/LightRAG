@@ -1,0 +1,90 @@
+{
+  "date": "2026-10-22",
+  "record_kind": "offline_acceptance_record_materials_validation",
+  "status": "local_structure_valid_external_execution_not_ready",
+  "runtime_implementation_changed": false,
+  "execution_ready": false,
+  "production_accepted": false,
+  "capacity_accepted": false,
+  "real_load_run": false,
+  "cluster_operations": false,
+  "database_operations": false,
+  "secret_access_or_import": false,
+  "git_publish": false,
+  "runtime_test_suites_run": false,
+  "openspec_strict_valid": true,
+  "apply_progress": {
+    "total": 53,
+    "complete": 41,
+    "remaining": 12
+  },
+  "audit": {
+    "local_structure_valid": true,
+    "external_execution_ready": false,
+    "parameter_nulls": 198,
+    "all_parameters_unchanged": true,
+    "unapproved_scopes": 12,
+    "metrics": 20,
+    "entry_records": 51,
+    "fault_records": 26,
+    "capacity_units": 5,
+    "phase_records": 6,
+    "all_execution_records_not_run": true,
+    "source_catalogs_matched": true,
+    "capability_scenarios": 57,
+    "tasks": {
+      "total": 53,
+      "complete": 41,
+      "remaining": 12
+    },
+    "valid_relative_links": 149,
+    "baseline_files": 1129,
+    "changed_existing_files": [
+      "openspec/changes/add-prod-zero-downtime-delivery/tasks.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/design.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/verification/implementation-ledger.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/write-entrypoints.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/README.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/metrics.md"
+    ],
+    "source_and_test_delivery_files_unchanged": true,
+    "git_unchanged": true,
+    "prod_gate_disabled": true
+  },
+  "negative_local_document_checks": [
+    "duplicate_id_refused",
+    "missing_id_refused",
+    "unknown_id_refused"
+  ],
+  "reader_testing": {
+    "fresh_readers": 1,
+    "question_groups": 6,
+    "substantive_findings": 0,
+    "scope": "read-only document forms; no runtime/ACL/capacity verification"
+  },
+  "file_sha256": {
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/README.md": "a7e9e18d7bc4089ac5b167e6b00c9cb2ca73818837a5b6d84f061ccda3efa55a",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/parameters.json": "aa30933c300925a23c9d2db6f5367b90bf9bcbb0c8b50b20e0f701ef8b66271a",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/metrics.md": "9dc76fbb216f9e11585e80208e0523d278978fe008dc1cd75b4277f59a8160d4",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/write-entrypoints.md": "ec245423796b40e232172a219502160d93819f174cea3633ceda42dc77395340",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/records-guide.md": "0ac558f8126f4b3893fb901291c851375f55be80e0c4e951ff9450f7d64d9e48",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/metric-source-map.json": "ab07948c6e8caf69e4869b9adcf66a3d7d1efdee1fab31890628ff5f07dc5431",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/execution-ledger.json": "9af22883d2845b1f097714fbda30735eeef2c46c376f78ec8cfdbfaadbb5d397",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/preflight-gaps.md": "78ac62a8f06204a5de89cb261f732ba1a1075437daaa65faa9ad1b42981d6a72",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/preflight-gaps.json": "f8888fdb1c241d309ac3d8bb2d09f5d43d9aa986ec63f276ce03b7c629d69dd5",
+    "openspec/changes/add-prod-zero-downtime-delivery/design.md": "a94a971214ff323bab6a9546b7a4417a15281674166a0c030e8de21831c7529d",
+    "openspec/changes/add-prod-zero-downtime-delivery/tasks.md": "be63b7aab2b16425a4623ae547bb41ceb9e79816fad8591fb9b0b33dcf8cd556",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/implementation-ledger.md": "dc4b39caee644855515ae45fa97ce0998d119ea371c9ef162cb6871c885600f1",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/local-records-results-2026-10-22.md": "86c8f750cfca8c788ad1154fb1807cbdce17684471974f8daa1732a1e87ba4c1"
+  },
+  "logs": [
+    {
+      "path": "temp/prod-delivery-implementation/2026-10-22-local-forms-audit.json",
+      "sha256": "518a5977ffc156226fa3310d0330c1739c86be5801bccea52b70ec66cfa4b8be"
+    },
+    {
+      "path": "temp/prod-delivery-implementation/2026-10-22-local-forms-strict.log",
+      "sha256": "3801952317aebf234a2f5ac3b45a0c88a3ec645d3e45dd02949845393e70d156"
+    }
+  ]
+}

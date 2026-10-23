@@ -4,12 +4,24 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import datetime
+from functools import wraps
 from typing import TYPE_CHECKING, Any, Mapping
 
 if TYPE_CHECKING:
     from .coordinator import Operation, PostgresCoordinator
 
 from .coordinator import OperationOwnershipError
+
+
+def _release_write(function):
+    @wraps(function)
+    async def guarded(self, *args, **kwargs):
+        release = getattr(self.coordinator, "_release_runtime", None)
+        if release is not None:
+            await release.require_writer()
+        return await function(self, *args, **kwargs)
+
+    return guarded
 
 
 class PipelineControl:
@@ -29,6 +41,7 @@ class PipelineControl:
                     )
             yield connection
 
+    @_release_write
     async def pause(self) -> None:
         """Publish cancellation without waiting for active writers to drain."""
         async with self._transaction() as db:
@@ -39,6 +52,7 @@ class PipelineControl:
                 *self.coordinator._scope,
             )
 
+    @_release_write
     async def resume(self) -> None:
         """Explicit process entry points may clear pause; retry resumes atomically."""
         async with self._transaction() as db:
@@ -88,6 +102,7 @@ class PipelineControl:
                 orphaned_operations=orphaned,
             )
 
+    @_release_write
     async def request_retry(
         self, request_id: str, *, target_cutoff_at: datetime | None = None
     ) -> dict[str, Any]:
@@ -138,6 +153,7 @@ class PipelineControl:
             )
             return dict(row) if row else None
 
+    @_release_write
     async def add_targets(
         self, operation: Operation, request_id: str, targets: Mapping[str, str]
     ) -> None:
@@ -151,6 +167,7 @@ class PipelineControl:
                     version,
                 )
 
+    @_release_write
     async def finish_selection(self, operation: Operation, request_id: str) -> None:
         async with self._transaction(operation) as db:
             await db.execute(
@@ -173,6 +190,7 @@ class PipelineControl:
             )
             return [dict(row) for row in rows]
 
+    @_release_write
     async def finish_target(
         self, operation: Operation, request_id: str, doc_id: str
     ) -> None:
@@ -184,6 +202,7 @@ class PipelineControl:
                 doc_id,
             )
 
+    @_release_write
     async def finish_request(self, operation: Operation, request_id: str) -> None:
         async with self._transaction(operation) as db:
             await db.execute(
@@ -193,6 +212,7 @@ class PipelineControl:
                 request_id,
             )
 
+    @_release_write
     async def cancel_requests(self, operation: Operation) -> None:
         """Clear retires accepted requests permanently, without deleting history."""
         async with self._transaction(operation) as db:

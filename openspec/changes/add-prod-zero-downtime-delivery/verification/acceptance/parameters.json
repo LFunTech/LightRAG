@@ -1,0 +1,408 @@
+{
+  "document_version": 5,
+  "record_kind": "acceptance_preparation_draft",
+  "not_executable": true,
+  "status": "awaiting_parameters_and_separate_authorization",
+  "capacity_accepted": false,
+  "production_accepted": false,
+  "target_confirmation": {
+    "date": "2026-10-22",
+    "source": "user_message_in_current_conversation",
+    "scope": "seven_numeric_performance_targets_only",
+    "measurement_definitions_confirmed": false
+  },
+  "acceptance_decisions": {
+    "date": "2026-10-22",
+    "retrieval": {
+      "separate_technical_and_relevance_acceptance": true,
+      "technical_success_slo_field": "slo.retrieval_success_rate_min",
+      "valid_empty_result_is_technical_success": true,
+      "relevance_empty_result_policy": "evaluate_against_case_ground_truth_not_automatic_pass_or_fail",
+      "relevance_threshold_confirmed": false
+    },
+    "rerank": {
+      "required": false,
+      "current_profile_policy": "disabled",
+      "latency_target_applies": "only_if_explicitly_enabled_in_verified_profile"
+    },
+    "write_queue": {
+      "max_wait_slo_field": "slo.write_queue_max_seconds",
+      "selected_by": "assistant_under_user_delegation",
+      "selection_status": "planning_baseline_not_runtime_configuration",
+      "deadline_does_not_cancel_accepted_work": true
+    },
+    "workload": {
+      "selected_by": "assistant_under_user_delegation",
+      "basis": "synthetic_experience_baseline_not_observed_traffic",
+      "scope": "stream_fraction_history_fraction_and_generation_token_distributions_only",
+      "selection_status": "planning_baseline_not_executable_load_approval",
+      "history_included_in_total_generation_input_tokens": true,
+      "stream_and_history_may_overlap": true,
+      "joint_distribution_verified": false,
+      "provider_tokenization_and_model_context_verified": false
+    }
+  },
+  "model_metadata_inspection": {
+    "date": "2026-10-22",
+    "source_reference": ".secrets/prod.secrets",
+    "environment": "prod",
+    "scope": "explicit_non_secret_model_and_quota_metadata_only",
+    "result": "explicit_model_and_quota_fields_not_present",
+    "provider_identity_verified": false,
+    "account_quota_verified": false,
+    "credential_or_endpoint_values_recorded": false,
+    "secret_import_performed": false,
+    "test_inventory_read": false,
+    "remote_account_or_model_calls_performed": false
+  },
+  "confirmed": {
+    "operation": "full_rag_including_generation",
+    "target_query_qps": 1000,
+    "approximate_online_users": 10000,
+    "steady_application_pods": 4,
+    "workers_per_pod": 1,
+    "blue_application_pods": 4,
+    "green_application_pods": 4,
+    "blue_green_application_pods": 8,
+    "ingress_family": "qcloud"
+  },
+  "workload": {
+    "max_inflight": null,
+    "duration_seconds": null,
+    "warmup_seconds": null,
+    "ramp_steps": null,
+    "repeat_count": null,
+    "max_requests": null,
+    "max_response_bytes": null,
+    "request_timeout_seconds": null,
+    "stream_fraction": 0.8,
+    "history_fraction": 0.3,
+    "hot_query_fraction": null,
+    "hot_set_size": null,
+    "query_distribution": null,
+    "cold_cache_definition": null,
+    "warm_cache_definition": null,
+    "mode_mix": null,
+    "top_k": null,
+    "chunk_top_k": null,
+    "max_total_tokens": null,
+    "input_token_distribution": {
+      "unit": "final_generation_total_prompt_tokens",
+      "kind": "discrete_planning_targets",
+      "buckets": [
+        {
+          "tokens": 4096,
+          "fraction": 0.25
+        },
+        {
+          "tokens": 8192,
+          "fraction": 0.5
+        },
+        {
+          "tokens": 16384,
+          "fraction": 0.25
+        }
+      ],
+      "includes_system_query_context_and_history": true
+    },
+    "output_token_distribution": {
+      "unit": "final_generation_visible_output_tokens",
+      "kind": "discrete_planning_targets",
+      "buckets": [
+        {
+          "tokens": 256,
+          "fraction": 0.25
+        },
+        {
+          "tokens": 512,
+          "fraction": 0.5
+        },
+        {
+          "tokens": 1024,
+          "fraction": 0.25
+        }
+      ],
+      "hidden_reasoning_and_retries_not_included": true
+    },
+    "write_operations_per_second": null,
+    "write_kind_mix": null,
+    "write_action_schedule": null,
+    "load_generator_capacity_evidence": null
+  },
+  "slo": {
+    "query_embedding_p95_seconds": 0.1,
+    "vector_retrieval_p95_seconds": 0.2,
+    "rerank_p95_seconds": 0.2,
+    "retrieval_total_p95_seconds": 0.5,
+    "retrieval_success_rate_min": 0.999,
+    "measurement_contract_reference": null,
+    "ordinary_p95_seconds": 20,
+    "ordinary_p99_seconds": null,
+    "stream_ttft_p95_seconds": 3,
+    "stream_ttft_p99_seconds": null,
+    "stream_completion_p95_seconds": 20,
+    "stream_completion_p99_seconds": null,
+    "history_p95_seconds": null,
+    "history_p99_seconds": null,
+    "unexpected_error_rate": null,
+    "timeout_rate": null,
+    "max_client_drop_rate": null,
+    "write_queue_p95_seconds": null,
+    "write_queue_max_seconds": 30,
+    "minimum_chunk_recall": null,
+    "minimum_reference_precision": null,
+    "semantic_review_acceptance": null,
+    "observation_completeness": null
+  },
+  "dataset": {
+    "dataset_id": null,
+    "manifest_sha256": null,
+    "document_count": null,
+    "chunk_count": null,
+    "graph_entity_count": null,
+    "graph_relation_count": null,
+    "total_bytes": null,
+    "document_size_distribution": null,
+    "parser_format_mix": null,
+    "query_set_id": null,
+    "query_set_sha256": null,
+    "golden_cases_id": null,
+    "golden_cases_sha256": null,
+    "revision_transition_cases": null,
+    "deleted_source_cases": null,
+    "revoked_actor_cases": null,
+    "long_stream_case_id": null,
+    "semantic_reviewer": null,
+    "seed_procedure_id": null,
+    "cold_namespace_id": null
+  },
+  "resources": {
+    "pod": {
+      "cpu_request": null,
+      "cpu_limit": null,
+      "memory_request": null,
+      "memory_limit": null,
+      "node_placement": null,
+      "spare_capacity": null,
+      "rwx_storage_class": null,
+      "pvc_capacity": null
+    },
+    "database": {
+      "business_pool_per_pod": null,
+      "coordination_pool_per_pod": null,
+      "witness_per_pod": null,
+      "max_connections": null,
+      "other_connections": null,
+      "headroom_connections": null,
+      "lock_observation_source": null
+    },
+    "hugegraph": {
+      "max_connections": null,
+      "max_concurrency": null,
+      "latency_budget_seconds": null,
+      "other_callers": null,
+      "observation_source": null
+    },
+    "object_storage": {
+      "request_budget": null,
+      "inflight_bytes": null,
+      "source_retention_seconds": null,
+      "session_retention_seconds": null,
+      "result_retention_seconds": null,
+      "observation_source": null
+    },
+    "models": {
+      "query_model_revision": null,
+      "keyword_model_revision": null,
+      "extract_model_revision": null,
+      "vlm_model_revision": null,
+      "embedding_model_revision": null,
+      "embedding_dimension": null,
+      "embedding_asymmetric": null,
+      "embedding_document_prefix": null,
+      "embedding_query_prefix": null,
+      "rpm": null,
+      "input_tpm": null,
+      "output_tpm": null,
+      "concurrency": null,
+      "role_limits_per_pod": null,
+      "other_callers": null,
+      "hidden_retry_policy": null,
+      "provider_usage_source": null,
+      "spend_limit": null,
+      "spend_currency": null,
+      "tail_spend_reserve": null
+    },
+    "combined_4_and_8_pod_budget_evidence": null
+  },
+  "release_budgets": {
+    "queue_capacity": null,
+    "command_byte_limit": null,
+    "request_wait_seconds": null,
+    "drain_seconds": null,
+    "cutover_seconds": null,
+    "safety_margin_seconds": null,
+    "response_margin_seconds": null,
+    "proxy_timeout_seconds": null,
+    "client_timeout_seconds": null,
+    "command_execution_seconds": null,
+    "old_stream_tail_seconds": null,
+    "evidence_retention_seconds": null
+  },
+  "isolation": {
+    "cluster_identity_evidence_id": null,
+    "kube_system_uid": null,
+    "namespace": null,
+    "namespace_uid": null,
+    "deployment_id": null,
+    "workspace": null,
+    "database_domain": null,
+    "database_runtime_role": null,
+    "graph_domain": null,
+    "object_bucket_prefix": null,
+    "rwx_domain": null,
+    "acl_evidence_id": null,
+    "shared_resource_non_interference_evidence_id": null,
+    "all_writer_inventory_id": null,
+    "writer_compatibility_evidence_id": null,
+    "accounting_required": null,
+    "accounting_reliability_evidence_id": null
+  },
+  "entry": {
+    "host": null,
+    "controller_version": null,
+    "clb_id": null,
+    "listener_id": null,
+    "location_id": null,
+    "certificate_id": null,
+    "actual_https_direct_pod_profile_evidence_id": null,
+    "stream_timeout_evidence_id": null,
+    "connection_preservation_evidence_id": null
+  },
+  "job": {
+    "run_id": null,
+    "approval_id": null,
+    "operator_service_account": null,
+    "load_service_account": null,
+    "observer_service_account": null,
+    "source_commit": null,
+    "source_manifest_sha256": null,
+    "blue_image_digest": null,
+    "green_image_digest": null,
+    "tool_source_sha256": null,
+    "tool_mount_path": null,
+    "blue_config_hash": null,
+    "green_config_hash": null,
+    "profile_hash": null,
+    "start_epoch": null,
+    "job_resource_limits": null,
+    "output_volume_reference": null,
+    "private_credential_reference_ids": null,
+    "execution_window": null,
+    "oncall_contact": null,
+    "decision_owner": null,
+    "manual_containment_approval_id": null
+  },
+  "collection": {
+    "application_snapshot_interval_seconds": null,
+    "external_metrics_interval_seconds": null,
+    "clock_skew_max_seconds": null,
+    "metric_source_mapping_id": null,
+    "observer_resource_budget": null,
+    "log_retention_seconds": null,
+    "restricted_evidence_location": null,
+    "collection_owner": null,
+    "acceptance_reviewer": null,
+    "dynamic_usage": {
+      "poll_seconds": null,
+      "sample_timeout_seconds": null,
+      "transition_timeout_seconds": null,
+      "max_samples": null,
+      "max_evidence_bytes": null
+    }
+  },
+  "stop_thresholds": {
+    "error_rate": null,
+    "error_window_seconds": null,
+    "latency_seconds": null,
+    "latency_window_seconds": null,
+    "queue_length": null,
+    "queue_oldest_seconds": null,
+    "cpu_throttling": null,
+    "memory_working_set_bytes": null,
+    "provider_429_rate": null,
+    "provider_quota_remaining": null,
+    "database_pool_wait_seconds": null,
+    "database_connection_utilization": null,
+    "hugegraph_latency_seconds": null,
+    "object_storage_error_rate": null,
+    "evidence_gap_seconds": null,
+    "schedule_lag_seconds": null,
+    "client_drop_rate": null,
+    "spend_limit": null,
+    "stop_response_seconds": null,
+    "client_drain_deadline_seconds": null
+  },
+  "approvals": {
+    "parameters": {
+      "approved": false,
+      "approval_id": null,
+      "scope_reference": null
+    },
+    "isolated_read_only_inspection": {
+      "approved": false,
+      "approval_id": null,
+      "scope_reference": null
+    },
+    "isolated_provisioning_and_seed": {
+      "approved": false,
+      "approval_id": null,
+      "scope_reference": null
+    },
+    "isolated_release_and_mixed_writes": {
+      "approved": false,
+      "approval_id": null,
+      "scope_reference": null
+    },
+    "isolated_capacity_load": {
+      "approved": false,
+      "approval_id": null,
+      "scope_reference": null
+    },
+    "isolated_fault_injection": {
+      "approved": false,
+      "approval_id": null,
+      "scope_reference": null
+    },
+    "destructive_fixture_cases": {
+      "approved": false,
+      "approval_id": null,
+      "scope_reference": null
+    },
+    "artifact_transfer_or_git_publish": {
+      "approved": false,
+      "approval_id": null,
+      "scope_reference": null
+    },
+    "production_access": {
+      "approved": false,
+      "approval_id": null,
+      "scope_reference": null
+    },
+    "secret_import": {
+      "approved": false,
+      "approval_id": null,
+      "scope_reference": null
+    },
+    "production_activation": {
+      "approved": false,
+      "approval_id": null,
+      "scope_reference": null
+    },
+    "cleanup": {
+      "approved": false,
+      "approval_id": null,
+      "scope_reference": null
+    }
+  }
+}

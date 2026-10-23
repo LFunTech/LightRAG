@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import secrets
+from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -139,6 +140,7 @@ class UploadSessionManager:
         self.bucket = bucket
         self.prefix = prefix.strip().strip("/")
         self.now = now or (lambda: datetime.now(timezone.utc))
+        self.release_retention = None
 
     async def create_session(
         self,
@@ -159,7 +161,17 @@ class UploadSessionManager:
         canonical = normalize_document_file_path(safe_filename)
         upload_id = self._new_id()
         created = self.now()
-        key_parts = [part for part in (self.prefix, "uploads", workspace or "default", upload_id, safe_filename) if part]
+        key_parts = [
+            part
+            for part in (
+                self.prefix,
+                "uploads",
+                workspace or "default",
+                upload_id,
+                safe_filename,
+            )
+            if part
+        ]
         session = UploadSession(
             upload_id=upload_id,
             workspace=workspace,
@@ -197,7 +209,13 @@ class UploadSessionManager:
             return session
         if session.status != "issued":
             raise UploadSessionConflictError(f"upload session is {session.status}")
-        if self.now() > session.expires_at:
+        protected = (
+            self.release_retention is not None
+            and await self.release_retention.accepted_before_expiry(
+                upload_id, session.expires_at
+            )
+        )
+        if self.now() > session.expires_at and not protected:
             expired = self._replace(session, status="expired")
             await self.store.put(expired)
             raise UploadSessionExpiredError(f"upload session expired: {upload_id}")
@@ -218,7 +236,9 @@ class UploadSessionManager:
         if session.workspace != workspace:
             raise UploadSessionMismatchError("workspace does not match upload session")
         if session.status == "completed":
-            raise UploadSessionConflictError("completed upload session cannot be aborted")
+            raise UploadSessionConflictError(
+                "completed upload session cannot be aborted"
+            )
         aborted = self._replace(session, status="aborted")
         await self.store.put(aborted)
         return aborted
@@ -251,7 +271,9 @@ class UploadSessionManager:
         await self.store.put(enqueued)
         return enqueued
 
-    async def expired_unfinished_sessions(self, at: datetime | None = None) -> list[UploadSession]:
+    async def expired_unfinished_sessions(
+        self, at: datetime | None = None
+    ) -> list[UploadSession]:
         at = at or self.now()
         sessions = await self.store.list()
         return [
@@ -269,12 +291,23 @@ class UploadSessionManager:
         """Expire unfinished sessions and delete only their upload prefixes."""
         cleaned: list[UploadSession] = []
         for session in await self.expired_unfinished_sessions(at):
-            prefix = session.object_key.rsplit("/", 1)[0] + "/"
-            await object_store.delete_prefix(prefix)
-            expired = self._replace(session, status="expired")
-            await self.store.put(expired)
-            cleaned.append(expired)
+            async with self._release_cleanup(session.upload_id) as allowed:
+                if not allowed:
+                    continue
+                prefix = session.object_key.rsplit("/", 1)[0] + "/"
+                await object_store.delete_prefix(prefix)
+                expired = self._replace(session, status="expired")
+                await self.store.put(expired)
+                cleaned.append(expired)
         return cleaned
+
+    @asynccontextmanager
+    async def _release_cleanup(self, upload_id):
+        if self.release_retention is None:
+            yield True
+        else:
+            async with self.release_retention.source_cleanup(upload_id) as allowed:
+                yield allowed
 
     def _validate_completion(
         self,
@@ -288,9 +321,13 @@ class UploadSessionManager:
         if object_key != session.object_key or metadata.key != session.object_key:
             raise UploadSessionMismatchError("object key does not match upload session")
         if metadata.size != session.declared_size:
-            raise UploadSessionMismatchError("object size does not match upload session")
+            raise UploadSessionMismatchError(
+                "object size does not match upload session"
+            )
         if metadata.content_type and metadata.content_type != session.content_type:
-            raise UploadSessionMismatchError("object content type does not match upload session")
+            raise UploadSessionMismatchError(
+                "object content type does not match upload session"
+            )
         if session.checksum_sha256:
             if not metadata.checksum_sha256:
                 raise UploadSessionMismatchError(

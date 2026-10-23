@@ -820,6 +820,8 @@ def parse_args() -> argparse.Namespace:
         "ENABLE_LLM_CACHE_FOR_EXTRACT", True, bool
     )
     args.enable_llm_cache = get_env_value("ENABLE_LLM_CACHE", True, bool)
+    args.enable_query_answer_cache = get_env_value("ENABLE_QUERY_ANSWER_CACHE", True, bool)
+    args.query_metrics_enabled = get_env_value("LIGHTRAG_QUERY_METRICS", False, bool)
 
     # --- Per-role LLM configuration (driven by lightrag.ROLES registry) ---
     for spec in ROLES:

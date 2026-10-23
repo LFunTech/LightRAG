@@ -1,0 +1,127 @@
+{
+  "version": 2,
+  "environment": "isolated",
+  "run_id": "run1",
+  "approval_id": "isolated-review",
+  "release": {
+    "scope": "isolation/run",
+    "release_id": "release1",
+    "namespace": "isolated-run",
+    "namespace_uid": "uid-ns",
+    "kube_system_uid": "uid-cluster",
+    "profile_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "blue_config_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "green_config_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "blue_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "green_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "epoch": 1
+  },
+  "read_plan": {
+    "version": 1,
+    "environment": "isolated",
+    "operation": "full_rag",
+    "target_qps": 100,
+    "online_users": 10000,
+    "duration_seconds": 0.3,
+    "max_inflight": 10,
+    "max_requests": 30,
+    "max_response_bytes": 10000,
+    "request_timeout_seconds": 2,
+    "stream_fraction": 0.0,
+    "history_fraction": 0.0,
+    "slo": {
+      "p95_seconds": 1,
+      "p99_seconds": 2,
+      "ttft_p95_seconds": 1,
+      "error_rate": 0.0,
+      "max_client_drop_rate": 0.0
+    },
+    "isolation": {
+      "evidence_id": "synthetic-only",
+      "profile_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "config_hashes": [
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      ]
+    }
+  },
+  "limits": {
+    "timeout_seconds": 1,
+    "poll_seconds": 0.001,
+    "max_calls": 200,
+    "max_bytes": 10000,
+    "max_write_inflight": 4
+  },
+  "actions": [
+    {
+      "id": "insert",
+      "phase": "PREPARED",
+      "actor": "reader",
+      "kind": "insert_text",
+      "payload": {
+        "text": "NEW42",
+        "file_source": "perf-run1-new.txt"
+      }
+    },
+    {
+      "id": "create",
+      "phase": "PREPARED",
+      "actor": "reader",
+      "kind": "create_entity",
+      "payload": {
+        "name": "PERF_RUN1_NODE",
+        "description": "before"
+      }
+    },
+    {
+      "id": "edit",
+      "phase": "DRAINING",
+      "actor": "reader",
+      "kind": "edit_entity",
+      "payload": {
+        "create_action": "create",
+        "description": "after"
+      }
+    },
+    {
+      "id": "delete",
+      "phase": "WRITER_SWITCHED",
+      "actor": "reader",
+      "kind": "delete_document",
+      "payload": {
+        "insert_action": "insert"
+      }
+    }
+  ],
+  "checkpoints": [
+    {
+      "id": "before",
+      "phase": "PREPARED",
+      "after": [
+        "insert",
+        "create"
+      ],
+      "cases": [
+        "fact-v2"
+      ]
+    },
+    {
+      "id": "after",
+      "phase": "COMPLETED",
+      "after": [
+        "edit",
+        "delete"
+      ],
+      "cases": [
+        "fact-v2"
+      ]
+    }
+  ],
+  "usage": {
+    "poll_seconds": 0.001,
+    "sample_timeout_seconds": 0.2,
+    "transition_timeout_seconds": 0.2,
+    "max_samples": 3000,
+    "max_evidence_bytes": 4194304
+  }
+}

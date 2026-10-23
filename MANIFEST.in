@@ -3,3 +3,6 @@ include lightrag/api/requirements.txt
 recursive-include lightrag/api/webui *
 recursive-include lightrag/api/static *
 recursive-include prompts/samples *
+recursive-include lightrag/distributed/release/migrations *.sql
+recursive-include lightrag_delivery *.py
+recursive-include lightrag/provisioning/migrations *.sql *.json

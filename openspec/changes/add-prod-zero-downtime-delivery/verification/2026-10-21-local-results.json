@@ -1,0 +1,97 @@
+{
+  "date": "2026-10-21",
+  "kind": "local_implementation_verification_not_production_acceptance",
+  "base_head": "beb4d64681c06d393255c577cdf0d988fdeecbfb",
+  "worktree_uncommitted": true,
+  "authorization": {
+    "code_and_local_tests": true,
+    "git_publish": false,
+    "tag": false,
+    "secret_import": false,
+    "test_operations": false,
+    "prod_operations": false,
+    "recover": false
+  },
+  "test_results": [
+    {
+      "command": "DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib .venv/bin/python -m pytest tests -q",
+      "passed": 9330,
+      "skipped": 355,
+      "failed": 0,
+      "upstream_warnings": 2,
+      "seconds": 206.41,
+      "log": "temp/prod-delivery-implementation/final-full-suite.log"
+    },
+    {
+      "command": "sh temp/prod-delivery-implementation/run-local-pg-tests.sh tests/distributed/release -q",
+      "passed": 68,
+      "failed": 0,
+      "upstream_warnings": 2,
+      "seconds": 3.32,
+      "database": "isolated local PG18.6 random loopback release_test_*",
+      "server_stopped": true,
+      "log": "temp/prod-delivery-implementation/final-release-pg.log"
+    },
+    {
+      "command": "./scripts/test.sh tests/ci tests/test_docstring_budget.py -q",
+      "passed": 144,
+      "failed": 0,
+      "seconds": 2.57,
+      "log": "temp/prod-delivery-implementation/final-ci.log"
+    }
+  ],
+  "checks": {
+    "five_workflow_strict_lint": "passed",
+    "shell_python_json": "passed",
+    "test_kustomize": "passed_offline",
+    "prod_kustomize": "passed_offline_synthetic",
+    "ruff": "passed",
+    "compile": "passed",
+    "diff_check": "passed",
+    "openspec_change_strict": "valid",
+    "scenario_evidence_rows": 48,
+    "documentation_relative_links": "resolved"
+  },
+  "artifact_audit": {
+    "head": "beb4d64681c06d393255c577cdf0d988fdeecbfb",
+    "original_delivery_files_compared": 35,
+    "original_delivery_mismatches": [],
+    "original_user_hashes_unchanged": [
+      "lightrag/api/routers/query_routes.py",
+      "lightrag/query_accounting.py"
+    ],
+    "onboarding_schema_field_sets_match": true,
+    "wheel": "lightrag_hku-1.5.8-py3-none-any.whl",
+    "wheel_sha256": "ad7dd6967592cce5892bdfe8f2933d765feb539b384acfa1661a9f4bc3a2f1c5",
+    "wheel_entries": 396,
+    "release_files_verified": 27,
+    "forbidden_package_paths": []
+  },
+  "coordination_migration_files_unchanged": true,
+  "openspec": {
+    "total": 45,
+    "local_complete": 39,
+    "pending": [
+      "8.3",
+      "8.6",
+      "8.7",
+      "9.2",
+      "9.3",
+      "9.4"
+    ]
+  },
+  "release_sql_sha256": "5178b6612db459a49029095fb4e0561764907cf85275797b01af7dbb4c783270",
+  "remote_acceptance": {
+    "tke_clb_continuity": "not_run",
+    "real_acl_and_credentials": "not_verified",
+    "all_writers_onboarded": "not_verified",
+    "four_and_eight_pod_load": "not_run",
+    "first_production_release": "not_run"
+  },
+  "activation": "workflow statically disabled; no environment enabled",
+  "notes": [
+    "Test sets overlap; do not add pass counts.",
+    "External services in release tests except local PG/native socket are synthetic or fake.",
+    "No frontend source changed; no frontend build/check set was run."
+  ]
+}

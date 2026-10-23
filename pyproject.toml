@@ -208,7 +208,7 @@ Repository = "https://github.com/HKUDS/LightRAG"
 "Bug Tracker" = "https://github.com/HKUDS/LightRAG/issues"
 
 [tool.setuptools.packages.find]
-include = ["lightrag*"]
+include = ["lightrag", "lightrag.*", "lightrag_delivery", "lightrag_delivery.*"]
 exclude = ["data*", "tests*", "scripts*", "examples*", "dickens*", "reproduce*", "output_complete*", "rag_storage*", "inputs*"]
 
 [tool.setuptools]
@@ -218,7 +218,7 @@ include-package-data = true
 version = {attr = "lightrag._version.__version__"}
 
 [tool.setuptools.package-data]
-lightrag = ["api/webui/**/*", "api/static/**/*"]
+lightrag = ["api/webui/**/*", "api/static/**/*", "distributed/release/migrations/*.sql", "provisioning/migrations/*.sql", "provisioning/migrations/*.json"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

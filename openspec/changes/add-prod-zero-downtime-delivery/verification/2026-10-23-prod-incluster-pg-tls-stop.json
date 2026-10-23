@@ -1,0 +1,155 @@
+{
+  "date": "2026-10-23",
+  "record_kind": "prod_incluster_readonly_stopped_at_pg_tls",
+  "cluster_id": "cls-px392o6p",
+  "namespace": "prod",
+  "existing_image_pull_secret_reference": "prod/lfun",
+  "kubernetes_secret_payload_read": false,
+  "new_secret_imported": false,
+  "pod_created": {
+    "name": "lightrag-ro-diag-20261023-03",
+    "namespace": "prod",
+    "uid": "bf744d5b-1a81-447b-97a8-621a34798aa7",
+    "observed_utc": "2026-10-23T08:26:12.836424+00:00"
+  },
+  "pod_ready": {
+    "uid": "bf744d5b-1a81-447b-97a8-621a34798aa7",
+    "phase": "Running",
+    "node": "10.0.1.142",
+    "containers": [
+      {
+        "name": "diagnostic",
+        "ready": true,
+        "restarts": 0,
+        "image_id": "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca"
+      }
+    ]
+  },
+  "client_packages": {
+    "asyncpg": "0.31.0",
+    "boto3": "1.40.61",
+    "httpx": "0.28.1"
+  },
+  "startup_deadline_seconds": 600,
+  "pod_active_deadline_seconds": 900,
+  "credential_inventory": "prod_only",
+  "test_inventory_read": false,
+  "credential_transport": "stdin_to_process_memory_only_no_secret_env_or_files",
+  "probe_dispatch": {
+    "pod_uid": "bf744d5b-1a81-447b-97a8-621a34798aa7",
+    "source_sha256": "f2600c36923fd82b5b4c857ad2df8b36458c5a3ada03cd04ddaa5681595afb79",
+    "credential_transport": "stdin_to_process_memory_only",
+    "kubernetes_secret_created": false,
+    "test_inventory_read": false,
+    "allowed_target_inventory": "prod",
+    "started": true
+  },
+  "backend_result": {
+    "backend_mutations": 0,
+    "completed": false,
+    "components": {
+      "postgres": {
+        "completed_read_only": false,
+        "connected": false,
+        "dns": {
+          "all_resolved_private": true,
+          "all_resolved_rfc1918_or_ula": true,
+          "resolved_count": 1
+        },
+        "peer_certificate_verified": false,
+        "ssl_policy": "require_no_plaintext_fallback"
+      }
+    },
+    "failure": {
+      "category": "tls_negotiation_rejected_no_plaintext_fallback",
+      "error_class": "ConnectionError"
+    },
+    "record_kind": "prod_incluster_readonly",
+    "requests": {
+      "graph_http": 0,
+      "pg_selects": 0,
+      "s3_http": 0
+    },
+    "stopped_at": "postgres"
+  },
+  "pg_connection_attempts": 1,
+  "pg_authenticated_session_established": false,
+  "pg_tls_upgrade_rejected": true,
+  "plaintext_fallback_attempted": false,
+  "graph_and_s3_skipped_after_first_failure": true,
+  "cleanup": {
+    "deleted": true,
+    "absence_verified": true,
+    "uid": "bf744d5b-1a81-447b-97a8-621a34798aa7",
+    "observed_utc": "2026-10-23T08:28:55.705819+00:00"
+  },
+  "final_observation": {
+    "observed_utc": "2026-10-23T08:29:23.259474+00:00",
+    "diagnostic_absence_verified": true,
+    "events": [
+      {
+        "type": "Normal",
+        "reason": "Scheduled",
+        "count": null,
+        "event_time": "2026-10-23T08:26:12.683910Z",
+        "first_timestamp": null
+      },
+      {
+        "type": "Normal",
+        "reason": "Pulling",
+        "count": 1,
+        "event_time": "2026-10-23T08:26:13Z",
+        "first_timestamp": "2026-10-23T08:26:13Z"
+      },
+      {
+        "type": "Normal",
+        "reason": "Pulled",
+        "count": 1,
+        "event_time": "2026-10-23T08:28:25Z",
+        "first_timestamp": "2026-10-23T08:28:25Z"
+      },
+      {
+        "type": "Normal",
+        "reason": "Created",
+        "count": 1,
+        "event_time": "2026-10-23T08:28:25Z",
+        "first_timestamp": "2026-10-23T08:28:25Z"
+      },
+      {
+        "type": "Normal",
+        "reason": "Started",
+        "count": 1,
+        "event_time": "2026-10-23T08:28:26Z",
+        "first_timestamp": "2026-10-23T08:28:26Z"
+      },
+      {
+        "type": "Normal",
+        "reason": "SucceedSetPodIP",
+        "count": 1,
+        "event_time": "2026-10-23T08:28:26Z",
+        "first_timestamp": "2026-10-23T08:28:26Z"
+      },
+      {
+        "type": "Normal",
+        "reason": "Killing",
+        "count": 1,
+        "event_time": "2026-10-23T08:28:43Z",
+        "first_timestamp": "2026-10-23T08:28:43Z"
+      }
+    ],
+    "existing_pods_identity_spec_equal": true,
+    "existing_workloads_identity_spec_equal": true,
+    "existing_pods_count_before": 27,
+    "existing_pods_count_after": 27
+  },
+  "diagnostic_pods_created": 1,
+  "diagnostic_pods_deleted": 1,
+  "backend_validation_complete": false,
+  "application_deployed": false,
+  "route_changed": false,
+  "load_started": false,
+  "test_or_candidates_accessed": false,
+  "git_publish_performed": false,
+  "pg_security_policy_confirmed": null,
+  "next_step": "confirm_existing_pg_transport_policy_or_tls_endpoint_before_retry_or_authorize_independent_graph_s3_readonly_checks"
+}

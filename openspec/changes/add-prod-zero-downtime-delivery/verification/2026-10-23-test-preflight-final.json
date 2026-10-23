@@ -1,0 +1,418 @@
+{
+  "started_at_utc": "2026-10-22T16:36:17.395186+00:00",
+  "environment": "test",
+  "context": "default",
+  "read_only": true,
+  "candidate_deployed": false,
+  "performance_accepted": false,
+  "pods": [
+    {
+      "namespace": "lightrag-test-01",
+      "pod": "lightrag-7bd8fd4f5-77x9r",
+      "uid": "da52276a-c9fb-4d4d-be4a-07ff49cf94ea",
+      "ready": true,
+      "restart_count": 0,
+      "deployment_uid": "7a827e9e-e0ef-4ebf-9e3b-080d4f6be893",
+      "deployment_generation": 58,
+      "secret_uid": "498c30dc-2ade-4ea9-8cc5-ddf653298d30",
+      "secret_resource_version": "50004083",
+      "images": [
+        "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca"
+      ],
+      "health": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0677
+      },
+      "pipeline_status": {
+        "http_status": 200,
+        "elapsed_seconds": 0.063
+      },
+      "coordinator": {
+        "paused": false,
+        "pending_retries": 0,
+        "active_operations": 0,
+        "claimed_documents": 0,
+        "fenced": false,
+        "generation": 1,
+        "recovery_required": false,
+        "orphaned_operations": false,
+        "polling_active": true,
+        "discovery_stopped": false,
+        "polling_error_present": false
+      }
+    },
+    {
+      "namespace": "lightrag-test-01",
+      "pod": "lightrag-7bd8fd4f5-ndddh",
+      "uid": "8e027206-1d90-4caa-a62d-ae736d19ec08",
+      "ready": true,
+      "restart_count": 0,
+      "deployment_uid": "7a827e9e-e0ef-4ebf-9e3b-080d4f6be893",
+      "deployment_generation": 58,
+      "secret_uid": "498c30dc-2ade-4ea9-8cc5-ddf653298d30",
+      "secret_resource_version": "50004083",
+      "images": [
+        "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca"
+      ],
+      "health": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0558
+      },
+      "pipeline_status": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0585
+      },
+      "coordinator": {
+        "paused": false,
+        "pending_retries": 0,
+        "active_operations": 0,
+        "claimed_documents": 0,
+        "fenced": false,
+        "generation": 1,
+        "recovery_required": false,
+        "orphaned_operations": false,
+        "polling_active": true,
+        "discovery_stopped": false,
+        "polling_error_present": false
+      }
+    },
+    {
+      "namespace": "lightrag-test-02",
+      "pod": "lightrag-79fb9488cf-6tvk4",
+      "uid": "f180f77f-c0c5-4101-98de-710e83326966",
+      "ready": true,
+      "restart_count": 0,
+      "deployment_uid": "c756fe67-268d-421d-8b17-1077ba372df6",
+      "deployment_generation": 44,
+      "secret_uid": "b51354e0-84b6-4664-9639-f8c6b4483785",
+      "secret_resource_version": "50327546",
+      "images": [
+        "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca"
+      ],
+      "health": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0555
+      },
+      "pipeline_status": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0612
+      },
+      "coordinator": {
+        "paused": false,
+        "pending_retries": 0,
+        "active_operations": 0,
+        "claimed_documents": 0,
+        "fenced": false,
+        "generation": 1,
+        "recovery_required": false,
+        "orphaned_operations": false,
+        "polling_active": true,
+        "discovery_stopped": false,
+        "polling_error_present": false
+      }
+    },
+    {
+      "namespace": "lightrag-test-02",
+      "pod": "lightrag-79fb9488cf-95q5q",
+      "uid": "d78a2c7a-ff25-48d5-aca8-75bef3c9eb0f",
+      "ready": true,
+      "restart_count": 0,
+      "deployment_uid": "c756fe67-268d-421d-8b17-1077ba372df6",
+      "deployment_generation": 44,
+      "secret_uid": "b51354e0-84b6-4664-9639-f8c6b4483785",
+      "secret_resource_version": "50327546",
+      "images": [
+        "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca"
+      ],
+      "health": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0587
+      },
+      "pipeline_status": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0574
+      },
+      "coordinator": {
+        "paused": false,
+        "pending_retries": 0,
+        "active_operations": 0,
+        "claimed_documents": 0,
+        "fenced": false,
+        "generation": 1,
+        "recovery_required": false,
+        "orphaned_operations": false,
+        "polling_active": true,
+        "discovery_stopped": false,
+        "polling_error_present": false
+      }
+    },
+    {
+      "namespace": "lightrag-test-03",
+      "pod": "lightrag-7ffd9bb78c-gt6g9",
+      "uid": "4213f253-07ae-4a4a-8193-477fc9f99e08",
+      "ready": true,
+      "restart_count": 0,
+      "deployment_uid": "163ab772-697a-48af-85d8-173c9c8ef33f",
+      "deployment_generation": 38,
+      "secret_uid": "4891e3ec-c4d8-4335-8dc1-3671305b2c3c",
+      "secret_resource_version": "50328928",
+      "images": [
+        "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca"
+      ],
+      "health": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0743
+      },
+      "pipeline_status": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0695
+      },
+      "coordinator": {
+        "paused": false,
+        "pending_retries": 0,
+        "active_operations": 0,
+        "claimed_documents": 0,
+        "fenced": false,
+        "generation": 2,
+        "recovery_required": false,
+        "orphaned_operations": false,
+        "polling_active": true,
+        "discovery_stopped": false,
+        "polling_error_present": false
+      }
+    },
+    {
+      "namespace": "lightrag-test-03",
+      "pod": "lightrag-7ffd9bb78c-j9j7r",
+      "uid": "862606d5-3dce-4669-affb-ecdaf7931bff",
+      "ready": true,
+      "restart_count": 0,
+      "deployment_uid": "163ab772-697a-48af-85d8-173c9c8ef33f",
+      "deployment_generation": 38,
+      "secret_uid": "4891e3ec-c4d8-4335-8dc1-3671305b2c3c",
+      "secret_resource_version": "50328928",
+      "images": [
+        "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca"
+      ],
+      "health": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0798
+      },
+      "pipeline_status": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0617
+      },
+      "coordinator": {
+        "paused": false,
+        "pending_retries": 0,
+        "active_operations": 0,
+        "claimed_documents": 0,
+        "fenced": false,
+        "generation": 2,
+        "recovery_required": false,
+        "orphaned_operations": false,
+        "polling_active": true,
+        "discovery_stopped": false,
+        "polling_error_present": false
+      }
+    },
+    {
+      "namespace": "lightrag-test-04",
+      "pod": "lightrag-657678fbdc-h28jz",
+      "uid": "f380fb04-7a53-4d39-b5a0-179495c73e66",
+      "ready": true,
+      "restart_count": 0,
+      "deployment_uid": "2291d070-a964-449a-893d-b3dbfe5f28a4",
+      "deployment_generation": 36,
+      "secret_uid": "7c22322c-4177-41a7-b54b-94bb9de6a97e",
+      "secret_resource_version": "50330084",
+      "images": [
+        "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca"
+      ],
+      "health": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0559
+      },
+      "pipeline_status": {
+        "http_status": 200,
+        "elapsed_seconds": 0.057
+      },
+      "coordinator": {
+        "paused": false,
+        "pending_retries": 0,
+        "active_operations": 0,
+        "claimed_documents": 0,
+        "fenced": false,
+        "generation": 1,
+        "recovery_required": false,
+        "orphaned_operations": false,
+        "polling_active": true,
+        "discovery_stopped": false,
+        "polling_error_present": false
+      }
+    },
+    {
+      "namespace": "lightrag-test-04",
+      "pod": "lightrag-657678fbdc-t524k",
+      "uid": "0b2a1ed8-a4f5-42d9-8d4b-333707db56d7",
+      "ready": true,
+      "restart_count": 0,
+      "deployment_uid": "2291d070-a964-449a-893d-b3dbfe5f28a4",
+      "deployment_generation": 36,
+      "secret_uid": "7c22322c-4177-41a7-b54b-94bb9de6a97e",
+      "secret_resource_version": "50330084",
+      "images": [
+        "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca"
+      ],
+      "health": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0719
+      },
+      "pipeline_status": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0587
+      },
+      "coordinator": {
+        "paused": false,
+        "pending_retries": 0,
+        "active_operations": 1,
+        "claimed_documents": 0,
+        "fenced": false,
+        "generation": 1,
+        "recovery_required": false,
+        "orphaned_operations": false,
+        "polling_active": true,
+        "discovery_stopped": false,
+        "polling_error_present": false
+      }
+    },
+    {
+      "namespace": "lightrag-test-05",
+      "pod": "lightrag-cdd7685f9-77mvk",
+      "uid": "eb65a5a3-879b-4a89-b5b5-2fe5866a3afd",
+      "ready": true,
+      "restart_count": 0,
+      "deployment_uid": "8bec4872-cb9d-4b35-bb12-6eafb6efad17",
+      "deployment_generation": 36,
+      "secret_uid": "2678274e-1908-45f9-b87e-b329f216704b",
+      "secret_resource_version": "50332657",
+      "images": [
+        "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca"
+      ],
+      "health": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0569
+      },
+      "pipeline_status": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0593
+      },
+      "coordinator": {
+        "paused": false,
+        "pending_retries": 0,
+        "active_operations": 0,
+        "claimed_documents": 0,
+        "fenced": false,
+        "generation": 1,
+        "recovery_required": false,
+        "orphaned_operations": false,
+        "polling_active": true,
+        "discovery_stopped": false,
+        "polling_error_present": false
+      }
+    },
+    {
+      "namespace": "lightrag-test-05",
+      "pod": "lightrag-cdd7685f9-jm86r",
+      "uid": "80b2d563-e1e1-4643-a895-4992033f51fa",
+      "ready": true,
+      "restart_count": 0,
+      "deployment_uid": "8bec4872-cb9d-4b35-bb12-6eafb6efad17",
+      "deployment_generation": 36,
+      "secret_uid": "2678274e-1908-45f9-b87e-b329f216704b",
+      "secret_resource_version": "50332657",
+      "images": [
+        "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca"
+      ],
+      "health": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0701
+      },
+      "pipeline_status": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0646
+      },
+      "coordinator": {
+        "paused": false,
+        "pending_retries": 0,
+        "active_operations": 0,
+        "claimed_documents": 0,
+        "fenced": false,
+        "generation": 1,
+        "recovery_required": false,
+        "orphaned_operations": false,
+        "polling_active": true,
+        "discovery_stopped": false,
+        "polling_error_present": false
+      }
+    }
+  ],
+  "status_counts": {
+    "lightrag-test-01": {
+      "processed": 5,
+      "all": 5
+    },
+    "lightrag-test-02": {
+      "all": 0
+    },
+    "lightrag-test-03": {
+      "processed": 1,
+      "all": 1
+    },
+    "lightrag-test-04": {
+      "processed": 3,
+      "all": 3
+    },
+    "lightrag-test-05": {
+      "all": 0
+    }
+  },
+  "stop_reason": "QCLOUD_REHEARSAL_PREREQUISITE_NOT_MET: observed nginx IngressClass only; real qcloud HTTPS/direct CLB target and isolation not verified. No resources created.",
+  "mutating_kubectl_commands": 0,
+  "llm_calls": 0,
+  "observer_fix_notes": [
+    "Use live Deployment selector, not app=lightrag.",
+    "Accept documented all aggregate in status_counts and verify its sum; all is not pending work."
+  ],
+  "earlier_attempts": [
+    "2026-10-23-test-preflight.json",
+    "2026-10-23-test-preflight-business.json"
+  ],
+  "observer_offline_checks": 4,
+  "cluster_uid": "d693583f-5864-4ee6-ab4f-c31302ffcc01",
+  "ingress_classes": [
+    {
+      "name": "nginx",
+      "controller": "k8s.io/ingress-nginx"
+    }
+  ],
+  "business_api_preflight_complete": true,
+  "unchanged_checks": {
+    "lightrag-test-01": {
+      "deployment_spec_identity_secret_reference_and_pod_uids_unchanged": true
+    },
+    "lightrag-test-02": {
+      "deployment_spec_identity_secret_reference_and_pod_uids_unchanged": true
+    },
+    "lightrag-test-03": {
+      "deployment_spec_identity_secret_reference_and_pod_uids_unchanged": true
+    },
+    "lightrag-test-04": {
+      "deployment_spec_identity_secret_reference_and_pod_uids_unchanged": true
+    },
+    "lightrag-test-05": {
+      "deployment_spec_identity_secret_reference_and_pod_uids_unchanged": true
+    }
+  },
+  "finished_at_utc": "2026-10-22T16:36:24.630464+00:00"
+}

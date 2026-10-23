@@ -1,7 +1,11 @@
 from ..utils import verbose_debug, VERBOSE_DEBUG
+import asyncio
 import os
 import logging
 import warnings
+
+from lightrag.query_accounting import account_openai_call, openai_client_configs
+from lightrag.performance import provider_call, current_trace, stage, _usage_values, StreamUsage
 
 from collections.abc import AsyncIterator
 
@@ -215,6 +219,7 @@ def create_openai_async_client(
     connection errors, timeouts, 429 and >=500 already had predicates, and
     ``_is_transient_status_error`` adds the 408 / 409 the SDK also retried.
     """
+    client_configs = openai_client_configs(client_configs, timeout)
     if use_azure:
         from openai import AsyncAzureOpenAI
 
@@ -280,6 +285,65 @@ def create_openai_async_client(
             merged_configs["timeout"] = timeout
 
         return AsyncOpenAI(**merged_configs)
+
+
+async def _prepare_openai_async_client(kind: str, **kwargs: Any) -> AsyncOpenAI:
+    with stage("embedding_prepare" if kind == "embedding" else "llm_prepare"):
+        return await _prepare_owned_openai_client(kind, **kwargs)
+
+
+async def _prepare_owned_openai_client(kind: str, **kwargs: Any) -> AsyncOpenAI:
+    """Prepare one owned client off-loop, joining setup before cancellation exits.
+
+    Only construction and lazy resource initialization run in the worker. Actual
+    SDK requests/streams stay on the caller's loop and retain its permits and
+    accounting. Never share the returned client between requests. See
+    docs/design/DistributedRuntimeContract.md for the cold-start failure boundary.
+    """
+    client: AsyncOpenAI | None = None
+
+    def prepare() -> AsyncOpenAI:
+        nonlocal client
+        client = create_openai_async_client(**kwargs)
+        if kind == "embedding":
+            client.embeddings.create
+        else:
+            client.chat.completions.create
+        return client
+
+    task = asyncio.create_task(asyncio.to_thread(prepare))
+    cancelled = False
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled = True
+        except Exception:
+            break
+
+    async def close_prepared() -> None:
+        nonlocal cancelled
+        if client is None:
+            return
+        closing = asyncio.create_task(client.close())
+        while not closing.done():
+            try:
+                await asyncio.shield(closing)
+            except asyncio.CancelledError:
+                cancelled = True
+        closing.result()
+
+    try:
+        prepared = task.result()
+    except BaseException:
+        await close_prepared()
+        if cancelled:
+            raise asyncio.CancelledError() from None
+        raise
+    if cancelled:
+        await close_prepared()
+        raise asyncio.CancelledError()
+    return prepared
 
 
 # Token-limit-truncated completions (finish_reason == "length") are returned
@@ -441,7 +505,8 @@ async def openai_complete_if_cache(
         enable_cot = False
 
     # Create the OpenAI client (supports both OpenAI and Azure)
-    openai_async_client = create_openai_async_client(
+    openai_async_client = await _prepare_openai_async_client(
+        "llm",
         api_key=api_key,
         base_url=base_url,
         use_azure=use_azure,
@@ -488,6 +553,10 @@ async def openai_complete_if_cache(
     # Add explicit parameters back to kwargs so they're passed to OpenAI API
     if stream is not None:
         kwargs["stream"] = stream
+    if kwargs.get("stream") and "stream_options" not in kwargs:
+        kwargs["stream_options"] = {"include_usage": True}
+    elif kwargs.get("stream") and isinstance(kwargs.get("stream_options"), dict):
+        kwargs["stream_options"] = {"include_usage": True, **kwargs["stream_options"]}
     if timeout is not None:
         kwargs["timeout"] = timeout
 
@@ -502,8 +571,13 @@ async def openai_complete_if_cache(
         # returned unchanged so upstream tolerant JSON parsing can still
         # salvage them; finish_reason is only inspected when content is empty
         # (see the empty-content diagnostics below).
-        response = await openai_async_client.chat.completions.create(
-            model=api_model, messages=messages, **kwargs
+        api_payload = {'model': api_model, 'messages': messages, **kwargs}
+        response = await account_openai_call(
+            'llm', openai_async_client, api_payload,
+            lambda: provider_call(
+                lambda: openai_async_client.chat.completions.create(**api_payload),
+                kind="llm",
+            ),
         )
     except APITimeoutError as e:
         logger.error(f"OpenAI API Timeout Error: {e}")
@@ -575,7 +649,7 @@ async def openai_complete_if_cache(
         async def inner():
             # Track if we've started iterating
             iteration_started = False
-            final_chunk_usage = None
+            stream_usage = StreamUsage()
 
             # COT (Chain of Thought) state tracking
             cot_active = False
@@ -587,11 +661,7 @@ async def openai_complete_if_cache(
                 iteration_started = True
                 async for chunk in response:
                     # Check if this chunk has usage information (final chunk)
-                    if hasattr(chunk, "usage") and chunk.usage:
-                        final_chunk_usage = chunk.usage
-                        logger.debug(
-                            f"Received usage info in streaming chunk: {chunk.usage}"
-                        )
+                    stream_usage.accept(chunk)
 
                     # Check if choices exists and is not empty
                     if not hasattr(chunk, "choices") or not chunk.choices:
@@ -664,7 +734,8 @@ async def openai_complete_if_cache(
                     cot_active = False
 
                 # After streaming is complete, track token usage
-                if token_tracker and final_chunk_usage:
+                final_chunk_usage = stream_usage.value
+                if token_tracker and _usage_values(final_chunk_usage, "llm") is not None:
                     # Use actual usage from the API
                     token_counts = {
                         "prompt_tokens": getattr(final_chunk_usage, "prompt_tokens", 0),
@@ -769,7 +840,21 @@ async def openai_complete_if_cache(
                         f"Failed to close OpenAI client in streaming finally block: {client_close_error}"
                     )
 
-        return inner()
+        from lightrag.distributed.release.query import own_provider_stream, provider_stream_context
+
+        async def close_upstream():
+            try:
+                close = getattr(response, "aclose", None) or getattr(response, "close", None)
+                if callable(close):
+                    await close()
+            finally:
+                await openai_async_client.close()
+
+        if current_trace() is not None:
+            # Usage needs a terminal event even when the iterator is never read.
+            with provider_stream_context():
+                return own_provider_stream(inner(), close_upstream)
+        return own_provider_stream(inner(), close_upstream)
 
     else:
         try:
@@ -1032,6 +1117,83 @@ async def nvidia_openai_complete(
     return result
 
 
+async def _prepare_embedding_inputs(
+    texts, model, context, query_prefix, document_prefix, max_token_size
+):
+    """Prepare an owned input batch off-loop; cancellation joins before dispatch."""
+
+    def prepare():
+        nonlocal texts
+        # Apply context-based prefixes if provided
+        if context == "query" and query_prefix:
+            texts = [query_prefix + text for text in texts]
+        elif context == "document" and document_prefix:
+            texts = [document_prefix + text for text in texts]
+        # Apply text truncation if max_token_size is provided
+        if max_token_size is not None and max_token_size > 0:
+            encoding = _get_tiktoken_encoding_for_model(model)
+            truncated_texts = []
+            truncation_count = 0
+
+            encoded_texts = {}
+            for text in texts:
+                if text in encoded_texts:
+                    truncated_texts.append(encoded_texts[text])
+                    truncation_count += int(encoded_texts[text] != text)
+                    continue
+                if not text:
+                    truncated_texts.append(text)
+                    continue
+
+                # disallowed_special=() is required, not an optimization: tiktoken
+                # defaults to disallowed_special=ALL and raises ValueError as soon as
+                # the text merely CONTAINS a literal special-token string such as
+                # "<|endoftext|>". Since this encode runs for every non-empty text
+                # once truncation is enabled, one chunk of user content quoting that
+                # marker -- common in documentation, notes, or captured model output
+                # -- failed the whole embedding batch regardless of its length. The
+                # markers must be encoded as ordinary text, exactly as
+                # Tokenizer.encode does for every other tokenizing path.
+                original_text = text
+                tokens = encoding.encode(text, disallowed_special=())
+                if len(tokens) > max_token_size:
+                    truncated_tokens = tokens[:max_token_size]
+                    truncated_texts.append(encoding.decode(truncated_tokens))
+                    truncation_count += 1
+                    logger.debug(
+                        f"Text truncated from {len(tokens)} to {max_token_size} tokens"
+                    )
+                else:
+                    truncated_texts.append(text)
+                encoded_texts[original_text] = truncated_texts[-1]
+
+            if truncation_count > 0:
+                logger.info(
+                    f"Truncated {truncation_count}/{len(texts)} texts to fit token limit ({max_token_size})"
+                )
+
+            texts = truncated_texts
+
+        return texts
+
+    with stage("embedding_input"):
+        task = asyncio.create_task(asyncio.to_thread(prepare))
+        cancelled = False
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                cancelled = True
+            except Exception:
+                break
+        if cancelled:
+            # Retrieve any error so a cancelled waiter cannot orphan the task.
+            if not task.cancelled():
+                task.exception()
+            raise asyncio.CancelledError()
+        return task.result()
+
+
 @wrap_embedding_func_with_attrs(
     embedding_dim=1536,
     max_token_size=8192,
@@ -1120,51 +1282,13 @@ async def openai_embed(
             fails fast.
         APITimeoutError: If the OpenAI API request times out.
     """
-    # Apply context-based prefixes if provided
-    if context == "query" and query_prefix:
-        texts = [query_prefix + text for text in texts]
-    elif context == "document" and document_prefix:
-        texts = [document_prefix + text for text in texts]
-    # Apply text truncation if max_token_size is provided
-    if max_token_size is not None and max_token_size > 0:
-        encoding = _get_tiktoken_encoding_for_model(model)
-        truncated_texts = []
-        truncation_count = 0
-
-        for text in texts:
-            if not text:
-                truncated_texts.append(text)
-                continue
-
-            # disallowed_special=() is required, not an optimization: tiktoken
-            # defaults to disallowed_special=ALL and raises ValueError as soon as
-            # the text merely CONTAINS a literal special-token string such as
-            # "<|endoftext|>". Since this encode runs for every non-empty text
-            # once truncation is enabled, one chunk of user content quoting that
-            # marker -- common in documentation, notes, or captured model output
-            # -- failed the whole embedding batch regardless of its length. The
-            # markers must be encoded as ordinary text, exactly as
-            # Tokenizer.encode does for every other tokenizing path.
-            tokens = encoding.encode(text, disallowed_special=())
-            if len(tokens) > max_token_size:
-                truncated_tokens = tokens[:max_token_size]
-                truncated_texts.append(encoding.decode(truncated_tokens))
-                truncation_count += 1
-                logger.debug(
-                    f"Text truncated from {len(tokens)} to {max_token_size} tokens"
-                )
-            else:
-                truncated_texts.append(text)
-
-        if truncation_count > 0:
-            logger.info(
-                f"Truncated {truncation_count}/{len(texts)} texts to fit token limit ({max_token_size})"
-            )
-
-        texts = truncated_texts
+    texts = await _prepare_embedding_inputs(
+        texts, model, context, query_prefix, document_prefix, max_token_size
+    )
 
     # Create the OpenAI client (supports both OpenAI and Azure)
-    openai_async_client = create_openai_async_client(
+    openai_async_client = await _prepare_openai_async_client(
+        "embedding",
         api_key=api_key,
         base_url=base_url,
         use_azure=use_azure,
@@ -1193,7 +1317,13 @@ async def openai_embed(
             api_params["dimensions"] = embedding_dim
 
         # Make API call
-        response = await openai_async_client.embeddings.create(**api_params)
+        response = await account_openai_call(
+            'embedding', openai_async_client, api_params,
+            lambda: provider_call(
+                lambda: openai_async_client.embeddings.create(**api_params),
+                kind="embedding",
+            ),
+        )
 
         if token_tracker and hasattr(response, "usage"):
             token_counts = {

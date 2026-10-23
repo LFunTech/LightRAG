@@ -2727,6 +2727,7 @@ async def pipeline_index_file(
     file_path: Path,
     track_id: str = None,
     admission_token: str | None = None,
+    _release_accepted=None,
 ):
     """Index a file with track_id
 
@@ -2743,6 +2744,8 @@ async def pipeline_index_file(
             rag, file_path, track_id, admission_token=admission_token
         )
         if success:
+            if _release_accepted is not None:
+                _release_accepted.set()
             await drive_pipeline(rag)
 
     except CoordinationError:
@@ -2969,6 +2972,7 @@ async def pipeline_index_texts(
     chunking: Optional[TextChunkingConfig] = None,
     resolved_chunking: Optional[tuple[str, dict]] = None,
     admission_token: str | None = None,
+    _release_accepted=None,
 ):
     """Index a list of texts with track_id
 
@@ -3014,6 +3018,8 @@ async def pipeline_index_texts(
         # See pipeline_enqueue_file: only forwarded when a reservation exists.
         enqueue_kwargs["admission_token"] = admission_token
     await rag.apipeline_enqueue_documents(**enqueue_kwargs)
+    if _release_accepted is not None:
+        _release_accepted.set()
     await drive_pipeline(rag)
 
 

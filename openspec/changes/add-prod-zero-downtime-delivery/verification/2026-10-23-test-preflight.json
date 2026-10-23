@@ -1,0 +1,24 @@
+{
+  "record_version": 1,
+  "started_at_utc": "2026-10-22T16:34:02.598412+00:00",
+  "environment": "test",
+  "kubeconfig_path": "/Users/minwang/.kube/test-config",
+  "context": "default",
+  "authorization": "Read-only preflight; conditional isolated candidate deployment and low-load checks. Existing test unchanged; no prod, prod secrets, git publication or 1000 QPS load.",
+  "mutation_commands_run": 0,
+  "llm_calls_sent": 0,
+  "pods": [],
+  "document_status_counts": {},
+  "deployment_started": false,
+  "performance_accepted": false,
+  "stop_reason": "EXISTING_TEST_REPLICA_COUNT_CHANGED: lightrag-test-01",
+  "cluster_uid": "d693583f-5864-4ee6-ab4f-c31302ffcc01",
+  "ingress_classes": [
+    {
+      "name": "nginx",
+      "controller": "k8s.io/ingress-nginx"
+    }
+  ],
+  "qcloud_class_registered": false,
+  "finished_at_utc": "2026-10-22T16:34:03.275807+00:00"
+}

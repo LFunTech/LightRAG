@@ -17,6 +17,10 @@ if [ -z "$PYTHON" ]; then
   fi
 fi
 "$PYTHON" -m py_compile scripts/ci/__init__.py scripts/ci/delivery.py scripts/ci/k8s_deploy.py scripts/ci/generate-test-instance-api-keys.py
+"$PYTHON" -m py_compile scripts/ci/prod_config.py scripts/ci/prod_deploy.py scripts/ci/import-environment-secrets.py lightrag_delivery/*.py
+bash -n scripts/ci/deploy-prod.sh
+sh -n scripts/ci/deploy-prod.sh
+"$PYTHON" -m json.tool k8s-deploy/lightrag-kustomize/overlays/prod/onboarding.schema.json >/dev/null
 "$PYTHON" -m json.tool scripts/ci/base-images.lock.json >/dev/null
 "$PYTHON" -m json.tool scripts/ci/tool-images.lock.json >/dev/null
 bash -n scripts/ci/delivery-check.sh

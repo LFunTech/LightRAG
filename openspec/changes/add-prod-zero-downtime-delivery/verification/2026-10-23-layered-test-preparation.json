@@ -1,0 +1,150 @@
+{
+  "record_kind": "isolated_test_layered_preparation_not_acceptance",
+  "at_utc": "2026-10-22T22:33:48.131965+00:00",
+  "authorized_environment": "test",
+  "kube_system_uid": "d693583f-5864-4ee6-ab4f-c31302ffcc01",
+  "namespace": "lightrag-release-lab-20261023",
+  "namespace_absent_on_read_only_check": true,
+  "namespace_uid": null,
+  "node_metrics_api_available": true,
+  "node_metrics_not_a_scheduling_or_backend_budget_proof": true,
+  "target_mode": "application_layer_test_now_qcloud_clb_nonproduction_later",
+  "planned_backend_isolation": "dedicated PG, HugeGraph and S3 services; no existing test data reuse",
+  "resolved_read_only_image_manifests": {
+    "pgvector": {
+      "image": "docker.io/pgvector/pgvector@sha256:ad249f9fb9572979643a47694e59b9a8cdcdf6abc6accebf49bb80ad5f20ff9b",
+      "requested_tag": "pg18",
+      "platform": "linux/amd64",
+      "pulled_by_cluster": false
+    },
+    "hugegraph": {
+      "image": "docker.io/hugegraph/hugegraph@sha256:259114795837cd4ea3bc842c46e29f05a5f173835d05715ee13216abc5a8962d",
+      "requested_tag": "1.7.0",
+      "platform": "linux/amd64",
+      "pulled_by_cluster": false
+    }
+  },
+  "s3_image_lookup": {
+    "requested_repository": "minio/minio",
+    "requested_tag": "RELEASE.2025-09-07T16-13-09Z",
+    "results": [
+      {
+        "registry": "registry-1.docker.io",
+        "http_status": 401,
+        "read_manifest_authorized": false
+      },
+      {
+        "registry": "quay.io",
+        "http_status": 401,
+        "read_manifest_authorized": false
+      },
+      {
+        "registry": "docker-hub.f123.pub",
+        "http_status": 401,
+        "read_manifest_authorized": false
+      }
+    ],
+    "test_registry_reference_read_in_memory_only": true,
+    "image_existence_or_security_status_not_inferred": true,
+    "fallback_to_old_or_mock_backend": false
+  },
+  "candidate": {
+    "source_kind": "working_tree_snapshot",
+    "production_eligible": false,
+    "runtime_image": "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca",
+    "base_commit": "beb4d64681c06d393255c577cdf0d988fdeecbfb",
+    "source_sha256": "0b39a16dc1f4d0b7829e6924be487f26964ce8722327669ba73f32dd30b99747",
+    "archive_bytes": 5184897,
+    "archive_sha256": "a4e9308bbc412a1876194e9d51cd2927aaf76a65a7de34f6ba7e9ff096dbe5bc"
+  },
+  "candidate_artifact_path": "/Users/minwang/Projects/LightRAG/temp/prod-delivery-implementation/lab-candidate-20261023-002",
+  "candidate_manifest_sha256": "00b4b078b29dcdb0d2b6493369223ee0fb9c36a3a185d676dc79e801f2483f00",
+  "candidate_file_count": 419,
+  "candidate_part_count": 10,
+  "local_bundle_verified": true,
+  "runtime_dependency_compatibility_verified": false,
+  "candidate_mounted_or_deployed": false,
+  "tests": {
+    "command": "PYTHON=.venv/bin/python PYTHON_DOTENV_DISABLED=1 ./scripts/test.sh tests/performance tests/ci/test_prod_workflows.py tests/ci/test_prod_inputs.py -q --tb=short",
+    "passed": 146,
+    "failed": 0,
+    "elapsed_seconds": 9.92,
+    "new_bundle_cases": 14,
+    "tdd_red_cases": 10,
+    "same_size_edit_red": true,
+    "incomplete_package_red": true
+  },
+  "mutating_kubernetes_commands": 0,
+  "resources_created": 0,
+  "model_calls": 0,
+  "business_writes": 0,
+  "app_4_plus_4_executed": false,
+  "qcloud_clb_deferred": true,
+  "capacity_accepted": false,
+  "production_accepted": false,
+  "stop_reason": "Independent S3 image manifest access not authorized. Remote preparation paused; awaiting a test-pullable approved image or independently authorized test S3 domain.",
+  "head": "beb4d64681c06d393255c577cdf0d988fdeecbfb",
+  "branch": "master",
+  "follow_up_validation": {
+    "at_utc": "2026-10-22T22:36:22.576689+00:00",
+    "prior_146_test_run_and_candidate_002_retained_as_historical": true,
+    "pinned_image_uri_rejection_red_test": true,
+    "new_bundle_cases": 15,
+    "command": "PYTHON=.venv/bin/python PYTHON_DOTENV_DISABLED=1 ./scripts/test.sh tests/performance tests/ci/test_prod_workflows.py tests/ci/test_prod_inputs.py -q --tb=short",
+    "passed": 147,
+    "failed": 0,
+    "elapsed_seconds": 9.72,
+    "current_candidate": {
+      "source_kind": "working_tree_snapshot",
+      "production_eligible": false,
+      "runtime_image": "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca",
+      "base_commit": "beb4d64681c06d393255c577cdf0d988fdeecbfb",
+      "source_sha256": "ec6fe9c61c541040b57afb6cc2676a9443a44501065f07eaafeb9b8733ce1adc",
+      "archive_bytes": 5184906,
+      "archive_sha256": "700ec5b3be26c2c863527e33084230915b859ef654687929a697fc49938a1368"
+    },
+    "current_artifact_path": "/Users/minwang/Projects/LightRAG/temp/prod-delivery-implementation/lab-candidate-20261023-003",
+    "current_manifest_sha256": "aa64c90505aa1d2eded64351e4cff6a23c2fc425314d76c4dac68dca958a3644",
+    "file_count": 419,
+    "part_count": 10,
+    "archive_parts_manifest_and_current_worktree_match": true,
+    "deployed": false,
+    "capacity_accepted": false,
+    "production_accepted": false
+  },
+  "local_boundary_validation": {
+    "passed": true,
+    "baseline_files": 1611,
+    "changed_existing_files": [
+      "openspec/changes/add-prod-zero-downtime-delivery/design.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/specs/prod-delivery/spec.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/tasks.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/README.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/isolated-job.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/stop-plan.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/verification/implementation-ledger.md",
+      "scripts/performance/README.md"
+    ],
+    "relative_file_links_checked": 191,
+    "pending_parameter_paths": 191,
+    "blanket_approval_flags_unchanged_false": 12,
+    "tasks_complete": 41,
+    "tasks_pending": 12,
+    "scenarios": 57,
+    "protected_runtime_ci_test_inputs_head_branch_and_production_gate_unchanged": true,
+    "actual_overlay_matches_current_source": true
+  },
+  "scope_correction": {
+    "date": "2026-10-23",
+    "reason": "User clarified that PG, graph and S3 components already exist in test. The executor incorrectly escalated independent data domains into mandatory independent physical services.",
+    "previous_physical_backend_rebuild_assumption_retracted": true,
+    "previous_minio_image_stop_reason_withdrawn": true,
+    "user_does_not_need_to_provide_minio_image": true,
+    "current_default": "Reuse existing test PG, graph and S3; isolate candidate application namespace and supported data domains, permissions and bounded shared resource usage.",
+    "next_step": "Read-only map actual test connection configuration and verify supported isolation and permissions before scoped candidate preparation.",
+    "extra_backend_components_started": false,
+    "runtime_tests_or_cluster_operations_in_this_correction": false,
+    "historical_candidate_003_not_asserted_to_match_current_worktree_after_documentation_edit": true,
+    "historical_fields_preserved": true
+  }
+}

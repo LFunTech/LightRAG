@@ -1,0 +1,449 @@
+{
+  "recorded_at_utc": "2026-10-23T01:27:24.695914+00:00",
+  "environment": "test",
+  "namespace": "lightrag-retest-20261023-0915",
+  "scope": "lightrag_retest_20261023_0915",
+  "s3_prefix": "lightrag/retest-20261023-0915/object-ingestion",
+  "cluster_uid": "d693583f-5864-4ee6-ab4f-c31302ffcc01",
+  "head": "beb4d64681c06d393255c577cdf0d988fdeecbfb",
+  "branch": "master",
+  "status": "paused_readonly_graph_probe_http_400_before_creation",
+  "authorization": "new isolated test namespace/data scope; reuse existing PG/graph/S3; one document, queries and maximum 2 concurrent requests; stop on anomaly",
+  "preflight": {
+    "cluster_identity_verified": true,
+    "new_namespace_absent_at_last_read": true,
+    "original_ready_pods": 10,
+    "original_resources_unchanged_during_diagnosis": true,
+    "original_resources_match_prior_snapshot": true,
+    "original_pod_http_checks_completed": false,
+    "pg": {
+      "at_utc": "2026-10-23T01:22:17.290788+00:00",
+      "transaction_read_only": "on",
+      "schema_verified": true,
+      "original_workspaces": [
+        {
+          "deployment_id": "lightrag_test_01",
+          "workspace": "lightrag_test_01",
+          "generation": 1,
+          "fenced": false
+        },
+        {
+          "deployment_id": "lightrag_test_02",
+          "workspace": "lightrag_test_02",
+          "generation": 1,
+          "fenced": false
+        },
+        {
+          "deployment_id": "lightrag_test_03",
+          "workspace": "lightrag_test_03",
+          "generation": 2,
+          "fenced": false
+        },
+        {
+          "deployment_id": "lightrag_test_04",
+          "workspace": "lightrag_test_04",
+          "generation": 1,
+          "fenced": false
+        },
+        {
+          "deployment_id": "lightrag_test_05",
+          "workspace": "lightrag_test_05",
+          "generation": 1,
+          "fenced": false
+        }
+      ],
+      "original_gates": {
+        "pending_documents": [],
+        "pending_mutations": [
+          {
+            "n": 0
+          }
+        ],
+        "claims": [
+          {
+            "n": 0
+          }
+        ],
+        "locks": [
+          {
+            "n": 0
+          }
+        ],
+        "pending_retries": [
+          {
+            "n": 0
+          }
+        ],
+        "orphans": [
+          {
+            "n": 0
+          }
+        ]
+      },
+      "original_document_counts": [
+        {
+          "workspace": "lightrag_test_01",
+          "status": "processed",
+          "n": 5
+        },
+        {
+          "workspace": "lightrag_test_03",
+          "status": "processed",
+          "n": 1
+        },
+        {
+          "workspace": "lightrag_test_04",
+          "status": "processed",
+          "n": 3
+        }
+      ],
+      "new_scope_absent": true,
+      "new_business_tables_absent": {
+        "lightrag_doc_chunks": true,
+        "lightrag_doc_full": true,
+        "lightrag_doc_status": true,
+        "lightrag_entity_chunks": true,
+        "lightrag_full_entities": true,
+        "lightrag_full_relations": true,
+        "lightrag_llm_cache": true,
+        "lightrag_relation_chunks": true,
+        "lightrag_upload_sessions": true,
+        "lightrag_vdb_chunks_text_embedding_v4_1024d": true,
+        "lightrag_vdb_entity_text_embedding_v4_1024d": true,
+        "lightrag_vdb_relation_text_embedding_v4_1024d": true
+      },
+      "pg_connections": {
+        "maximum": 1000,
+        "reserved": 3,
+        "observed": 623,
+        "candidate_maximum_estimate": 10,
+        "readonly_observer": 1
+      },
+      "fault_scene": {
+        "workspaces": [
+          {
+            "deployment_id": "lightrag_lab_20261023",
+            "workspace": "lightrag_lab_20261023",
+            "generation": 1,
+            "fenced": false
+          }
+        ],
+        "documents": [
+          {
+            "id": "doc-dc7771079e53e14b32cef839a4612b69",
+            "status": "analyzing",
+            "track_id": "upload_20261023_003051_e991a5c5",
+            "updated_at": "2026-10-23 00:30:52.657770"
+          }
+        ],
+        "active_operations": [
+          {
+            "id": "acf27723-3106-4e08-8ea6-2bd427d34da0",
+            "kind": "pipeline",
+            "phase": "processing",
+            "heartbeat_at": "2026-10-23 00:30:57.061831+00:00"
+          }
+        ],
+        "claims": [
+          {
+            "operation_id": "acf27723-3106-4e08-8ea6-2bd427d34da0",
+            "phase": "processing"
+          }
+        ]
+      }
+    },
+    "graph": {
+      "graph_probe_succeeded": false,
+      "stage": "new_scope_V",
+      "error": "HugeGraphClientError",
+      "http_status": 400,
+      "code": null,
+      "transient": false,
+      "safe_reason": "HugeGraph HTTP POST failed with status 400.",
+      "requests": [
+        {
+          "category": "versions",
+          "method": "GET",
+          "ok": true,
+          "seconds": 0.039964749999853666
+        },
+        {
+          "category": "schema",
+          "method": "GET",
+          "ok": true,
+          "seconds": 0.031766500000230735
+        },
+        {
+          "category": "schema",
+          "method": "GET",
+          "ok": true,
+          "seconds": 0.021834541999851353
+        },
+        {
+          "category": "schema",
+          "method": "GET",
+          "ok": true,
+          "seconds": 0.016744917000323767
+        },
+        {
+          "category": "schema",
+          "method": "GET",
+          "ok": true,
+          "seconds": 0.014288041000327212
+        },
+        {
+          "category": "schema",
+          "method": "GET",
+          "ok": true,
+          "seconds": 0.016506250000020373
+        },
+        {
+          "category": "schema",
+          "method": "GET",
+          "ok": true,
+          "seconds": 0.016583958000410348
+        },
+        {
+          "category": "schema",
+          "method": "GET",
+          "ok": true,
+          "seconds": 0.012758374999975786
+        },
+        {
+          "category": "gremlin",
+          "method": "POST",
+          "ok": false,
+          "seconds": 0.03905229199972382,
+          "http_status": 400,
+          "code": null,
+          "transient": false,
+          "safe_reason": "HugeGraph HTTP POST failed with status 400."
+        }
+      ],
+      "mutations": 0,
+      "ddl": false
+    },
+    "graph_error_envelope": {
+      "at_utc": "2026-10-23T01:23:31.331887+00:00",
+      "read_only": true,
+      "http_status": 400,
+      "exception_class": "groovy.lang.MissingMethodException",
+      "message_sha256": "ed832ee5a7b9428431bb611c2aad6ef1b420eaa84ee22a1528113be93c01bae3",
+      "mentions_reserved": false,
+      "mentions_binding": false,
+      "mentions_label": true,
+      "mentions_invalid": false,
+      "raw_body_retained": false,
+      "credentials_retained": false,
+      "mutations": 0,
+      "continuing_deployment": false
+    },
+    "s3_checked": false,
+    "offline_constructor_run": false,
+    "source_bundle_built": false
+  },
+  "old_fault_pod": {
+    "uid": "0f32b028-3279-412b-a841-181566917176",
+    "spec_sha256": "72450248077dd19e112c70a479e535094d738a3d1aeb7796207fb700e52aec0d",
+    "phase": "Running",
+    "restarts": 0
+  },
+  "local_probe_adjustment": {
+    "failed_script_preserved": true,
+    "old_binding": "label",
+    "prepared_binding_names": [
+      "vlabel",
+      "elabel"
+    ],
+    "hypothesis": "binding/method resolution mismatch; version and schema reads succeed, but the new scoped V probe receives MissingMethodException",
+    "correction_sent_to_graph": false,
+    "correction_proven": false,
+    "application_source_changed": false,
+    "syntax_parse_only": true
+  },
+  "actions": {
+    "resources_created": 0,
+    "source_overlays_uploaded": 0,
+    "business_ingestions_sent": 0,
+    "queries_sent": 0,
+    "real_model_calls": 0,
+    "restarts": 0,
+    "recover": 0,
+    "accepted_business_requests_replayed": 0,
+    "schema_or_role_changes": 0,
+    "prod_operations": 0,
+    "prod_secret_reads_or_imports": 0,
+    "git_commits_pushes_tags": 0,
+    "existing_test_resources_mutated": 0,
+    "old_fault_scene_mutated": 0
+  },
+  "original_resource_projection": {
+    "lightrag-test-01": {
+      "deployment_uid": "7a827e9e-e0ef-4ebf-9e3b-080d4f6be893",
+      "deployment_spec_sha256": "69a74bc70347a2dd56e5020b40438f9609ed348d0ce799c42f2dda7f1cb0225f",
+      "secret_uid": "498c30dc-2ade-4ea9-8cc5-ddf653298d30",
+      "secret_resource_version": "50004083",
+      "pods": [
+        {
+          "name": "lightrag-7bd8fd4f5-77x9r",
+          "uid": "da52276a-c9fb-4d4d-be4a-07ff49cf94ea",
+          "spec_sha256": "47c3a248b1524a2558de29951be637b6b385b5df5db75a66894693862a965b6c",
+          "restarts": 0
+        },
+        {
+          "name": "lightrag-7bd8fd4f5-ndddh",
+          "uid": "8e027206-1d90-4caa-a62d-ae736d19ec08",
+          "spec_sha256": "77de4bfc8c8eb18b416e1416c21b2dba2bec8a7026061f14a7b89b2cad79837d",
+          "restarts": 0
+        }
+      ]
+    },
+    "lightrag-test-02": {
+      "deployment_uid": "c756fe67-268d-421d-8b17-1077ba372df6",
+      "deployment_spec_sha256": "94ceeaab042e780433e54e539a69a88c601912cb72da170bbb9d95d70a3680dd",
+      "secret_uid": "b51354e0-84b6-4664-9639-f8c6b4483785",
+      "secret_resource_version": "50327546",
+      "pods": [
+        {
+          "name": "lightrag-79fb9488cf-6tvk4",
+          "uid": "f180f77f-c0c5-4101-98de-710e83326966",
+          "spec_sha256": "6375a5785ff0c119a932e331e38922fba10160d57b209e9a09d1c021a708ab97",
+          "restarts": 0
+        },
+        {
+          "name": "lightrag-79fb9488cf-95q5q",
+          "uid": "d78a2c7a-ff25-48d5-aca8-75bef3c9eb0f",
+          "spec_sha256": "cc064cc79b2ba51e3a52e8e6c00fa0d60c8a2596c6aaf9236085cce2a88baec1",
+          "restarts": 0
+        }
+      ]
+    },
+    "lightrag-test-03": {
+      "deployment_uid": "163ab772-697a-48af-85d8-173c9c8ef33f",
+      "deployment_spec_sha256": "cf714ddb0dd993a1a0122d1574edd4fb03d0f54c3fe0821147120be3e6d43507",
+      "secret_uid": "4891e3ec-c4d8-4335-8dc1-3671305b2c3c",
+      "secret_resource_version": "50328928",
+      "pods": [
+        {
+          "name": "lightrag-7ffd9bb78c-gt6g9",
+          "uid": "4213f253-07ae-4a4a-8193-477fc9f99e08",
+          "spec_sha256": "cdb8b8edfd3f5c2aee083026b785644396f96f8db8172036f3ecd9519ce61e53",
+          "restarts": 0
+        },
+        {
+          "name": "lightrag-7ffd9bb78c-j9j7r",
+          "uid": "862606d5-3dce-4669-affb-ecdaf7931bff",
+          "spec_sha256": "95f46ac985f79c5f4e608a2765b560cfa337d6966f5510227bb424392f71385e",
+          "restarts": 0
+        }
+      ]
+    },
+    "lightrag-test-04": {
+      "deployment_uid": "2291d070-a964-449a-893d-b3dbfe5f28a4",
+      "deployment_spec_sha256": "28995405fb7002259d96367028a1ed9f9064b42909ed58b9925d4494888139b6",
+      "secret_uid": "7c22322c-4177-41a7-b54b-94bb9de6a97e",
+      "secret_resource_version": "50330084",
+      "pods": [
+        {
+          "name": "lightrag-657678fbdc-h28jz",
+          "uid": "f380fb04-7a53-4d39-b5a0-179495c73e66",
+          "spec_sha256": "16b5bfda9889b35d25c1a4280897fc6906a1077153cd7141989ab8639c63d768",
+          "restarts": 0
+        },
+        {
+          "name": "lightrag-657678fbdc-t524k",
+          "uid": "0b2a1ed8-a4f5-42d9-8d4b-333707db56d7",
+          "spec_sha256": "114add5a13d4980f27f6005313c6af25e968cb7422e22ffd023dfc8d351c0bb8",
+          "restarts": 0
+        }
+      ]
+    },
+    "lightrag-test-05": {
+      "deployment_uid": "8bec4872-cb9d-4b35-bb12-6eafb6efad17",
+      "deployment_spec_sha256": "98929f4c46c7e947ad9bf5def0aede7cac49d40c1f4bdafe90fc6692abdde339",
+      "secret_uid": "2678274e-1908-45f9-b87e-b329f216704b",
+      "secret_resource_version": "50332657",
+      "pods": [
+        {
+          "name": "lightrag-cdd7685f9-77mvk",
+          "uid": "eb65a5a3-879b-4a89-b5b5-2fe5866a3afd",
+          "spec_sha256": "0fabd61f500405e17735297ed0f30140ba4b5a9b2e3c0edd777358e1496d6322",
+          "restarts": 0
+        },
+        {
+          "name": "lightrag-cdd7685f9-jm86r",
+          "uid": "80b2d563-e1e1-4643-a895-4992033f51fa",
+          "spec_sha256": "7c2201fa5b9efdab9957fd0d518d832cc923793be929e65aed98c95cc90b2cf5",
+          "restarts": 0
+        }
+      ]
+    }
+  },
+  "private_evidence": {
+    "preflight-paused.json": {
+      "path": "temp/retest-20261023-0915/preflight-paused.json",
+      "sha256": "4701884755cb555676672575617a81f821cb6b802bbedc3671dc21984ac39dba"
+    },
+    "readonly-diagnosis.json": {
+      "path": "temp/retest-20261023-0915/readonly-diagnosis.json",
+      "sha256": "cabae224f04c89160ede97eff5e4a2f25ab02f3094777a94bc7ee06a805148a4"
+    },
+    "read-only-error-envelope.json": {
+      "path": "temp/retest-20261023-0915/read-only-error-envelope.json",
+      "sha256": "182c1bbfc1df13d2345b3b5207ef3f89ed75b63abbedbe8a36537f4076d270a4"
+    },
+    "preflight-failed.py": {
+      "path": "temp/retest-20261023-0915/preflight-failed.py",
+      "sha256": "b0614b53c91376ea6bbf4a03f3b199c27d9627137494e01c962ca8c4515adeba"
+    },
+    "preflight.py": {
+      "path": "temp/retest-20261023-0915/preflight.py",
+      "sha256": "811047060795a29c3862dbf7875f296af848d6e0f466e4639d3e4df42d2caddc"
+    }
+  },
+  "verification": {
+    "unit_test_suites_rerun": false,
+    "prior_412_tests_not_reused_as_this_run_result": true,
+    "private_harness_syntax_parsed": true,
+    "openspec_strict": true,
+    "repository_boundary": {
+      "baseline_files": 1395,
+      "changed_existing": [
+        "openspec/changes/add-prod-zero-downtime-delivery/design.md",
+        "openspec/changes/add-prod-zero-downtime-delivery/tasks.md",
+        "openspec/changes/add-prod-zero-downtime-delivery/verification/implementation-ledger.md"
+      ],
+      "new_files": [
+        "openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-retest-preflight-stop.json",
+        "openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-retest-preflight-stop.md"
+      ],
+      "no_application_tests_scripts_config_or_pipeline_changes": true,
+      "unknown_parameters_and_source_maps_unchanged": true,
+      "original_test_workflows_script_and_overlays_unchanged_vs_head": true,
+      "closed_prod_gate_unchanged": true,
+      "head_and_branch_unchanged": true,
+      "relative_links_checked": 212,
+      "whitespace_passed": true
+    }
+  },
+  "openspec": {
+    "total": 53,
+    "complete": 41,
+    "remaining": 12,
+    "scenarios": 57,
+    "new_tasks_checked": [],
+    "formal_unknown_parameters_changed": false,
+    "production_gate_enabled": false
+  },
+  "not_validated": [
+    "corrected graph empty-scope probe",
+    "S3 empty prefix",
+    "original ten Pods direct HTTP checks in this run",
+    "fixed candidate configuration/startup/source mount",
+    "single-document ingestion",
+    "normal/stream/history queries and maximum-2 concurrency",
+    "real coordinator/loop-lag fix outcome",
+    "quality/SLO/capacity/4+4/CLB"
+  ],
+  "next_step": "Remain paused per anomaly stop instruction; after resumption, validate the adjusted read-only probe and remaining gates before any fresh namespace deployment or business request."
+}

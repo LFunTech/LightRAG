@@ -237,7 +237,9 @@ class HugeGraphStorage(BaseGraphStorage):
     async def initialize(self) -> None:
         runtime = get_runtime(self)
         if runtime is not None:
-            self._client.auto_create_schema = runtime.permit().maintenance
+            self._client.auto_create_schema = (
+                runtime.release is None and runtime.permit().maintenance
+            )
         await self._client.initialize()
 
     async def finalize(self) -> None:

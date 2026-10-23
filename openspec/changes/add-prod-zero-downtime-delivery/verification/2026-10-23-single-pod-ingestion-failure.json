@@ -1,0 +1,229 @@
+{
+  "observed_at_utc": "2026-10-23T00:32:11.895288+00:00",
+  "environment": "test",
+  "namespace": "lightrag-loadtest-20261023",
+  "scope": "lightrag_lab_20261023",
+  "status": "paused_ingestion_coordination_failure",
+  "replicas": 1,
+  "workers": 1,
+  "release_enabled": false,
+  "base_image": "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca",
+  "source_sha256": "742e8bb3435c93045f854d8fcaf6f2e5cc6a93817fae1ad52556ccfdff907e5b",
+  "pod_uid": "0f32b028-3279-412b-a841-181566917176",
+  "pod_ready": true,
+  "pod_restarts": 0,
+  "first_retry": {
+    "changed_only_log_dir": true,
+    "status": "failed_missing_storage_selection",
+    "error": "Distributed writes require kv_storage=PGKVStorage",
+    "business_requests_sent": 0
+  },
+  "second_retry": {
+    "four_storage_fields_separately_authorized": true,
+    "changed_only_four_storage_fields": true,
+    "log_dir": "/app/data",
+    "offline_config_preflight": {
+      "at_utc": "2026-10-23T00:26:58.522046+00:00",
+      "checks": [
+        {
+          "label": "deployed_missing_profile",
+          "returncode": 0,
+          "result": {
+            "fields": {
+              "kv_storage": "JsonKVStorage",
+              "doc_status_storage": "JsonDocStatusStorage",
+              "vector_storage": "NanoVectorDBStorage",
+              "graph_storage": "NetworkXStorage"
+            },
+            "constructor_checked": false,
+            "network_attempts": 0,
+            "storages_initialized": false
+          }
+        },
+        {
+          "label": "proposed_explicit_test_profile",
+          "returncode": 0,
+          "result": {
+            "fields": {
+              "kv_storage": "PGKVStorage",
+              "doc_status_storage": "PGDocStatusStorage",
+              "vector_storage": "PGVectorStorage",
+              "graph_storage": "HugeGraphStorage"
+            },
+            "constructor_checked": true,
+            "network_attempts": 0,
+            "storages_initialized": false
+          }
+        }
+      ],
+      "remote_mutations": 0
+    },
+    "startup_succeeded": true
+  },
+  "pilot": {
+    "environment": "test",
+    "namespace": "lightrag-loadtest-20261023",
+    "performance_accepted": false,
+    "production_accepted": false,
+    "budget": {
+      "fixtures": 1,
+      "fixture_bytes": 258,
+      "full_rag_queries": 6,
+      "max_inflight": 2,
+      "max_api_calls": 160,
+      "ingest_wait_seconds": 300
+    },
+    "s3_original": {
+      "head_status": 200,
+      "bytes": 258,
+      "sha256": "1188768935d4e18c802b9668899995844c939fd7e87529c3d350a81b8f5c47a4",
+      "object_key_sha256": "2ddf60e9927801ab38ff53bd3740a5b0205e9e0674f376274383bf3b02595b65",
+      "own_fixture_only": true
+    },
+    "at_utc": "2026-10-23T00:31:05.946182+00:00",
+    "functional_pilot_passed": false,
+    "error": "RuntimeError",
+    "reason": "Unexpected status on documents: 503",
+    "api_calls": 10
+  },
+  "original_test": {
+    "unchanged_resources": true,
+    "healthy_pod_count": 10,
+    "health_200_count": 10,
+    "pipeline_200_count": 10,
+    "document_counts": [
+      {
+        "workspace": "lightrag_test_01",
+        "status": "processed",
+        "n": 5
+      },
+      {
+        "workspace": "lightrag_test_03",
+        "status": "processed",
+        "n": 1
+      },
+      {
+        "workspace": "lightrag_test_04",
+        "status": "processed",
+        "n": 3
+      }
+    ]
+  },
+  "candidate_http": {
+    "health": {
+      "http_status": 200,
+      "status": "healthy"
+    },
+    "pipeline": {
+      "http_status": 503,
+      "error_class": "CoordinationUnavailableError"
+    }
+  },
+  "candidate_database": {
+    "workspaces": [
+      {
+        "deployment_id": "lightrag_lab_20261023",
+        "workspace": "lightrag_lab_20261023",
+        "generation": 1,
+        "fenced": false,
+        "fence_reason": null
+      }
+    ],
+    "document_counts": [
+      {
+        "workspace": "lightrag_lab_20261023",
+        "status": "analyzing",
+        "n": 1
+      }
+    ],
+    "active_operations": [
+      {
+        "deployment_id": "lightrag_lab_20261023",
+        "workspace": "lightrag_lab_20261023",
+        "kind": "pipeline",
+        "phase": "processing",
+        "n": 1
+      }
+    ],
+    "claims": [
+      {
+        "deployment_id": "lightrag_lab_20261023",
+        "workspace": "lightrag_lab_20261023",
+        "phase": "processing",
+        "n": 1
+      }
+    ],
+    "resource_locks": [],
+    "pending_mutations": [],
+    "orphaned_operations": [
+      {
+        "deployment_id": "lightrag_lab_20261023",
+        "workspace": "lightrag_lab_20261023",
+        "kind": "pipeline",
+        "n": 1
+      }
+    ],
+    "pending_retry_requests": []
+  },
+  "partial_domain": {
+    "postgres_counts": {
+      "lightrag_doc_full": 1,
+      "lightrag_doc_chunks": 0,
+      "lightrag_doc_status": 1,
+      "lightrag_full_entities": 0,
+      "lightrag_full_relations": 0
+    },
+    "graph_scope_has_vertices": false
+  },
+  "observations": {
+    "first_visible_error": "CoordinationUnavailableError: Coordination transaction failed",
+    "first_visible_path": "process_single_document -> _upsert_doc_status_transition -> storage_write heartbeat -> coordinator._transaction",
+    "underlying_exception_class": null,
+    "underlying_sqlstate": null,
+    "first_cause_logging_disabled_without_release_context": true,
+    "max_event_loop_lag_before_seconds": 0.0023369910195469856,
+    "max_event_loop_lag_after_seconds": 12.407714787870646,
+    "coordinator_default_command_timeout_seconds": 10,
+    "embedding_observed_seconds": 13.652293659746647,
+    "provider_open_observed_seconds": 11.989233628846705,
+    "provider_counters": [
+      {
+        "name": "input_tokens",
+        "kind": "process",
+        "mode": "other",
+        "category": "embedding",
+        "count": 52
+      },
+      {
+        "name": "provider_calls",
+        "kind": "process",
+        "mode": "other",
+        "category": "embedding",
+        "count": 1
+      },
+      {
+        "name": "usage_unknown",
+        "kind": "process",
+        "mode": "other",
+        "category": "embedding",
+        "count": 0
+      }
+    ],
+    "active_queries": 0,
+    "observation_errors": 0,
+    "hypothesis_only": "Event-loop blocking may interact with coordination timeout; underlying exception not retained"
+  },
+  "rag_queries_sent": 0,
+  "concurrency_queries_sent": 0,
+  "production_operations": false,
+  "database_schema_migrations": false,
+  "new_backend_services_created": false,
+  "automatic_restart_or_recover_after_anomaly": false,
+  "uncertain_write_replayed": false,
+  "git_published": false,
+  "functional_pilot_passed": false,
+  "performance_targets_verified": false,
+  "application_4_plus_4_verified": false,
+  "clb_verified": false,
+  "production_accepted": false
+}

@@ -1,0 +1,123 @@
+{
+  "date": "2026-10-23",
+  "scope": "local_only_not_deployed",
+  "base_commit": "beb4d64681c06d393255c577cdf0d988fdeecbfb",
+  "head_after": "beb4d64681c06d393255c577cdf0d988fdeecbfb",
+  "branch": "master",
+  "tests": {
+    "passed": 2212,
+    "skipped": 66,
+    "warnings": 2,
+    "seconds": 32.1,
+    "exit_code": 0,
+    "new_test_cases": 47,
+    "scope": [
+      "tests/performance",
+      "tests/llm",
+      "tests/kg/postgres_impl",
+      "tests/api/routes",
+      "tests/distributed/release",
+      "tests/ci",
+      "tests/test_operate_vector_context.py",
+      "tests/test_docstring_budget.py"
+    ],
+    "full_suite_run": false
+  },
+  "static_checks": {
+    "ruff_check": true,
+    "new_files_format_check": true,
+    "openspec_strict": true,
+    "git_diff_check": true
+  },
+  "protected": {
+    "count": 25,
+    "all_unchanged": true,
+    "paths": [
+      ".woodpecker/build-image.yml",
+      ".woodpecker/deploy-prod.yml",
+      ".woodpecker/deploy-test.yml",
+      ".woodpecker/pre-deploy.yml",
+      ".woodpecker/validate-release.yml",
+      "k8s-deploy/lightrag-kustomize/base/deployment.yaml",
+      "k8s-deploy/lightrag-kustomize/base/ingress.yaml",
+      "k8s-deploy/lightrag-kustomize/base/kustomization.yaml",
+      "k8s-deploy/lightrag-kustomize/base/networkpolicy.yaml",
+      "k8s-deploy/lightrag-kustomize/base/pvc.yaml",
+      "k8s-deploy/lightrag-kustomize/base/rbac.yaml",
+      "k8s-deploy/lightrag-kustomize/base/service.yaml",
+      "k8s-deploy/lightrag-kustomize/base/serviceaccount.yaml",
+      "k8s-deploy/lightrag-kustomize/overlays/test/deployer-rbac.yaml",
+      "k8s-deploy/lightrag-kustomize/overlays/test/kustomization.yaml",
+      "k8s-deploy/lightrag-kustomize/overlays/test/public-entrypoint.yaml",
+      "k8s-deploy/lightrag-kustomize/overlays/test/release-image.yaml",
+      "k8s-deploy/lightrag-kustomize/overlays/test/workspace-profile.yaml",
+      "openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-fixed-candidate-retest.json",
+      "openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-fixed-candidate-retest.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-single-pod-ingestion-failure.json",
+      "openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-single-pod-ingestion-failure.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/parameters.json",
+      "scripts/ci/deploy-test.sh",
+      "scripts/ci/k8s_deploy.py"
+    ]
+  },
+  "parameter_file_sha256": "f97fb526dfbc7e76d6304fbab8c2a72bc2de269801e3bbfb77e96047d35f3c79",
+  "openspec": {
+    "total": 53,
+    "complete": 41,
+    "remaining": 12,
+    "scenarios": 57
+  },
+  "runtime_actions": {
+    "cluster_access": false,
+    "real_backend_or_model_access": false,
+    "candidate_repacked_or_updated": false,
+    "restart_or_recover_or_replay": false,
+    "real_secret_read_or_import": false,
+    "prod_access": false,
+    "git_commit_push_or_tag": false
+  },
+  "historical_candidate_namespaces_preserved_without_access": [
+    "lightrag-loadtest-20261023",
+    "lightrag-retest-20261023-0915"
+  ],
+  "offline_comparison": {
+    "kind": "offline_synthetic_read_waits_not_backend_or_capacity",
+    "median_seconds": {
+      "sequential": 0.09315591699851211,
+      "parallel": 0.03109704199960106
+    },
+    "rounds_per_mode": 5,
+    "branches_per_request": 3,
+    "per_branch_synthetic_wait_seconds": 0.03,
+    "real_backend_calls": 0
+  },
+  "implementation_sha256": {
+    "lightrag/performance.py": "35f16461d0f8eb51dfca105740cd150f5ab015c95346e3097d701cf50e706e37",
+    "lightrag/llm/openai.py": "842a2ea1506e721c4048197420ebf2e67a5b0666ab2a7a48cc1d32318ba78aa1",
+    "lightrag/operate.py": "a28a42f6ce9827436976ba3fea10fa32250327b24d83da28da928a0194ecaa8b",
+    "lightrag/kg/postgres_impl.py": "3fce0f3a91dd0b0720f6952ea7d0877dc3a1612e1a80e6c5de9033428b564004",
+    "scripts/performance/query_load.py": "74656a61127c0fefa38c8803becbf3e04757eaa1f57965166814633c3ca0d3ff",
+    "scripts/performance/report.py": "85668d1d0e3891c9320bd15a4b6665eb1f978c266c1ce6eca9a5805ef9971186",
+    "scripts/performance/usage.py": "39fb50077a2b7042718114d215e30ccad6ed4b0f3898e8b5760843c71132f5a0",
+    "tests/performance/test_metrics.py": "a12b7b81d5a90220e648c45055ecf1e3974760436db70694961e2293f7b8b60e",
+    "tests/performance/test_openai.py": "167bda77a2810e6277e1a430101636abcc720e619e4660cd97d451a50374695c",
+    "tests/performance/test_usage_lifecycle.py": "46b93a7d1e680dcad59e72a34d01870b122ff46ce2098149c191f498ad6e200b",
+    "tests/performance/test_usage_stop.py": "5158ff93d0cbc4448a1a735bfb00c00fd80b32b803628cf7663ed429f5f31a2d",
+    "tests/performance/test_retrieval_boundaries.py": "01206c7df5f57bf68a6b606e859ce10c7d20569f263b8cd2e3cdff90a41ddb38",
+    "tests/llm/test_cold_retrieval_optimization.py": "9c2e24a66453320721ad74d725096d5e389eebb1ccabcb3adb09e22fc4c6fea2",
+    "tests/llm/openai_impl/test_embedding_input_prepare.py": "7c39317485783cd24da1c864d9bc76f3abbb857bfddbe20e137ca3aab6998963"
+  },
+  "limitations": [
+    "No actual performance/SLO/1000-QPS/capacity acceptance",
+    "Fixed-member usage watch is not a dynamic 4+4 retirement aggregator or integrated mixed-write stop controller",
+    "Strict accounting still rejects streams; observational usage is not billing",
+    "Per-request/per-call acceptance units, windows, quotas and other unknown parameters remain unapproved",
+    "Opt-in parallel reads require backend peak/concurrency and quality verification before enablement"
+  ],
+  "private_evidence_directory": "/Users/minwang/Projects/LightRAG/temp/local-usage-boundaries-20261023",
+  "verification_commands": {
+    "pytest_basetemp": "temp/local-usage-boundaries-20261023/pytest-final3",
+    "pytest_log": "temp/local-usage-boundaries-20261023/final-tests.log",
+    "progress_mutation": "in_memory_only_1_failed_3_passed_mutant_exit_1_no_source_edit"
+  }
+}

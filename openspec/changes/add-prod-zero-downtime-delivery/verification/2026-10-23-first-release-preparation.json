@@ -1,0 +1,226 @@
+{
+  "record_kind": "first_production_release_preparation_before_git_write",
+  "at_utc": "2026-10-23T10:33:27.758428+00:00",
+  "baseline_commit": "beb4d64681c06d393255c577cdf0d988fdeecbfb",
+  "branch": "master",
+  "authorization": {
+    "necessary_commit": true,
+    "necessary_push": true,
+    "formal_prod_tag": true,
+    "waive_production_prerequisites": false,
+    "waive_slo": false,
+    "new_load_authorization": false
+  },
+  "local_backend_milestone": {
+    "command": "DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m pytest tests",
+    "exit_code": 0,
+    "passed": 9661,
+    "skipped": 384,
+    "warnings": 2,
+    "seconds": 194.35,
+    "log_sha256": "a3987e037ee58555656f26ba0863abfca758dba24c20147b207452926e41730b",
+    "external_integration_enabled": false
+  },
+  "focused_red_green": {
+    "initial_full_failed": 6,
+    "initial_full_passed": 9655,
+    "initial_full_skipped": 384,
+    "cairo_environment_failures": 5,
+    "dotenv_fixture_failure": 1,
+    "direct_python_green_passed": 223,
+    "business_timeout_changed": false,
+    "dependencies_installed": false
+  },
+  "ruff": {
+    "candidate_python_files": 144,
+    "passed_files": 143,
+    "preserved_preexisting_test": "tests/llm/test_query_accounting.py",
+    "preexisting_e701": 10,
+    "full_ruff_passed": false
+  },
+  "package_checks": [
+    {
+      "artifact": "lightrag_hku-1.5.8.tar.gz",
+      "bytes": 2486980,
+      "sha256": "3200e17c6e30912e7443388ed097ea26c4ae475eb000133b66fe303f4bfd5169",
+      "required_source_and_migration_resources_matched": 65,
+      "member_count": 281,
+      "excluded_path_matches": 0
+    },
+    {
+      "artifact": "lightrag_hku-1.5.8-py3-none-any.whl",
+      "bytes": 2544470,
+      "sha256": "1fad68fb0e078b3da9b28a0bc4503de98494232f8bcb8cb0b338247d00ae4c26",
+      "required_source_and_migration_resources_matched": 65,
+      "member_count": 245,
+      "excluded_path_matches": 0
+    }
+  ],
+  "original_delivery_baseline": {
+    "matched_files": 35,
+    "paths": [
+      ".woodpecker/build-image.yml",
+      ".woodpecker/deploy-test.yml",
+      ".woodpecker/pre-deploy.yml",
+      ".woodpecker/validate-release.yml",
+      "k8s-deploy/lightrag-kustomize/base/deployment.yaml",
+      "k8s-deploy/lightrag-kustomize/base/ingress.yaml",
+      "k8s-deploy/lightrag-kustomize/base/kustomization.yaml",
+      "k8s-deploy/lightrag-kustomize/base/networkpolicy.yaml",
+      "k8s-deploy/lightrag-kustomize/base/pvc.yaml",
+      "k8s-deploy/lightrag-kustomize/base/rbac.yaml",
+      "k8s-deploy/lightrag-kustomize/base/service.yaml",
+      "k8s-deploy/lightrag-kustomize/base/serviceaccount.yaml",
+      "k8s-deploy/lightrag-kustomize/overlays/test/deployer-rbac.yaml",
+      "k8s-deploy/lightrag-kustomize/overlays/test/kustomization.yaml",
+      "k8s-deploy/lightrag-kustomize/overlays/test/public-entrypoint.yaml",
+      "k8s-deploy/lightrag-kustomize/overlays/test/release-image.yaml",
+      "k8s-deploy/lightrag-kustomize/overlays/test/workspace-profile.yaml",
+      "scripts/ci/__init__.py",
+      "scripts/ci/backend-check.sh",
+      "scripts/ci/base-images.lock.json",
+      "scripts/ci/build-image.sh",
+      "scripts/ci/delivery.py",
+      "scripts/ci/deploy-test.sh",
+      "scripts/ci/frontend-check.sh",
+      "scripts/ci/generate-test-instance-api-keys.py",
+      "scripts/ci/k8s_deploy.py",
+      "scripts/ci/source-artifact.sh",
+      "scripts/ci/tool-images.lock.json",
+      "tests/ci/test_delivery.py",
+      "tests/ci/test_k8s_deploy.py",
+      "tests/ci/test_kustomize_delivery.py",
+      "tests/ci/test_source_artifact_script.py",
+      "tests/ci/test_test_environment_assets.py",
+      "tests/ci/test_test_instance_api_keys.py",
+      "tests/ci/test_workflows.py"
+    ],
+    "only_approved_static_helper_extension": [
+      "scripts/ci/delivery-check.sh"
+    ],
+    "original_coordination_migration_resources_matched": [
+      "lightrag/distributed/migrations/__init__.py",
+      "lightrag/distributed/migrations/v001.py",
+      "lightrag/distributed/migrations/v002.py",
+      "lightrag/distributed/migrations/v003.py"
+    ]
+  },
+  "existing_accounting_module_unchanged": true,
+  "static_checks": [
+    {
+      "command": [
+        "woodpecker-cli",
+        "lint",
+        "--strict",
+        ".woodpecker/build-image.yml",
+        ".woodpecker/deploy-prod.yml",
+        ".woodpecker/deploy-test.yml",
+        ".woodpecker/pre-deploy.yml",
+        ".woodpecker/validate-release.yml"
+      ],
+      "exit_code": 0,
+      "local_log": "woodpecker-lint.log"
+    },
+    {
+      "command": [
+        "bash",
+        "-n",
+        "scripts/ci/deploy-prod.sh"
+      ],
+      "exit_code": 0,
+      "local_log": "prod-shell-bash.log"
+    },
+    {
+      "command": [
+        "sh",
+        "-n",
+        "scripts/ci/deploy-prod.sh"
+      ],
+      "exit_code": 0,
+      "local_log": "prod-shell-sh.log"
+    },
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "compileall",
+        "-q",
+        "lightrag/distributed/release",
+        "lightrag/provisioning",
+        "lightrag_delivery",
+        "lightrag/api/release_commands.py",
+        "lightrag/api/release_lifecycle.py",
+        "scripts/ci/prod_config.py",
+        "scripts/ci/prod_deploy.py",
+        "scripts/performance"
+      ],
+      "exit_code": 0,
+      "local_log": "python-compile.log"
+    },
+    {
+      "command": [
+        "kubectl",
+        "--kubeconfig",
+        "/Users/minwang/.kube/test-config",
+        "--context",
+        "default",
+        "kustomize",
+        "k8s-deploy/lightrag-kustomize/overlays/test"
+      ],
+      "exit_code": 0,
+      "local_log": "test-render.yaml"
+    },
+    {
+      "command": [
+        "openspec",
+        "validate",
+        "add-prod-zero-downtime-delivery",
+        "--strict"
+      ],
+      "exit_code": 0,
+      "local_log": "openspec-validation.log"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "local_log": "whitespace.log"
+    }
+  ],
+  "test_preflight_pause": {
+    "original_and_two_candidates_unchanged_at_pause": true,
+    "diagnostic_pods_created": 0,
+    "backend_requests": 0,
+    "backend_mutations": 0,
+    "applications_deployed": 0,
+    "nodes_ready": 11,
+    "containers_missing_cpu_or_memory_requests": 168,
+    "pending_pods": 5,
+    "backend_auth_and_permissions_rechecked": false
+  },
+  "production": {
+    "workflow_static_gate_enabled": false,
+    "application_deployed": false,
+    "secrets_imported_this_round": false,
+    "migration_executed": false,
+    "traffic_switched": false,
+    "load_sent": false,
+    "formal_tag_created": false,
+    "runtime_identity_reference": null,
+    "domain_tls_reference": null,
+    "initialization_verified": false,
+    "clb_live_acceptance_passed": false,
+    "capacity_slo_passed": false
+  },
+  "openspec": {
+    "complete": 47,
+    "total": 59,
+    "remaining": 12,
+    "scenarios": 62,
+    "real_remote_tasks_newly_completed": 0
+  },
+  "git_action_state": "pre_commit_snapshot_not_a_publish_receipt"
+}

@@ -39,3 +39,20 @@ Mutual-exclusion rules (all checked atomically inside the lock):
 The contract permits **concurrent enqueue + processing**: a freshly-uploaded doc lands in `doc_status` while the loop is mid-batch, its document message is routed into the running batch by the in-batch feeder (or resolved at the batch boundary by the quiescence decision), and the doc processes without waiting for a new run.
 
 For the rest — write ordering of `full_docs` vs `doc_status`, the workspace-scoped `enqueue_serialize` lock around dedup-and-upsert, and the `from_scan=True` bypass — see the docstrings on `apipeline_enqueue_documents` and `apipeline_process_enqueue_documents` in `lightrag/pipeline.py`.
+
+## Separate production release admission
+
+The optional production release gate is not a new `pipeline_status` flag and
+does not change this local Manager protocol. It adds durable cross-slot writer
+admission before business mutation, using the shared scope row and tickets in
+`lightrag_release`. The default is off; test/local acquire no new metadata or
+onboarding dependency. Existing distributed locks/claims remain required.
+
+Release waiters do not hold the locks described above. Standby never discovers
+work; active scheduling rechecks the release gate before claiming each new
+batch. Already-admitted enqueues/processing complete normally, and FAILED retry
+intents retain their original one-attempt meaning. Queries remain independent
+of the write gate. Detailed command acceptance, detached-ticket and lifecycle
+rules are in [DistributedPipelineContract.md](DistributedPipelineContract.md)
+and [DistributedRuntimeContract.md](DistributedRuntimeContract.md); production
+deployment and authorization boundaries are in [../ProdDelivery.md](../ProdDelivery.md).

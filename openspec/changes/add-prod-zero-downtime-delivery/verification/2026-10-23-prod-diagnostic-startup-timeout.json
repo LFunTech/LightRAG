@@ -1,0 +1,97 @@
+{
+  "date": "2026-10-23",
+  "record_kind": "diagnostic_image_pull_verified_probe_not_run",
+  "cluster_id": "cls-px392o6p",
+  "namespace": "prod",
+  "pod_name": "lightrag-ro-diag-20261023-02",
+  "pod_uid": "975d3271-f675-4a7b-92ec-c17b19bea1e2",
+  "image": "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca",
+  "existing_image_pull_secret_reference": "prod/lfun",
+  "secret_payload_read": false,
+  "new_secret_imported": false,
+  "image_pull_succeeded": true,
+  "container_started": true,
+  "image_pull_elapsed_seconds": 161,
+  "local_startup_deadline_seconds": 150,
+  "stop_reason": "local_startup_deadline_too_short_not_backend_or_authentication_failure",
+  "startup_error": {
+    "stage": "startup_or_clients",
+    "error_class": "TimeoutError",
+    "reason": "DiagnosticStartupDeadline"
+  },
+  "diagnostic_pods_created": 1,
+  "diagnostic_pods_deleted": 1,
+  "cleanup": {
+    "deleted": true,
+    "absence_verified": true,
+    "uid": "975d3271-f675-4a7b-92ec-c17b19bea1e2",
+    "observed_utc": "2026-10-23T08:18:35.929271+00:00"
+  },
+  "final_observation": {
+    "observed_utc": "2026-10-23T08:20:24.915585+00:00",
+    "diagnostic_absence_verified": true,
+    "events": [
+      {
+        "type": "Normal",
+        "reason": "Scheduled",
+        "count": null,
+        "event_time": "2026-10-23T08:15:41.014786Z",
+        "first_timestamp": null
+      },
+      {
+        "type": "Normal",
+        "reason": "Pulling",
+        "count": 1,
+        "event_time": "2026-10-23T08:15:41Z",
+        "first_timestamp": "2026-10-23T08:15:41Z"
+      },
+      {
+        "type": "Normal",
+        "reason": "Pulled",
+        "count": 1,
+        "event_time": "2026-10-23T08:18:22Z",
+        "first_timestamp": "2026-10-23T08:18:22Z"
+      },
+      {
+        "type": "Normal",
+        "reason": "Created",
+        "count": 1,
+        "event_time": "2026-10-23T08:18:22Z",
+        "first_timestamp": "2026-10-23T08:18:22Z"
+      },
+      {
+        "type": "Normal",
+        "reason": "Started",
+        "count": 1,
+        "event_time": "2026-10-23T08:18:23Z",
+        "first_timestamp": "2026-10-23T08:18:23Z"
+      },
+      {
+        "type": "Normal",
+        "reason": "Killing",
+        "count": 1,
+        "event_time": "2026-10-23T08:18:23Z",
+        "first_timestamp": "2026-10-23T08:18:23Z"
+      }
+    ],
+    "existing_pods_identity_spec_equal": true,
+    "existing_workloads_identity_spec_equal": true,
+    "existing_pods_count_before": 27,
+    "existing_pods_count_after": 27
+  },
+  "backend_credentials_read": false,
+  "credentials_transferred_to_pod": false,
+  "client_package_imports_verified": false,
+  "backend_requests": {
+    "pg": 0,
+    "graph": 0,
+    "s3": 0
+  },
+  "incluster_backend_validation_complete": false,
+  "application_deployed": false,
+  "route_changed": false,
+  "load_started": false,
+  "test_or_candidates_accessed": false,
+  "git_publish_performed": false,
+  "next_step": "after_resume_keep_existing_pull_reference_allow_adequate_image_startup_window_then_run_prepared_readonly_probe_and_delete_pod"
+}

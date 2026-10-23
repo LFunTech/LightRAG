@@ -717,7 +717,21 @@ class PostgreSQLDB:
                     ssl=connection_params.get("ssl"),
                 )
                 try:
-                    await self.configure_vector_extension(bootstrap_conn)
+                    runtime = getattr(self, "_distributed_runtime", None)
+                    if runtime is not None and runtime.release is not None:
+                        version = await bootstrap_conn.fetchval(
+                            "SELECT extversion FROM pg_extension WHERE extname='vector'"
+                        )
+                        if (
+                            not isinstance(version, str)
+                            or not re.fullmatch(r"\d+\.\d+\.\d+", version)
+                            or tuple(map(int, version.split("."))) < (0, 7, 0)
+                        ):
+                            raise ValueError(
+                                "Run explicit storage provisioning before production startup"
+                            )
+                    else:
+                        await self.configure_vector_extension(bootstrap_conn)
                 finally:
                     await bootstrap_conn.close()
 
@@ -854,6 +868,8 @@ class PostgreSQLDB:
                 acquire_start = time.perf_counter()
                 async with self.pool.acquire() as connection:  # type: ignore[arg-type]
                     acquire_elapsed = time.perf_counter() - acquire_start
+                    from lightrag.performance import observe_elapsed
+                    observe_elapsed("pg_pool", acquire_elapsed)
                     if timing_label:
                         pool_snapshot_after = self._get_pool_snapshot()
                         performance_timing_log(
@@ -5090,7 +5106,10 @@ class PGVectorStorage(BaseVectorStorage):
             "top_k": top_k,
             "embedding": embedding,
         }
-        results = await self.db.query(sql, params=list(params.values()), multirows=True)
+        from lightrag.performance import stage
+
+        with stage("vector_backend"):
+            results = await self.db.query(sql, params=list(params.values()), multirows=True)
         return results
 
     async def index_done_callback(self) -> None:

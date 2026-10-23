@@ -1397,7 +1397,13 @@ def test_an_environment_embedding_timeout_still_reaches_the_ceiling(tmp_path):
     bare = {
         key: value
         for key, value in os.environ.items()
-        if key not in ("EMBEDDING_TIMEOUT", "LIGHTRAG_ADMIN_WRITE_MAX_HOLD_SECONDS")
+        if key not in (
+            "EMBEDDING_TIMEOUT",
+            "LIGHTRAG_ADMIN_WRITE_MAX_HOLD_SECONDS",
+            # The child must load only its scratch-cwd fixture, even when the
+            # parent disables loading the developer's private repository .env.
+            "PYTHON_DOTENV_DISABLED",
+        )
     }
 
     result = subprocess.run(

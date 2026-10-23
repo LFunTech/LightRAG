@@ -1,0 +1,558 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Explicit production onboarding (not deployment configuration)",
+  "description": "No live defaults. Runtime validation also enforces identities, aggregate pools, budget inequalities, HTTPS/direct qcloud profile and enrollment evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "api_key_alias",
+    "budget",
+    "capacity",
+    "enabled",
+    "ingress",
+    "isolation",
+    "network",
+    "onboarding",
+    "replicas",
+    "repo",
+    "resources",
+    "runtime",
+    "target",
+    "version",
+    "workers",
+    "writers"
+  ],
+  "properties": {
+    "isolation": {
+      "type": "object",
+      "required": [
+        "test_scopes",
+        "acl_verified",
+        "evidence_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "test_scopes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "acl_verified": {
+          "const": true
+        },
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "capacity": {
+      "type": "object",
+      "required": [
+        "application_pods",
+        "hugegraph_connection_budget",
+        "hugegraph_connections_per_pod",
+        "model_concurrency_budget",
+        "model_concurrency_per_pod",
+        "other_pg_connections",
+        "pg_connection_budget",
+        "pg_connections_per_pod"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "application_pods": {
+          "type": "number"
+        },
+        "hugegraph_connection_budget": {
+          "type": "number"
+        },
+        "hugegraph_connections_per_pod": {
+          "type": "number"
+        },
+        "model_concurrency_budget": {
+          "type": "number"
+        },
+        "model_concurrency_per_pod": {
+          "type": "number"
+        },
+        "other_pg_connections": {
+          "type": "number"
+        },
+        "pg_connection_budget": {
+          "type": "number"
+        },
+        "pg_connections_per_pod": {
+          "type": "number"
+        }
+      }
+    },
+    "api_key_alias": {
+      "type": "string"
+    },
+    "version": {
+      "const": 1
+    },
+    "replicas": {
+      "type": "integer",
+      "minimum": 4
+    },
+    "ingress": {
+      "type": "object",
+      "required": [
+        "backend_port",
+        "certificate_id",
+        "controller_version",
+        "force_close_disabled",
+        "listener_id",
+        "load_balancer_id",
+        "location_id",
+        "mode",
+        "path",
+        "protocol",
+        "provider",
+        "region",
+        "streaming_evidence_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "backend_port": {
+          "type": "integer"
+        },
+        "certificate_id": {
+          "type": "string"
+        },
+        "controller_version": {
+          "type": "string"
+        },
+        "force_close_disabled": {
+          "type": "boolean"
+        },
+        "listener_id": {
+          "type": "string"
+        },
+        "load_balancer_id": {
+          "type": "string"
+        },
+        "location_id": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "region": {
+          "type": "string"
+        },
+        "streaming_evidence_id": {
+          "type": "string"
+        }
+      }
+    },
+    "onboarding": {
+      "type": "object",
+      "required": [
+        "application_service_account",
+        "baseline_manifest_hash",
+        "compatibility_evidence_id",
+        "control_service_account",
+        "image_pull_secret",
+        "kube_system_uid",
+        "namespace_uid",
+        "operator_secret",
+        "profile_hash",
+        "read_compatible",
+        "runtime_role",
+        "server_sha256",
+        "write_compatible"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "application_service_account": {
+          "type": "string"
+        },
+        "baseline_manifest_hash": {
+          "type": "string"
+        },
+        "compatibility_evidence_id": {
+          "type": "string"
+        },
+        "control_service_account": {
+          "type": "string"
+        },
+        "image_pull_secret": {
+          "type": "string"
+        },
+        "kube_system_uid": {
+          "type": "string"
+        },
+        "namespace_uid": {
+          "type": "string"
+        },
+        "operator_secret": {
+          "type": "string"
+        },
+        "profile_hash": {
+          "type": "string"
+        },
+        "read_compatible": {
+          "type": "boolean"
+        },
+        "runtime_role": {
+          "type": "string"
+        },
+        "server_sha256": {
+          "type": "string"
+        },
+        "write_compatible": {
+          "type": "boolean"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "cluster_id",
+        "deployment_id",
+        "host",
+        "hugegraph_graph",
+        "hugegraph_graphspace",
+        "ingress_class",
+        "namespace",
+        "postgres_database",
+        "s3_bucket",
+        "s3_prefix",
+        "storage_class",
+        "tls_secret",
+        "workspace"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cluster_id": {
+          "type": "string"
+        },
+        "deployment_id": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "hugegraph_graph": {
+          "type": "string"
+        },
+        "hugegraph_graphspace": {
+          "type": "string"
+        },
+        "ingress_class": {
+          "const": "qcloud"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "postgres_database": {
+          "type": "string"
+        },
+        "s3_bucket": {
+          "type": "string"
+        },
+        "s3_prefix": {
+          "type": "string"
+        },
+        "storage_class": {
+          "type": "string"
+        },
+        "tls_secret": {
+          "type": "string"
+        },
+        "workspace": {
+          "type": "string"
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "required": [
+        "DEFAULT_PARSER_ENGINE",
+        "EMBEDDING_ASYMMETRIC",
+        "EMBEDDING_BINDING",
+        "EMBEDDING_DIM",
+        "EMBEDDING_DOCUMENT_PREFIX",
+        "EMBEDDING_FUNC_MAX_ASYNC",
+        "EMBEDDING_MODEL",
+        "EMBEDDING_QUERY_PREFIX",
+        "EMBEDDING_TOKEN_LIMIT",
+        "ENABLE_LLM_CACHE",
+        "ENABLE_LLM_CACHE_FOR_EXTRACT",
+        "ENABLE_QUERY_ANSWER_CACHE",
+        "HUGEGRAPH_MAX_CONNECTIONS",
+        "LIGHTRAG_QUERY_METRICS",
+        "LLM_BINDING",
+        "LLM_MODEL",
+        "MAX_ASYNC",
+        "MAX_PARALLEL_INSERT",
+        "PIPELINE_SCHEDULING_PAGE_SIZE",
+        "POSTGRES_MAX_CONNECTIONS",
+        "RERANK_BINDING",
+        "RERANK_BINDING_HOST",
+        "RERANK_MODEL"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "DEFAULT_PARSER_ENGINE": {
+          "type": "string"
+        },
+        "EMBEDDING_ASYMMETRIC": {
+          "type": "string"
+        },
+        "EMBEDDING_BINDING": {
+          "type": "string"
+        },
+        "EMBEDDING_DIM": {
+          "type": "string"
+        },
+        "EMBEDDING_DOCUMENT_PREFIX": {
+          "type": "string"
+        },
+        "EMBEDDING_FUNC_MAX_ASYNC": {
+          "type": "string"
+        },
+        "EMBEDDING_MODEL": {
+          "type": "string"
+        },
+        "EMBEDDING_QUERY_PREFIX": {
+          "type": "string"
+        },
+        "EMBEDDING_TOKEN_LIMIT": {
+          "type": "string"
+        },
+        "HUGEGRAPH_MAX_CONNECTIONS": {
+          "type": "string"
+        },
+        "LLM_BINDING": {
+          "type": "string"
+        },
+        "LLM_MODEL": {
+          "type": "string"
+        },
+        "MAX_ASYNC": {
+          "type": "string"
+        },
+        "MAX_PARALLEL_INSERT": {
+          "type": "string"
+        },
+        "PIPELINE_SCHEDULING_PAGE_SIZE": {
+          "type": "string"
+        },
+        "POSTGRES_MAX_CONNECTIONS": {
+          "type": "string"
+        },
+        "RERANK_BINDING": {
+          "type": "string"
+        },
+        "RERANK_BINDING_HOST": {
+          "type": "string"
+        },
+        "RERANK_MODEL": {
+          "type": "string"
+        },
+        "LIGHTRAG_QUERY_METRICS": {
+          "type": "string",
+          "enum": [
+            "true",
+            "false"
+          ]
+        },
+        "ENABLE_LLM_CACHE": {
+          "type": "string",
+          "enum": [
+            "true",
+            "false"
+          ]
+        },
+        "ENABLE_QUERY_ANSWER_CACHE": {
+          "type": "string",
+          "enum": [
+            "true",
+            "false"
+          ]
+        },
+        "ENABLE_LLM_CACHE_FOR_EXTRACT": {
+          "type": "string",
+          "enum": [
+            "true",
+            "false"
+          ]
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "required": [
+        "cpu_limit",
+        "cpu_request",
+        "memory_limit",
+        "memory_request",
+        "working_storage"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "cpu_limit": {
+          "type": "string"
+        },
+        "cpu_request": {
+          "type": "string"
+        },
+        "memory_limit": {
+          "type": "string"
+        },
+        "memory_request": {
+          "type": "string"
+        },
+        "working_storage": {
+          "type": "string"
+        }
+      }
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "budget": {
+      "type": "object",
+      "required": [
+        "client_timeout_seconds",
+        "command_byte_limit",
+        "cutover_seconds",
+        "drain_seconds",
+        "execution_seconds",
+        "proxy_timeout_seconds",
+        "queue_capacity",
+        "request_wait_seconds",
+        "response_margin_seconds",
+        "result_retention_seconds",
+        "safety_margin_seconds",
+        "source_retention_seconds"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "client_timeout_seconds": {
+          "type": "number"
+        },
+        "command_byte_limit": {
+          "type": "number"
+        },
+        "cutover_seconds": {
+          "type": "number"
+        },
+        "drain_seconds": {
+          "type": "number"
+        },
+        "execution_seconds": {
+          "type": "number"
+        },
+        "proxy_timeout_seconds": {
+          "type": "number"
+        },
+        "queue_capacity": {
+          "type": "number"
+        },
+        "request_wait_seconds": {
+          "type": "number"
+        },
+        "response_margin_seconds": {
+          "type": "number"
+        },
+        "result_retention_seconds": {
+          "type": "number"
+        },
+        "safety_margin_seconds": {
+          "type": "number"
+        },
+        "source_retention_seconds": {
+          "type": "number"
+        }
+      }
+    },
+    "writers": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "network": {
+      "type": "object",
+      "required": [
+        "ingress_cidrs",
+        "egress"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "ingress_cidrs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "egress": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "cidr",
+              "ports"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "cidr": {
+                "type": "string"
+              },
+              "ports": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "port",
+                    "protocol"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "port": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 65535
+                    },
+                    "protocol": {
+                      "enum": [
+                        "TCP",
+                        "UDP"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "workers": {
+      "const": 1
+    },
+    "repo": {
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "date": "2026-10-23",
+  "scope": "local-only-storage-provisioning",
+  "head": "beb4d64681c06d393255c577cdf0d988fdeecbfb",
+  "tests": {
+    "targeted": {
+      "passed": 1273,
+      "skipped": 166,
+      "warnings": 2,
+      "seconds": 11.4
+    },
+    "isolated_pg_joint": {
+      "passed": 211,
+      "skipped": 0,
+      "warnings": 2,
+      "seconds": 15.87
+    },
+    "provisioning_cases_in_joint": 72,
+    "overlap_not_additive": true
+  },
+  "postgres_fixture": {
+    "version": "18.6",
+    "pgvector": "0.8.7",
+    "listen": "loopback-only",
+    "stopped": true
+  },
+  "graph_fixture": "httpx.MockTransport (not real graph DDL)",
+  "packages": [
+    {
+      "file": "lightrag_hku-1.5.8-py3-none-any.whl",
+      "sha256": "d323c8164f9c509857d9e0ebac64fbc46791fcb86b4ef386110e59f068e8e5e5",
+      "verified_source_and_resources": 16
+    },
+    {
+      "file": "lightrag_hku-1.5.8.tar.gz",
+      "sha256": "21927c9c9b2966d9395795a70193e2b1fc8fd4e1357843b3ad82ce33dd69b129",
+      "verified_source_and_resources": 16
+    }
+  ],
+  "tasks": {
+    "total": 59,
+    "complete": 47,
+    "remaining_real_acceptance": 12
+  },
+  "scenarios": 62,
+  "review": {
+    "independent_passes": 1,
+    "critical": 0,
+    "important_fixed_red_green": 4,
+    "deferred_minor": 0
+  },
+  "not_performed": [
+    "test/prod environment operations",
+    "real migration/register/enroll",
+    "secret read/import",
+    "model/load/1000QPS",
+    "git commit/push/tag",
+    "prod workflow activation"
+  ],
+  "unchanged": [
+    "original test workflows/base/overlay/scripts",
+    "original coordination migration SQL/checksums",
+    "formal unknown parameters/approvals",
+    "two retained candidate sites"
+  ]
+}

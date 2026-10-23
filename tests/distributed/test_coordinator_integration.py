@@ -370,12 +370,14 @@ async def test_verify_only_fresh_database_never_creates_schema():
         )
         await api.PostgresCoordinator.migrate(isolated_dsn)
         await api.PostgresCoordinator.migrate(isolated_dsn)
-        assert (
-            await connection.fetchval(
-                "SELECT count(*) FROM lightrag_coordination.schema_version"
-            )
-            == 2
+        from lightrag.distributed.migrations import MIGRATIONS
+
+        history = await connection.fetch(
+            "SELECT version,checksum FROM lightrag_coordination.schema_version ORDER BY version"
         )
+        assert [tuple(row) for row in history] == [
+            (version, checksum) for version, _, checksum in MIGRATIONS
+        ]
         await connection.execute(
             "ALTER TABLE lightrag_coordination.resource_locks DROP CONSTRAINT resource_locks_pkey"
         )

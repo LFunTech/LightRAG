@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from lightrag.distributed.runtime import get_runtime, operation_guard
+from lightrag.distributed.release.runtime import release_sdk_guard
 
 from lightrag.base import (
     CURSOR_END,
@@ -747,27 +748,16 @@ class _PipelineMixin:
                 accepted as a single string broadcast to every input or as a list
                 aligned with ``input``. Stored verbatim on ``full_docs`` and
                 mirrored to ``doc_status.metadata['process_options']``.
-            chunk_options: per-document chunker parameter snapshot.
-                Accepted as ``dict`` (broadcast to every input) or
-                ``list[dict]`` (aligned with ``input``).  When ``None``,
-                each doc's snapshot is built via
-                :func:`lightrag.parser.routing.resolve_chunk_options`
-                from ``self.addon_params['chunker']``.  Persisted to
-                ``full_docs[doc_id]['chunk_options']`` and consumed by
-                :meth:`process_single_document` to drive the file
-                chunkers (F / R / V / P).  Callers that need to bake
-                F-strategy runtime args (``split_by_character`` /
-                ``split_by_character_only``) into the snapshot — e.g.
-                :meth:`LightRAG.ainsert` — should call
-                :func:`resolve_chunk_options` themselves and pass the
-                result here; this function is intentionally chunker-
-                config agnostic.  One key is NOT honored from the
-                snapshot: ``semantic_vector.sentence_split_regex`` is
-                re-read live from ``addon_params`` at process time and a
-                snapshot value is discarded (logged at WARNING) — see
-                :func:`lightrag.utils_pipeline.apply_trusted_sentence_split_regex`
-                and GHSA-32jh-39m7-8x84.  See
-                ``docs/FileProcessingPipeline.md`` for the schema.
+            chunk_options: Per-document chunker snapshot: a broadcast dict or a
+                list aligned with input. None resolves addon_params['chunker'].
+                Persisted to full_docs and consumed by process_single_document
+                for F/R/V/P chunkers. Call resolve_chunk_options first to freeze
+                F-strategy split_by_character/split_by_character_only arguments;
+                enqueue itself remains chunker-config agnostic.
+                semantic_vector.sentence_split_regex is never trusted from a
+                snapshot: it is re-read live from addon_params; discarded input
+                is logged at WARNING. See apply_trusted_sentence_split_regex,
+                GHSA-32jh-39m7-8x84 and docs/FileProcessingPipeline.md.
             object_source: Optional per-document object-store source metadata for
                 object-backed pending-parse records. Local upload/scan callers leave
                 this unset; ``file_paths`` remains the canonical user-visible source
@@ -1753,6 +1743,7 @@ class _PipelineMixin:
 
         await stop_polling(self)
 
+    @release_sdk_guard
     async def apipeline_request_retry(self, request_id: str | None = None) -> str:
         """Accept one retry and resume atomically; replay never overrides later pause."""
         runtime = get_runtime(self)
@@ -1775,6 +1766,7 @@ class _PipelineMixin:
                 raise ValueError("Manual retry request capacity exceeded")
         return request_id
 
+    @release_sdk_guard
     async def apipeline_process_enqueue_documents(
         self, _holding_busy: bool = False, token: str | None = None
     ) -> None:
@@ -3563,6 +3555,7 @@ class _PipelineMixin:
         )
         return False
 
+    @release_sdk_guard
     async def apipeline_reset_failed_for_scan(
         self,
         request_id: str,

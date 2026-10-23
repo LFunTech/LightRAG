@@ -1,0 +1,44 @@
+{
+  "quality": {
+    "version": 1,
+    "cases": [
+      {
+        "id": "fact-v2",
+        "query": "What is the current code?",
+        "mode": "mix",
+        "stream": false,
+        "history": [],
+        "actor": "reader",
+        "expect": {
+          "status": 200,
+          "required_facts": [
+            [
+              "NEW42",
+              "new forty two"
+            ]
+          ],
+          "forbidden_facts": [
+            "OLD17"
+          ],
+          "expected_references": [
+            "perf/run/new.txt"
+          ],
+          "forbidden_references": [
+            "perf/run/deleted.txt"
+          ],
+          "expected_chunks": [
+            "chunk-new"
+          ],
+          "min_chunk_recall": 1.0,
+          "min_reference_precision": 1.0
+        }
+      }
+    ]
+  },
+  "load_queries": [
+    {
+      "query": "synthetic"
+    }
+  ],
+  "long_stream_case": "fact-v2"
+}

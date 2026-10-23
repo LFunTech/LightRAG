@@ -1,0 +1,493 @@
+{
+  "recorded_at_utc": "2026-10-23T01:52:06.932884+00:00",
+  "status": "low_load_functional_checks_passed_performance_and_usage_acceptance_not_passed",
+  "environment": "test",
+  "namespace": "lightrag-retest-20261023-0915",
+  "scope": "lightrag_retest_20261023_0915",
+  "s3_prefix": "lightrag/retest-20261023-0915/object-ingestion",
+  "authorization": "Validate corrected read-only probe, then fresh namespace/data domain candidate; one document, queries and maximum two concurrent; preserve old incident, original test and prod/Git boundaries.",
+  "identity": {
+    "cluster_uid": "d693583f-5864-4ee6-ab4f-c31302ffcc01",
+    "namespace_uid": "225047f7-f006-404d-98d3-45698fdebe93",
+    "pod_uid": "49bfb694-8ace-4f2a-b0af-43546b585ae2",
+    "base_image": "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca",
+    "working_tree_base_head": "beb4d64681c06d393255c577cdf0d988fdeecbfb",
+    "source_sha256": "8fd612dd9534eb9e48ce3a934d0214e3b84cdb907a242434ff0caa00e14a5e09",
+    "archive_sha256": "3f0fbef5e9cbe242612161609817f787af43b0af863afab69c82d0ad003d9145",
+    "source_files": 419,
+    "production_eligible": false,
+    "replicas": 1,
+    "workers": 1,
+    "release_enabled": false,
+    "versions": {
+      "asyncpg": "0.31.0",
+      "pgvector": "0.4.2",
+      "openai": "2.54.0",
+      "httpx": "0.28.1",
+      "fastapi": "0.136.1",
+      "uvicorn": "0.46.0",
+      "aioboto3": "15.5.0"
+    }
+  },
+  "preflight": {
+    "passed": true,
+    "corrected_graph_probe_verified": true,
+    "graph_new_scope_empty_before_start": {
+      "schema_verified": true,
+      "read_only": true,
+      "new_scope": "[\"lightrag_retest_20261023_0915\",\"chunk_entity_relation\"]",
+      "bounded_scope_counts": {
+        "V": 0,
+        "E": 0
+      },
+      "ddl": false
+    },
+    "s3_empty_before_start": {
+      "read_only": true,
+      "new_prefix": "lightrag/retest-20261023-0915/object-ingestion",
+      "empty": true,
+      "max_keys": 1,
+      "strong_acl_isolation_verified": false
+    },
+    "pg_new_tables_empty_before_start": {
+      "lightrag_doc_chunks": true,
+      "lightrag_doc_full": true,
+      "lightrag_doc_status": true,
+      "lightrag_entity_chunks": true,
+      "lightrag_full_entities": true,
+      "lightrag_full_relations": true,
+      "lightrag_llm_cache": true,
+      "lightrag_relation_chunks": true,
+      "lightrag_upload_sessions": true,
+      "lightrag_vdb_chunks_text_embedding_v4_1024d": true,
+      "lightrag_vdb_entity_text_embedding_v4_1024d": true,
+      "lightrag_vdb_relation_text_embedding_v4_1024d": true
+    },
+    "pg_connections_before": {
+      "maximum": 1000,
+      "reserved": 3,
+      "observed": 612,
+      "candidate_maximum_estimate": 10,
+      "readonly_observer": 1
+    },
+    "original_pods_http_checked": 10,
+    "offline_config_constructor_network_attempts": 0,
+    "runtime_operator_release_separation_validated": false,
+    "strong_backend_acl_isolation_validated": false
+  },
+  "actions": {
+    "resources_created": 18,
+    "backend_components_created": 0,
+    "new_api_key_bits": 384,
+    "local_secret_values_persisted": false,
+    "only_test_runtime_and_pull_secret_sources_used": true,
+    "synthetic_documents": 1,
+    "fixture_bytes": 260,
+    "full_rag_queries": 6,
+    "retrieval_data_requests": 1,
+    "maximum_query_inflight": 2,
+    "candidate_api_calls": 104,
+    "post_query_observation": {
+      "duration_seconds": 304.5991676249996,
+      "observations": 31,
+      "polling_interval_seconds": 5,
+      "minimum_window_seconds": 300
+    },
+    "pod_restarts": 0,
+    "recover": 0,
+    "accepted_request_replays": 0,
+    "original_test_resource_mutations": 0,
+    "old_fault_resource_mutations": 0,
+    "postgres_or_graph_schema_or_role_changes": 0,
+    "prod_operations": 0,
+    "prod_secrets_read_or_imported": 0,
+    "git_commits_pushes_tags": 0,
+    "load_1000qps_run": false,
+    "blue_green_4_plus_4_run": false,
+    "clb_run": false,
+    "automatic_cleanup_or_shutdown": false,
+    "extra_business_requests_after_usage_gap_recognized": 0
+  },
+  "functional": {
+    "s3_original": {
+      "head_status": 200,
+      "bytes": 260,
+      "sha256": "075627aafbf47a25a0eb08771aead3eba10f45394167bc565dd481b3b5784a2b",
+      "object_key_sha256": "ee1208553c96da5499249f98460213dbecfebfc16a5468085dbb8f53619f4adb",
+      "own_fixture_only": true
+    },
+    "ingestion": {
+      "track_id": "upload_20261023_014027_c61e150e",
+      "doc_id": "doc-2685126d401f3f39c6315dcf6f65dd9d",
+      "status": "processed",
+      "chunks_count": 1,
+      "polls": 5,
+      "fixture_sha256": "075627aafbf47a25a0eb08771aead3eba10f45394167bc565dd481b3b5784a2b"
+    },
+    "retrieval": {
+      "entities": 5,
+      "relationships": 4,
+      "chunks": 1,
+      "references": 1,
+      "fixture_in_chunks": true
+    },
+    "queries": [
+      {
+        "label": "normal-mix",
+        "mode": "mix",
+        "stream": false,
+        "history": false,
+        "started_monotonic": 7001.187843041,
+        "ended_monotonic": 7003.318731041,
+        "duration_seconds": 2.1308880000005956,
+        "ttft_seconds": null,
+        "response_events": 0,
+        "response_bytes": 157,
+        "reference_count": 1,
+        "synthetic_fact_present": true,
+        "llm_generated": true
+      },
+      {
+        "label": "stream-mix",
+        "mode": "mix",
+        "stream": true,
+        "history": false,
+        "started_monotonic": 7003.396761375,
+        "ended_monotonic": 7005.348613541,
+        "duration_seconds": 1.951852166000208,
+        "ttft_seconds": 0.865358125000057,
+        "response_events": 12,
+        "response_bytes": 153,
+        "reference_count": 1,
+        "synthetic_fact_present": true,
+        "llm_generated": true
+      },
+      {
+        "label": "concurrent-normal",
+        "mode": "mix",
+        "stream": false,
+        "history": false,
+        "started_monotonic": 7005.439291791,
+        "ended_monotonic": 7007.365451541,
+        "duration_seconds": 1.926159749999897,
+        "ttft_seconds": null,
+        "response_events": 0,
+        "response_bytes": 153,
+        "reference_count": 1,
+        "synthetic_fact_present": true,
+        "llm_generated": true
+      },
+      {
+        "label": "concurrent-stream",
+        "mode": "naive",
+        "stream": true,
+        "history": false,
+        "started_monotonic": 7005.439533125,
+        "ended_monotonic": 7007.269515875,
+        "duration_seconds": 1.829982750000454,
+        "ttft_seconds": 0.7156797910001842,
+        "response_events": 12,
+        "response_bytes": 153,
+        "reference_count": 1,
+        "synthetic_fact_present": true,
+        "llm_generated": true
+      },
+      {
+        "label": "history-normal",
+        "mode": "mix",
+        "stream": false,
+        "history": true,
+        "started_monotonic": 7007.452475541,
+        "ended_monotonic": 7009.249650291,
+        "duration_seconds": 1.7971747499996127,
+        "ttft_seconds": null,
+        "response_events": 0,
+        "response_bytes": 114,
+        "reference_count": 1,
+        "synthetic_fact_present": true,
+        "llm_generated": true
+      },
+      {
+        "label": "history-stream",
+        "mode": "mix",
+        "stream": true,
+        "history": true,
+        "started_monotonic": 7007.452690291,
+        "ended_monotonic": 7009.47513225,
+        "duration_seconds": 2.0224419589994795,
+        "ttft_seconds": 1.0462603340001806,
+        "response_events": 10,
+        "response_bytes": 114,
+        "reference_count": 1,
+        "synthetic_fact_present": true,
+        "llm_generated": true
+      }
+    ],
+    "concurrency": {
+      "client_peak_inflight": 2,
+      "server_peak_active_queries_observed": null,
+      "client_intervals_overlap": true
+    },
+    "history_concurrency": {
+      "client_peak_inflight": 2,
+      "server_peak_active_queries_observed": null,
+      "client_intervals_overlap": true
+    },
+    "server_query_peak_directly_sampled": false,
+    "synthetic_fact_and_reference_checks_passed": true,
+    "all_final_generations_dispatched_no_answer_cache": true,
+    "planned_unauthenticated_status_denial": true,
+    "candidate_no_unresolved_work_at_end": true,
+    "candidate_table_counts": {
+      "lightrag_doc_chunks": 1,
+      "lightrag_doc_full": 1,
+      "lightrag_doc_status": 1,
+      "lightrag_entity_chunks": 5,
+      "lightrag_full_entities": 1,
+      "lightrag_full_relations": 1,
+      "lightrag_llm_cache": 3,
+      "lightrag_relation_chunks": 4,
+      "lightrag_upload_sessions": 1,
+      "lightrag_vdb_chunks_text_embedding_v4_1024d": 1,
+      "lightrag_vdb_entity_text_embedding_v4_1024d": 5,
+      "lightrag_vdb_relation_text_embedding_v4_1024d": 4
+    },
+    "graph": {
+      "read_only": true,
+      "bounded_scope_counts": {
+        "V": 5,
+        "E": 4
+      },
+      "bound": 100,
+      "ddl": false
+    },
+    "s3_end": {
+      "own_prefix_only": true,
+      "objects": 1,
+      "total_bytes": 260,
+      "read_only": true,
+      "strong_acl_isolation_verified": false
+    },
+    "candidate_error_log_matches": 0,
+    "coordinator_503_observed": false,
+    "quarantine_or_poll_stop_observed": false
+  },
+  "measurements": {
+    "event_loop_lag_before_ingestion_max_seconds": 0.002344733104109764,
+    "event_loop_lag_end": {
+      "samples": 561,
+      "mean_seconds": 0.0015843303894056357,
+      "max_seconds": 0.22130417451262474,
+      "p95_bucket_upper_seconds": 0.005,
+      "at_most_100ms": 560
+    },
+    "query_embedding": {
+      "samples": 7,
+      "mean_seconds": 0.2549790943573628,
+      "max_seconds": 0.2966331299394369,
+      "p95_bucket_upper_seconds": 0.5,
+      "at_most_100ms": 0
+    },
+    "vector_individual_call_mixed_scope": {
+      "samples": 19,
+      "mean_seconds": 0.014555917856724639,
+      "max_seconds": 0.21275748312473297,
+      "p95_bucket_upper_seconds": 0.25,
+      "at_most_100ms": 18
+    },
+    "retrieval_after_keyword_stage": {
+      "samples": 6,
+      "mean_seconds": 0.3831067994857828,
+      "max_seconds": 0.4255413906648755,
+      "p95_bucket_upper_seconds": 0.5,
+      "at_most_100ms": 0
+    },
+    "keywords": {
+      "samples": 6,
+      "mean_seconds": 0.223096432009091,
+      "max_seconds": 1.3261752370744944,
+      "p95_bucket_upper_seconds": 2.5,
+      "at_most_100ms": 5
+    },
+    "cold_retrieval_query_total_seconds": 1.7526860423386097,
+    "coordination_observed_query_contexts_only": {
+      "samples": 4,
+      "mean_seconds": 0.007914596237242222,
+      "max_seconds": 0.009570670314133167,
+      "p95_bucket_upper_seconds": 0.01,
+      "at_most_100ms": 4
+    },
+    "client_full_rag_duration_min_seconds": 1.7971747499996127,
+    "client_full_rag_duration_max_seconds": 2.1308880000005956,
+    "client_stream_ttft_min_seconds": 0.7156797910001842,
+    "client_stream_ttft_max_seconds": 1.0462603340001806,
+    "sdk_dispatches_by_role": {
+      "embedding": 17,
+      "query": 6,
+      "extract": 2,
+      "keyword": 1
+    },
+    "usage_unknown_records": [
+      {
+        "name": "usage_unknown",
+        "kind": "history_stream",
+        "mode": "mix",
+        "category": "query",
+        "count": 1
+      },
+      {
+        "name": "usage_unknown",
+        "kind": "stream",
+        "mode": "mix",
+        "category": "query",
+        "count": 1
+      },
+      {
+        "name": "usage_unknown",
+        "kind": "stream",
+        "mode": "naive",
+        "category": "query",
+        "count": 1
+      }
+    ],
+    "usage_unknown_count": 3,
+    "provider_error_or_rate_limit_or_stream_close_error_counters": [],
+    "active_queries_end": 0,
+    "observation_errors_end": 0,
+    "process_resources": {
+      "available": true,
+      "cpu_seconds": 24.326279,
+      "rss_peak_bytes": 409391104
+    }
+  },
+  "preservation": {
+    "original_pods_checked_after": 10,
+    "original_resource_projection_unchanged": true,
+    "original_document_counts_unchanged": true,
+    "old_fault_pod_and_overlay_unchanged": true,
+    "old_fault_document_operation_claim_snapshot_unchanged": true,
+    "old_fault_still_unresolved_not_recovered": true,
+    "candidate_retained_running": true
+  },
+  "acceptance": {
+    "low_load_functional_checks": true,
+    "performance_slo": false,
+    "capacity_1000qps": false,
+    "usage_accounting_complete": false,
+    "recall_success_99_9_percent": null,
+    "zero_downtime_blue_green": false,
+    "production_release": false,
+    "historical_sqlstate_recovered": false,
+    "historical_12_4s_full_root_cause_proven": false,
+    "quality_and_technical_99_9_rates_validated": false
+  },
+  "limitations": [
+    "Six generated answers and one small synthetic document are not a P95/P99/capacity/quality success-rate acceptance workload.",
+    "Full queries follow a separate cold /query/data request and benefit from five keyword-cache hits; no final-answer cache was used.",
+    "Query embedding seven samples average about 255ms, none at most 100ms; target not met by these observations.",
+    "Cold retrieval /query/data query_total was about 1.753s, not the 500ms whole-chain goal; retrieval substage excludes keyword time.",
+    "The vector stage mixes individual backend calls and naive embedding-inclusive timing, so it is not pure vector request-level P95.",
+    "Three streaming final-generation usages are unknown; do not impute zero or claim a complete token/TPM bill.",
+    "Maximum lag differs across separate runs/fixtures; no controlled improvement percentage or historical SQLSTATE inference.",
+    "Only observed query-context coordination samples are captured; not every polling/ingestion transaction is instrumented.",
+    "Backend ACL and release runtime/operator separation, 4+4/CLB, representative load mix and model budgets remain unverified."
+  ],
+  "verification": {
+    "application_code_or_tests_modified_this_turn": false,
+    "unit_test_suite_rerun": false,
+    "source_fix_hashes_match_local_verified_record_and_new_bundle": true,
+    "private_evidence": {
+      "preflight.json": {
+        "path": "temp/retest-resume-20261023-01/preflight.json",
+        "sha256": "ee3bb1ba7690bedb0f79a506b5ea8e323c0f617311d92e60c7f31f496deed0be"
+      },
+      "offline-config-preflight.json": {
+        "path": "temp/retest-resume-20261023-01/offline-config-preflight.json",
+        "sha256": "03770ddbac7cf4e75c28d92fc19d3c764cb9658ea19e81e527ca2cdb1a2beb46"
+      },
+      "candidate-plan.json": {
+        "path": "temp/retest-resume-20261023-01/candidate-plan.json",
+        "sha256": "abc68c16046d3745bfb02e71f17a9473084d9ac34426062bc0b0efa7b7d71e93"
+      },
+      "created.json": {
+        "path": "temp/retest-resume-20261023-01/created.json",
+        "sha256": "f58daaffef78f44dce6dfee7a511079d42e2ded7ff41c0df6d3d4d318a3deb2b"
+      },
+      "startup-ready.json": {
+        "path": "temp/retest-resume-20261023-01/startup-ready.json",
+        "sha256": "5a8b73a00f5ef43fab7c514328b712a320332998618c3bc2ddf7a099937b91e1"
+      },
+      "pilot-budget.json": {
+        "path": "temp/retest-resume-20261023-01/pilot-budget.json",
+        "sha256": "406caaed702dd0aa3cdadfcd2cc448e152033ba0ba0748b042263847dcb31e11"
+      },
+      "pilot-journal.jsonl": {
+        "path": "temp/retest-resume-20261023-01/pilot-journal.jsonl",
+        "sha256": "e23bcb100d6bf0197a6c718c60538ffd28ae10631cdb6b8ab398c671b73c1321"
+      },
+      "ingestion-confirmed.json": {
+        "path": "temp/retest-resume-20261023-01/ingestion-confirmed.json",
+        "sha256": "0df959ecb478a38c06ee27bdb16717843857d0230c663569073f64eb588bc4a6"
+      },
+      "metrics-before-ingest.json": {
+        "path": "temp/retest-resume-20261023-01/metrics-before-ingest.json",
+        "sha256": "3914acc130c3b9c9bd8924413107e1a685c1577cd2968a9820c8f67c9730f2bb"
+      },
+      "metrics-after-ingest.json": {
+        "path": "temp/retest-resume-20261023-01/metrics-after-ingest.json",
+        "sha256": "3de6841c6d94ce78fabf6790e46a02ab2169727670801cf9f6a9b181ca548951"
+      },
+      "metrics-after-queries.json": {
+        "path": "temp/retest-resume-20261023-01/metrics-after-queries.json",
+        "sha256": "892f4f6e283a6eed5148375bf3beb8f48fe1be5ff6dfd9f28495cdfed0fd1fea"
+      },
+      "pilot-result.json": {
+        "path": "temp/retest-resume-20261023-01/pilot-result.json",
+        "sha256": "a4121f3be4487eedca6a2e852d3ce650bdd9ab9dde83cc175a2a5a69fc075eb3"
+      },
+      "candidate-log-check.json": {
+        "path": "temp/retest-resume-20261023-01/candidate-log-check.json",
+        "sha256": "657a0244ddd1ecda36aed0d8c7f27227178505a0a3fb61309a7b699f6058aed6"
+      },
+      "final-readonly-audit.json": {
+        "path": "temp/retest-resume-20261023-01/final-readonly-audit.json",
+        "sha256": "3d953639d8d7838442cf8688b25fb98155390fb367922e0cdbd566329bdb0069"
+      }
+    },
+    "openspec_strict": true,
+    "repository_boundary": {
+      "baseline_files": 1397,
+      "changed_existing": [
+        "openspec/changes/add-prod-zero-downtime-delivery/design.md",
+        "openspec/changes/add-prod-zero-downtime-delivery/tasks.md",
+        "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/isolated-job.md",
+        "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/stop-plan.md",
+        "openspec/changes/add-prod-zero-downtime-delivery/verification/implementation-ledger.md"
+      ],
+      "new_files": [
+        "openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-fixed-candidate-retest.json",
+        "openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-fixed-candidate-retest.md"
+      ],
+      "no_unexpected_changes": true,
+      "application_tests_scripts_config_unchanged": true,
+      "formal_parameters_sources_and_execution_ledger_unchanged": true,
+      "head_branch_unchanged": true,
+      "original_test_delivery_paths_unchanged_vs_head": true,
+      "closed_production_gate_unchanged": true,
+      "relative_links_checked": 219,
+      "private_evidence_hashes_verified": true,
+      "whitespace_passed": true
+    },
+    "automated_stop_covered_usage_unknown": false
+  },
+  "openspec": {
+    "change": "add-prod-zero-downtime-delivery",
+    "total": 53,
+    "complete": 41,
+    "remaining": 12,
+    "scenarios": 57,
+    "newly_checked_tasks": [],
+    "formal_unknown_parameters_changed": false,
+    "production_gate_enabled": false
+  }
+}

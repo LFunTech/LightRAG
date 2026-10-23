@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-23",
+  "record_kind": "diagnostic_pod_preflight_stopped",
+  "authorization": {
+    "create_one_temporary_diagnostic_pod": true,
+    "delete_diagnostic_pod_afterwards": true,
+    "backend_reads_only": true,
+    "deploy_application": false,
+    "route_change": false,
+    "load": false,
+    "secret_import": false
+  },
+  "cluster": {
+    "id": "cls-px392o6p",
+    "kube_system_uid": "83ba4335-60be-495e-ad3d-9d4fed2567c6",
+    "namespace": "default",
+    "namespace_uid": "b623a094-ec55-43b2-b843-37215233006d"
+  },
+  "selected_image": "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca",
+  "registry_check": {
+    "anonymous_readable": false,
+    "token_or_manifest_http_status": 401,
+    "standard_bearer_challenge_completed": false
+  },
+  "stopped": true,
+  "stop_reason": "selected_image_not_anonymously_pullable_after_standard_bearer_flow",
+  "diagnostic_pods_created": 0,
+  "diagnostic_pods_deleted": 0,
+  "cleanup_required": false,
+  "backend_credentials_read": false,
+  "backend_credentials_imported": false,
+  "backend_requests": {
+    "pg": 0,
+    "graph": 0,
+    "s3": 0
+  },
+  "backend_incluster_validation_complete": false,
+  "test_or_candidates_accessed": false,
+  "application_or_infrastructure_changes": false,
+  "git_publish_performed": false,
+  "next_step": "known_target_pullable_diagnostic_image_with_required_clients_or_existing_image_pull_secret_reference_no_secret_body"
+}

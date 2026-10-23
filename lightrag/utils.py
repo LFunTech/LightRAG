@@ -1604,9 +1604,19 @@ def priority_limit_async_func_call(
                             else:
                                 result = await exec_task
 
+                            from lightrag.distributed.release.query import (
+                                prepare_provider_stream,
+                                ProviderStreamLease,
+                            )
+
+                            result = ctx.run(prepare_provider_stream, result)
                             # Set result if future is still valid
                             if not task_state.future.done():
                                 task_state.future.set_result(result)
+                            elif isinstance(result, ProviderStreamLease):
+                                await result.aclose()
+                            if isinstance(result, ProviderStreamLease):
+                                await result.closed.wait()
 
                         except asyncio.TimeoutError:
                             # Worker-level timeout (max_execution_timeout exceeded)
@@ -1858,8 +1868,18 @@ def priority_limit_async_func_call(
                             else:
                                 result = await exec_task
 
+                            from lightrag.distributed.release.query import (
+                                prepare_provider_stream,
+                                ProviderStreamLease,
+                            )
+
+                            result = ctx.run(prepare_provider_stream, result)
                             if not task_state.future.done():
                                 task_state.future.set_result(result)
+                            elif isinstance(result, ProviderStreamLease):
+                                await result.aclose()
+                            if isinstance(result, ProviderStreamLease):
+                                await result.closed.wait()
 
                         except asyncio.TimeoutError:
                             logger.warning(
@@ -4453,25 +4473,38 @@ async def handle_cache(
     Returns:
         tuple[str, int] | None: (content, create_time) if cache hit, None if cache miss
     """
+    from lightrag.performance import count, stage, CACHES
+    category = cache_type if cache_type in CACHES else "extract" if mode == "default" else "other"
     if hashing_kv is None:
+        if cache_type != "query":
+            count("cache_bypass", category=category)
         return None
 
     if mode != "default":  # handle cache for all type of query
         if not hashing_kv.global_config.get("enable_llm_cache"):
+            count("cache_bypass", category=category)
             return None
     else:  # handle cache for entity extraction
         if not hashing_kv.global_config.get("enable_llm_cache_for_entity_extract"):
+            count("cache_bypass", category=category)
             return None
 
     # Use flattened cache key format: {mode}:{cache_type}:{hash}
     flattened_key = generate_cache_key(mode, cache_type, args_hash)
-    cache_entry = await hashing_kv.get_by_id(flattened_key)
+    try:
+        with stage("cache_read"):
+            cache_entry = await hashing_kv.get_by_id(flattened_key)
+    except BaseException:
+        count("cache_error", category=category)
+        raise
     if cache_entry:
+        count("cache_hit", category=category)
         logger.debug(f"Flattened cache hit(key:{flattened_key})")
         content = cache_entry["return"]
         timestamp = cache_entry.get("create_time", 0)
         return content, timestamp
 
+    count("cache_miss", category=category)
     logger.debug(f"Cache missed(mode:{mode} type:{cache_type})")
     return None
 
@@ -4488,6 +4521,23 @@ class CacheData:
 
 
 async def save_to_cache(hashing_kv, cache_data: CacheData):
+    from lightrag.distributed.runtime import get_runtime
+
+    runtime = get_runtime(hashing_kv)
+    release = getattr(runtime, "release", None)
+    if release is not None and cache_data.cache_type in {"query", "keywords"}:
+        async with release.cache_fill() as allowed:
+            if not allowed:
+                from lightrag.performance import count
+                count("cache_skip", category=cache_data.cache_type)
+                release.cache_skipped += 1
+                logger.debug("Release query cache fill skipped before send")
+                return
+            return await _save_to_cache(hashing_kv, cache_data)
+    return await _save_to_cache(hashing_kv, cache_data)
+
+
+async def _save_to_cache(hashing_kv, cache_data: CacheData):
     """Save data to cache using flattened key structure.
 
     Args:
@@ -4495,11 +4545,14 @@ async def save_to_cache(hashing_kv, cache_data: CacheData):
         cache_data: The cache data to save
     """
     # Skip if storage is None or content is a streaming response
+    from lightrag.performance import count, stage, CACHES
+    category = cache_data.cache_type if cache_data.cache_type in CACHES else "other"
     if hashing_kv is None or not cache_data.content:
         return
 
     # If content is a streaming response, don't cache it
     if hasattr(cache_data.content, "__aiter__"):
+        count("cache_skip", category=category)
         logger.debug("Streaming response detected, skipping cache")
         return
 
@@ -4532,7 +4585,13 @@ async def save_to_cache(hashing_kv, cache_data: CacheData):
     logger.info(f" == LLM cache == saving: {flattened_key}")
 
     # Save using flattened key
-    await hashing_kv.upsert({flattened_key: cache_entry})
+    try:
+        with stage("cache_write"):
+            await hashing_kv.upsert({flattened_key: cache_entry})
+    except BaseException:
+        count("cache_error", category=category)
+        raise
+    count("cache_fill", category=category)
 
 
 def safe_unicode_decode(content):

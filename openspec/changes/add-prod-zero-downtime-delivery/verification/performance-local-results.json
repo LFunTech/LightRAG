@@ -1,0 +1,74 @@
+{
+  "date": "2026-10-21",
+  "kind": "performance_increment_local_only",
+  "head": "beb4d64681c06d393255c577cdf0d988fdeecbfb",
+  "target": {
+    "full_rag_including_generation_qps": 1000,
+    "online_users": 10000,
+    "max_inflight": null,
+    "slo_approved": false
+  },
+  "production_accepted": false,
+  "real_load_run": false,
+  "cluster_operations": false,
+  "secret_import": false,
+  "git_publish": false,
+  "tasks": {
+    "total": 53,
+    "complete": 40,
+    "pending": 13,
+    "partial": [
+      "10.2",
+      "10.7"
+    ]
+  },
+  "final_review": {
+    "fresh_reviewers": 1,
+    "important": 6,
+    "critical": 0,
+    "minor": 0,
+    "all_important_fixed": true,
+    "second_review": false
+  },
+  "checks": [
+    {
+      "log": "performance-final-full-suite.log",
+      "summary": "9383 passed, 355 skipped, 2 warnings in 177.65s (0:02:57)",
+      "sha256": "05a4ffbf769f98d474227d27037a77e79b78e2c6cd027cf0bddf21c43f200a0a"
+    },
+    {
+      "log": "performance-final-isolated-pg.log",
+      "summary": "68 passed, 2 warnings in 3.14s",
+      "sha256": "e37be8d00bc4366344220acc0311c5237e74a859be33e3d085f8e9fe076eca80"
+    },
+    {
+      "log": "performance-final-focused.log",
+      "summary": "204 passed in 3.23s",
+      "sha256": "189ff46c992616914e7cea3fb37b1f25f0ae8993f3640b78f1b2ede55fe3fd23"
+    },
+    {
+      "log": "performance-review-red.log",
+      "summary": "13 failed, 41 passed in 0.72s",
+      "sha256": "c1636d02fd26b0b990e2f02a510a2e296e5c96c3b44617c116e6982bb19657c9"
+    },
+    {
+      "log": "performance-review-green.log",
+      "summary": "119 passed in 1.10s",
+      "sha256": "4b80db4940556936090078bd576e44bc8caec2f811cb57d63e0b08037e0a38f0"
+    }
+  ],
+  "audit": {
+    "baseline_files_unchanged": 35,
+    "preexisting_query_files_unchanged": true,
+    "wheel": {
+      "entries": 397,
+      "audited": 28,
+      "sha256": "6942c251cdd030fa93eb53f81abdab16778aa39a5beae5c93584ad170f3de3ef"
+    }
+  },
+  "openspec_strict": "valid",
+  "evidence_scope": "fake HTTP/SDK + real ASGI/local PG; no production capacity claims",
+  "artifact_links_valid": true,
+  "scenario_count": 52,
+  "production_gate_enabled": false
+}

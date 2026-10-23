@@ -1,0 +1,629 @@
+{
+  "date": "2026-10-23",
+  "record_kind": "offline_preflight_gaps_snapshot",
+  "not_executable": true,
+  "not_an_authorization": true,
+  "structure_and_catalog_valid": true,
+  "execution_ready": false,
+  "production_accepted": false,
+  "capacity_accepted": false,
+  "parameter_snapshot_sha256": "162dbb2329ce9b762bd0a22529ee97d0db6ee1eb51fb544f81568fbfa5e9ef66",
+  "metric_worksheet_sha256": "ab07948c6e8caf69e4869b9adcf66a3d7d1efdee1fab31890628ff5f07dc5431",
+  "execution_worksheet_sha256": "9af22883d2845b1f097714fbda30735eeef2c46c376f78ec8cfdbfaadbb5d397",
+  "missing_parameter_paths": [
+    "workload.max_inflight",
+    "workload.duration_seconds",
+    "workload.warmup_seconds",
+    "workload.ramp_steps",
+    "workload.repeat_count",
+    "workload.max_requests",
+    "workload.max_response_bytes",
+    "workload.request_timeout_seconds",
+    "workload.hot_query_fraction",
+    "workload.hot_set_size",
+    "workload.query_distribution",
+    "workload.cold_cache_definition",
+    "workload.warm_cache_definition",
+    "workload.mode_mix",
+    "workload.top_k",
+    "workload.chunk_top_k",
+    "workload.max_total_tokens",
+    "workload.write_operations_per_second",
+    "workload.write_kind_mix",
+    "workload.write_action_schedule",
+    "workload.load_generator_capacity_evidence",
+    "slo.measurement_contract_reference",
+    "slo.ordinary_p99_seconds",
+    "slo.stream_ttft_p99_seconds",
+    "slo.stream_completion_p99_seconds",
+    "slo.history_p95_seconds",
+    "slo.history_p99_seconds",
+    "slo.unexpected_error_rate",
+    "slo.timeout_rate",
+    "slo.max_client_drop_rate",
+    "slo.write_queue_p95_seconds",
+    "slo.minimum_chunk_recall",
+    "slo.minimum_reference_precision",
+    "slo.semantic_review_acceptance",
+    "slo.observation_completeness",
+    "dataset.dataset_id",
+    "dataset.manifest_sha256",
+    "dataset.document_count",
+    "dataset.chunk_count",
+    "dataset.graph_entity_count",
+    "dataset.graph_relation_count",
+    "dataset.total_bytes",
+    "dataset.document_size_distribution",
+    "dataset.parser_format_mix",
+    "dataset.query_set_id",
+    "dataset.query_set_sha256",
+    "dataset.golden_cases_id",
+    "dataset.golden_cases_sha256",
+    "dataset.revision_transition_cases",
+    "dataset.deleted_source_cases",
+    "dataset.revoked_actor_cases",
+    "dataset.long_stream_case_id",
+    "dataset.semantic_reviewer",
+    "dataset.seed_procedure_id",
+    "dataset.cold_namespace_id",
+    "resources.pod.cpu_request",
+    "resources.pod.cpu_limit",
+    "resources.pod.memory_request",
+    "resources.pod.memory_limit",
+    "resources.pod.node_placement",
+    "resources.pod.spare_capacity",
+    "resources.pod.rwx_storage_class",
+    "resources.pod.pvc_capacity",
+    "resources.database.business_pool_per_pod",
+    "resources.database.coordination_pool_per_pod",
+    "resources.database.witness_per_pod",
+    "resources.database.max_connections",
+    "resources.database.other_connections",
+    "resources.database.headroom_connections",
+    "resources.database.lock_observation_source",
+    "resources.hugegraph.max_connections",
+    "resources.hugegraph.max_concurrency",
+    "resources.hugegraph.latency_budget_seconds",
+    "resources.hugegraph.other_callers",
+    "resources.hugegraph.observation_source",
+    "resources.object_storage.request_budget",
+    "resources.object_storage.inflight_bytes",
+    "resources.object_storage.source_retention_seconds",
+    "resources.object_storage.session_retention_seconds",
+    "resources.object_storage.result_retention_seconds",
+    "resources.object_storage.observation_source",
+    "resources.models.query_model_revision",
+    "resources.models.keyword_model_revision",
+    "resources.models.extract_model_revision",
+    "resources.models.vlm_model_revision",
+    "resources.models.embedding_model_revision",
+    "resources.models.embedding_dimension",
+    "resources.models.embedding_asymmetric",
+    "resources.models.embedding_document_prefix",
+    "resources.models.embedding_query_prefix",
+    "resources.models.rpm",
+    "resources.models.input_tpm",
+    "resources.models.output_tpm",
+    "resources.models.concurrency",
+    "resources.models.role_limits_per_pod",
+    "resources.models.other_callers",
+    "resources.models.hidden_retry_policy",
+    "resources.models.provider_usage_source",
+    "resources.models.spend_limit",
+    "resources.models.spend_currency",
+    "resources.models.tail_spend_reserve",
+    "resources.combined_4_and_8_pod_budget_evidence",
+    "release_budgets.queue_capacity",
+    "release_budgets.command_byte_limit",
+    "release_budgets.request_wait_seconds",
+    "release_budgets.drain_seconds",
+    "release_budgets.cutover_seconds",
+    "release_budgets.safety_margin_seconds",
+    "release_budgets.response_margin_seconds",
+    "release_budgets.proxy_timeout_seconds",
+    "release_budgets.client_timeout_seconds",
+    "release_budgets.command_execution_seconds",
+    "release_budgets.old_stream_tail_seconds",
+    "release_budgets.evidence_retention_seconds",
+    "isolation.cluster_identity_evidence_id",
+    "isolation.kube_system_uid",
+    "isolation.namespace",
+    "isolation.namespace_uid",
+    "isolation.deployment_id",
+    "isolation.workspace",
+    "isolation.database_domain",
+    "isolation.database_runtime_role",
+    "isolation.graph_domain",
+    "isolation.object_bucket_prefix",
+    "isolation.rwx_domain",
+    "isolation.acl_evidence_id",
+    "isolation.shared_resource_non_interference_evidence_id",
+    "isolation.all_writer_inventory_id",
+    "isolation.writer_compatibility_evidence_id",
+    "isolation.accounting_required",
+    "isolation.accounting_reliability_evidence_id",
+    "entry.host",
+    "entry.controller_version",
+    "entry.clb_id",
+    "entry.listener_id",
+    "entry.location_id",
+    "entry.certificate_id",
+    "entry.actual_https_direct_pod_profile_evidence_id",
+    "entry.stream_timeout_evidence_id",
+    "entry.connection_preservation_evidence_id",
+    "job.run_id",
+    "job.approval_id",
+    "job.operator_service_account",
+    "job.load_service_account",
+    "job.observer_service_account",
+    "job.source_commit",
+    "job.source_manifest_sha256",
+    "job.blue_image_digest",
+    "job.green_image_digest",
+    "job.tool_source_sha256",
+    "job.tool_mount_path",
+    "job.blue_config_hash",
+    "job.green_config_hash",
+    "job.profile_hash",
+    "job.start_epoch",
+    "job.job_resource_limits",
+    "job.output_volume_reference",
+    "job.private_credential_reference_ids",
+    "job.execution_window",
+    "job.oncall_contact",
+    "job.decision_owner",
+    "job.manual_containment_approval_id",
+    "collection.application_snapshot_interval_seconds",
+    "collection.external_metrics_interval_seconds",
+    "collection.clock_skew_max_seconds",
+    "collection.metric_source_mapping_id",
+    "collection.observer_resource_budget",
+    "collection.log_retention_seconds",
+    "collection.restricted_evidence_location",
+    "collection.collection_owner",
+    "collection.acceptance_reviewer",
+    "collection.dynamic_usage.poll_seconds",
+    "collection.dynamic_usage.sample_timeout_seconds",
+    "collection.dynamic_usage.transition_timeout_seconds",
+    "collection.dynamic_usage.max_samples",
+    "collection.dynamic_usage.max_evidence_bytes",
+    "stop_thresholds.error_rate",
+    "stop_thresholds.error_window_seconds",
+    "stop_thresholds.latency_seconds",
+    "stop_thresholds.latency_window_seconds",
+    "stop_thresholds.queue_length",
+    "stop_thresholds.queue_oldest_seconds",
+    "stop_thresholds.cpu_throttling",
+    "stop_thresholds.memory_working_set_bytes",
+    "stop_thresholds.provider_429_rate",
+    "stop_thresholds.provider_quota_remaining",
+    "stop_thresholds.database_pool_wait_seconds",
+    "stop_thresholds.database_connection_utilization",
+    "stop_thresholds.hugegraph_latency_seconds",
+    "stop_thresholds.object_storage_error_rate",
+    "stop_thresholds.evidence_gap_seconds",
+    "stop_thresholds.schedule_lag_seconds",
+    "stop_thresholds.client_drop_rate",
+    "stop_thresholds.spend_limit",
+    "stop_thresholds.stop_response_seconds",
+    "stop_thresholds.client_drain_deadline_seconds"
+  ],
+  "missing_parameters_by_group": {
+    "workload": 21,
+    "slo": 14,
+    "dataset": 20,
+    "resources": 47,
+    "release_budgets": 12,
+    "isolation": 17,
+    "entry": 9,
+    "job": 22,
+    "collection": 14,
+    "stop_thresholds": 20
+  },
+  "unapproved_scopes": [
+    "parameters",
+    "isolated_read_only_inspection",
+    "isolated_provisioning_and_seed",
+    "isolated_release_and_mixed_writes",
+    "isolated_capacity_load",
+    "isolated_fault_injection",
+    "destructive_fixture_cases",
+    "artifact_transfer_or_git_publish",
+    "production_access",
+    "secret_import",
+    "production_activation",
+    "cleanup"
+  ],
+  "metric_sources": {
+    "total": 20,
+    "external_sources_verified": false,
+    "incomplete_records": [
+      {
+        "metric_id": "M01",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M02",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M03",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M04",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M05",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M06",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M07",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M08",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M09",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M10",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M11",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M12",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M13",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M14",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M15",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M16",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M17",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M18",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M19",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      },
+      {
+        "metric_id": "M20",
+        "missing_fields": [
+          "actual_source_reference",
+          "wiring_status",
+          "collection_owner",
+          "acceptance_reviewer",
+          "read_only_permission_evidence",
+          "interval_and_window",
+          "unavailable_action",
+          "evidence_location"
+        ]
+      }
+    ]
+  },
+  "execution_evidence": {
+    "entries": 51,
+    "fault_cases": 26,
+    "capacity_units": 5,
+    "phases": 6,
+    "all_statuses": "not_run",
+    "stop_record": "not_run"
+  },
+  "blocking_groups": [
+    "remaining_parameters_and_measurement_contract_unconfirmed",
+    "operation_authorizations_not_granted",
+    "metric_sources_and_owners_unverified",
+    "full_entry_adapters_and_scope_evidence_unconfirmed",
+    "real_execution_and_quality_evidence_not_run"
+  ],
+  "validation_limits": "Only local draft shape/IDs/null states; no runtime connectivity, evidence authenticity, permission or execution approval verified",
+  "confirmed_numeric_slo_fields": {
+    "query_embedding_p95_seconds": 0.1,
+    "vector_retrieval_p95_seconds": 0.2,
+    "rerank_p95_seconds": 0.2,
+    "retrieval_total_p95_seconds": 0.5,
+    "retrieval_success_rate_min": 0.999,
+    "ordinary_p95_seconds": 20,
+    "stream_ttft_p95_seconds": 3,
+    "stream_completion_p95_seconds": 20,
+    "write_queue_max_seconds": 30
+  },
+  "measurement_contract_confirmed": false,
+  "confirmed_acceptance_decisions": {
+    "date": "2026-10-22",
+    "retrieval": {
+      "separate_technical_and_relevance_acceptance": true,
+      "technical_success_slo_field": "slo.retrieval_success_rate_min",
+      "valid_empty_result_is_technical_success": true,
+      "relevance_empty_result_policy": "evaluate_against_case_ground_truth_not_automatic_pass_or_fail",
+      "relevance_threshold_confirmed": false
+    },
+    "rerank": {
+      "required": false,
+      "current_profile_policy": "disabled",
+      "latency_target_applies": "only_if_explicitly_enabled_in_verified_profile"
+    },
+    "write_queue": {
+      "max_wait_slo_field": "slo.write_queue_max_seconds",
+      "selected_by": "assistant_under_user_delegation",
+      "selection_status": "planning_baseline_not_runtime_configuration",
+      "deadline_does_not_cancel_accepted_work": true
+    }
+  },
+  "histogram_boundary_local_status": {
+    "threshold_seconds": [
+      0.2,
+      3.0,
+      20.0
+    ],
+    "application_and_client_boundaries_locally_verified": true,
+    "live_metrics_verified": false,
+    "cross_pod_aggregation_verified": false,
+    "evidence_reference": "../histogram-local-results.md"
+  },
+  "delegated_workload_baseline": {
+    "stream_fraction": 0.8,
+    "history_fraction": 0.3,
+    "input_token_distribution": {
+      "unit": "final_generation_total_prompt_tokens",
+      "kind": "discrete_planning_targets",
+      "buckets": [
+        {
+          "tokens": 4096,
+          "fraction": 0.25
+        },
+        {
+          "tokens": 8192,
+          "fraction": 0.5
+        },
+        {
+          "tokens": 16384,
+          "fraction": 0.25
+        }
+      ],
+      "includes_system_query_context_and_history": true
+    },
+    "output_token_distribution": {
+      "unit": "final_generation_visible_output_tokens",
+      "kind": "discrete_planning_targets",
+      "buckets": [
+        {
+          "tokens": 256,
+          "fraction": 0.25
+        },
+        {
+          "tokens": 512,
+          "fraction": 0.5
+        },
+        {
+          "tokens": 1024,
+          "fraction": 0.25
+        }
+      ],
+      "hidden_reasoning_and_retries_not_included": true
+    }
+  },
+  "model_metadata_inspection": {
+    "date": "2026-10-22",
+    "source_reference": ".secrets/prod.secrets",
+    "environment": "prod",
+    "scope": "explicit_non_secret_model_and_quota_metadata_only",
+    "result": "explicit_model_and_quota_fields_not_present",
+    "provider_identity_verified": false,
+    "account_quota_verified": false,
+    "credential_or_endpoint_values_recorded": false,
+    "secret_import_performed": false,
+    "test_inventory_read": false,
+    "remote_account_or_model_calls_performed": false
+  },
+  "final_generation_planning_demand": {
+    "final_generation_calls_per_query_assumed": 1,
+    "requests_per_minute_demand": 60000,
+    "mean_input_tokens_per_request": 9216,
+    "mean_visible_output_tokens_per_request": 576,
+    "input_tokens_per_minute_demand": 552960000,
+    "visible_output_tokens_per_minute_demand": 34560000,
+    "account_quota_verified": false,
+    "actual_throughput_verified": false,
+    "extra_roles_reasoning_retries_and_other_callers_included": false
+  }
+}

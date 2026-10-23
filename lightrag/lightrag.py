@@ -45,6 +45,7 @@ from lightrag.distributed.runtime import (
     initialization_guard,
     finalization_guard,
 )
+from lightrag.performance import QueryMetrics, measured_query, queued_model, observe_storage
 
 from lightrag.prompt import (
     PROMPTS,
@@ -1366,6 +1367,14 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
     distributed_input_dir: str | None = field(default=None)
     """Shared input root identity; API callers must pass their actual input_dir."""
 
+    enable_query_answer_cache: bool = field(default=True)
+    """Allow answer reuse independently of keyword and extraction caches."""
+
+    query_metrics_enabled: bool = field(
+        default_factory=lambda: get_env_value("LIGHTRAG_QUERY_METRICS", False, bool)
+    )
+    """Enable bounded per-instance query metrics, without storing request data."""
+
     @asynccontextmanager
     async def distributed_maintenance(self, *, kind="maintenance", metadata=None):
         """Explicit exclusive bootstrap/migration permission, even before initialize.
@@ -1655,6 +1664,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         }
 
     def __post_init__(self, addon_params: dict[str, Any] | None):
+        self.query_metrics = QueryMetrics(enabled=self.query_metrics_enabled)
         # Fail the deployment profile before any storage constructor can write.
         # Not a dataclass field: credentials/transport must never enter asdict.
         self._distributed_runtime = configure_runtime(self)
@@ -1781,12 +1791,16 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
             )
 
         if self.rerank_model_func is not None:
-            self.rerank_model_func = priority_limit_async_func_call(
+            limiter = priority_limit_async_func_call(
                 self.rerank_model_max_async,
                 llm_timeout=self.default_rerank_timeout,
                 queue_name="Rerank func",
                 concurrency_group="rerank",
-            )(self.rerank_model_func)
+            )
+            self.rerank_model_func = (
+                queued_model(self.rerank_model_func, role="rerank", limit_factory=limiter, metrics=self.query_metrics)
+                if self.query_metrics_enabled else limiter(self.rerank_model_func)
+            )
 
         # Init Embedding
         # Step 1: Capture embedding_func and max_token_size before applying rate_limit decorator
@@ -1812,12 +1826,16 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         # This ensures _generate_collection_suffix can still access attributes (model_name, embedding_dim)
         # while preventing side effects when the same EmbeddingFunc is reused across multiple LightRAG instances
         if self.embedding_func is not None:
-            wrapped_func = priority_limit_async_func_call(
+            limiter = priority_limit_async_func_call(
                 self.embedding_func_max_async,
                 llm_timeout=self.default_embedding_timeout,
                 queue_name="Embedding func",
                 concurrency_group="embedding",
-            )(self.embedding_func.func)
+            )
+            wrapped_func = (
+                queued_model(self.embedding_func.func, role="embedding", limit_factory=limiter, metrics=self.query_metrics)
+                if self.query_metrics_enabled else limiter(self.embedding_func.func)
+            )
             # Use dataclasses.replace() to create a new instance, leaving the original unchanged
             self.embedding_func = replace(self.embedding_func, func=wrapped_func)
 
@@ -1923,6 +1941,14 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         )
 
         # Per-role isolated LLM wrappers (independent queues per role).
+        if self.query_metrics_enabled:
+            for storage, category in (
+                (self.entities_vdb, "vector"), (self.relationships_vdb, "vector"),
+                (self.chunks_vdb, "vector"), (self.chunk_entity_relation_graph, "graph"),
+                (self.text_chunks, "chunk"), (self.entity_chunks, "kv"),
+                (self.relation_chunks, "kv"),
+            ):
+                observe_storage(storage, category)
         # The base ``self.llm_model_func`` is intentionally NOT queue-wrapped:
         # every code path that calls an LLM goes through one of the role
         # wrappers built below, so concurrency is enforced at the role layer.
@@ -4921,6 +4947,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         )
 
     @operation_guard(exclusive=False)
+    @measured_query
     async def aquery(
         self,
         query: str,
@@ -4980,6 +5007,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         )
 
     @operation_guard(exclusive=False)
+    @measured_query
     async def aquery_data(
         self,
         query: str,
@@ -5194,6 +5222,7 @@ class LightRAG(_RoleLLMMixin, _StorageMigrationMixin, _PipelineMixin):
         return final_data
 
     @operation_guard(exclusive=False)
+    @measured_query
     async def aquery_llm(
         self,
         query: str,

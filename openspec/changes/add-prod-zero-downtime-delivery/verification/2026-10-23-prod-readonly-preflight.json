@@ -1,0 +1,473 @@
+{
+  "date": "2026-10-23",
+  "record_kind": "actual_prod_readonly_preflight",
+  "observed_utc": {
+    "start": "2026-10-23T07:06:36.760191+00:00",
+    "end": "2026-10-23T07:20:31.568689+00:00"
+  },
+  "observed_beijing": {
+    "start": "2026-10-23T15:06:36.760191+08:00",
+    "end": "2026-10-23T15:20:31.568689+08:00"
+  },
+  "authorization": {
+    "source": "current_user_message",
+    "scope": "prod_read_only_cluster_clb_workload_pg_graph_s3_permissions_and_resource_preflight",
+    "deploy": false,
+    "route_change": false,
+    "load": false,
+    "secret_import": false,
+    "git_publish": false,
+    "interactive_prod_access": false
+  },
+  "cluster": {
+    "context": "cls-px392o6p-100015142254-context-default",
+    "cluster_id": "cls-px392o6p",
+    "server_sha256": "1bed2c49fe4cdfd6b6ed8f3c5c55eef54a423fb3792c134d26d53b13e60348d2",
+    "kube_system_uid": "83ba4335-60be-495e-ad3d-9d4fed2567c6",
+    "expected_production_cluster_id_separately_confirmed": false
+  },
+  "server_version": {
+    "server": "v1.34.1-tke.4",
+    "client": "v1.36.1"
+  },
+  "nodes": {
+    "total": 10,
+    "ready": 10,
+    "all_one_zone": true
+  },
+  "discovery": {
+    "namespaces": 27,
+    "pods": 176,
+    "deployments_statefulsets": 41,
+    "ingresses": 21,
+    "matching_lightrag_application": {
+      "pod_name_image_matches": 0,
+      "pod_env_key_matches": [],
+      "namespace_name_matches": 0,
+      "deployment_statefulset_name_image_matches": 0,
+      "discovery_is_not_complete_external_writer_inventory": true,
+      "external_or_other_cluster_application_not_excluded": true
+    }
+  },
+  "capacity": {
+    "nodes": [
+      {
+        "node": "10.0.0.10",
+        "allocatable_cpu": 3.92,
+        "requested_cpu": 2.06,
+        "free_request_cpu": 1.86,
+        "allocatable_gib": 5.968,
+        "requested_gib": 3.507,
+        "free_request_gib": 2.461,
+        "active_pods": 16,
+        "free_pod_slots": 45,
+        "eni_capacity": "27",
+        "ready": "True",
+        "schedulable": true
+      },
+      {
+        "node": "10.0.0.13",
+        "allocatable_cpu": 3.92,
+        "requested_cpu": 1.16,
+        "free_request_cpu": 2.76,
+        "allocatable_gib": 5.968,
+        "requested_gib": 1.036,
+        "free_request_gib": 4.932,
+        "active_pods": 12,
+        "free_pod_slots": 49,
+        "eni_capacity": "27",
+        "ready": "True",
+        "schedulable": true
+      },
+      {
+        "node": "10.0.0.143",
+        "allocatable_cpu": 3.92,
+        "requested_cpu": 1.235,
+        "free_request_cpu": 2.685,
+        "allocatable_gib": 5.843,
+        "requested_gib": 1.413,
+        "free_request_gib": 4.43,
+        "active_pods": 12,
+        "free_pod_slots": 49,
+        "eni_capacity": "27",
+        "ready": "True",
+        "schedulable": true
+      },
+      {
+        "node": "10.0.0.15",
+        "allocatable_cpu": 3.92,
+        "requested_cpu": 2.96,
+        "free_request_cpu": 0.96,
+        "allocatable_gib": 5.968,
+        "requested_gib": 2.813,
+        "free_request_gib": 3.155,
+        "active_pods": 18,
+        "free_pod_slots": 43,
+        "eni_capacity": "27",
+        "ready": "True",
+        "schedulable": true
+      },
+      {
+        "node": "10.0.0.5",
+        "allocatable_cpu": 3.92,
+        "requested_cpu": 2.06,
+        "free_request_cpu": 1.86,
+        "allocatable_gib": 5.968,
+        "requested_gib": 3.382,
+        "free_request_gib": 2.586,
+        "active_pods": 14,
+        "free_pod_slots": 47,
+        "eni_capacity": "27",
+        "ready": "True",
+        "schedulable": true
+      },
+      {
+        "node": "10.0.0.9",
+        "allocatable_cpu": 3.92,
+        "requested_cpu": 1.085,
+        "free_request_cpu": 2.835,
+        "allocatable_gib": 5.968,
+        "requested_gib": 1.163,
+        "free_request_gib": 4.805,
+        "active_pods": 12,
+        "free_pod_slots": 49,
+        "eni_capacity": "27",
+        "ready": "True",
+        "schedulable": true
+      },
+      {
+        "node": "10.0.1.102",
+        "allocatable_cpu": 7.91,
+        "requested_cpu": 2.71,
+        "free_request_cpu": 5.2,
+        "allocatable_gib": 28.766,
+        "requested_gib": 4.82,
+        "free_request_gib": 23.946,
+        "active_pods": 20,
+        "free_pod_slots": 75,
+        "eni_capacity": "95",
+        "ready": "True",
+        "schedulable": true
+      },
+      {
+        "node": "10.0.1.13",
+        "allocatable_cpu": 7.91,
+        "requested_cpu": 2.41,
+        "free_request_cpu": 5.5,
+        "allocatable_gib": 28.766,
+        "requested_gib": 5.413,
+        "free_request_gib": 23.353,
+        "active_pods": 18,
+        "free_pod_slots": 77,
+        "eni_capacity": "95",
+        "ready": "True",
+        "schedulable": true
+      },
+      {
+        "node": "10.0.1.142",
+        "allocatable_cpu": 7.91,
+        "requested_cpu": 2.71,
+        "free_request_cpu": 5.2,
+        "allocatable_gib": 28.766,
+        "requested_gib": 6.382,
+        "free_request_gib": 22.384,
+        "active_pods": 14,
+        "free_pod_slots": 81,
+        "eni_capacity": "95",
+        "ready": "True",
+        "schedulable": true
+      },
+      {
+        "node": "10.0.1.166",
+        "allocatable_cpu": 7.91,
+        "requested_cpu": 2.26,
+        "free_request_cpu": 5.65,
+        "allocatable_gib": 28.766,
+        "requested_gib": 3.382,
+        "free_request_gib": 25.384,
+        "active_pods": 16,
+        "free_pod_slots": 79,
+        "eni_capacity": "95",
+        "ready": "True",
+        "schedulable": true
+      }
+    ],
+    "allocatable_cpu": 55.16,
+    "requested_cpu": 20.65,
+    "free_request_cpu": 34.51,
+    "free_request_gib": 117.436,
+    "active_pods": 152,
+    "unscheduled_active_pods": 0,
+    "pod_level_resources_present": 0,
+    "containers_without_cpu_request": 14,
+    "containers_without_memory_request": 14,
+    "observed_only": true,
+    "approved_per_pod_resources": null,
+    "pg_graph_model_budget_verified": false,
+    "eight_pod_capacity_accepted": false,
+    "eni_free_ips_verified": false,
+    "new_namespace_quota_verified": false,
+    "illustrative_fit_not_approved": [
+      {
+        "cpu_per_pod": 1,
+        "gib_per_pod": 2,
+        "request_only_slots": 28
+      },
+      {
+        "cpu_per_pod": 2,
+        "gib_per_pod": 4,
+        "request_only_slots": 11
+      },
+      {
+        "cpu_per_pod": 4,
+        "gib_per_pod": 8,
+        "request_only_slots": 4
+      }
+    ]
+  },
+  "components": {
+    "postgres": {
+      "probe": "bounded_metadata_only",
+      "ssl_policy": "require_encryption_no_plaintext_fallback",
+      "peer_certificate_verified": false,
+      "error_class": "OSError",
+      "connected": false
+    },
+    "hugegraph": {
+      "target": {
+        "scheme": "http",
+        "explicit_target": true,
+        "credentials_in_url": false
+      },
+      "requests": [],
+      "schema_complete": false,
+      "scope_acl_verified": false,
+      "error_class": "ConnectTimeout"
+    },
+    "s3": {
+      "target": {
+        "scheme": "https",
+        "explicit_target": true,
+        "credentials_in_url": false
+      },
+      "prefix_confirmed": false,
+      "write_permissions_tested": false,
+      "acl_isolation_verified": false,
+      "head_bucket": {
+        "available": true,
+        "http_status": 200
+      },
+      "location": {
+        "error_class": "ClientError",
+        "code": "PathStyleDomainForbidden",
+        "http_status": 403
+      },
+      "list_one_no_key_saved": {
+        "available": true,
+        "http_status": 200,
+        "key_count": 0,
+        "truncated": false
+      },
+      "bucket_acl": {
+        "error_class": "ClientError",
+        "code": "AccessDenied",
+        "http_status": 403
+      },
+      "bucket_policy": {
+        "error_class": "ClientError",
+        "code": "AccessDenied",
+        "http_status": 403
+      }
+    },
+    "network": {
+      "postgres": {
+        "explicit_inventory_target": true,
+        "port": 5432,
+        "dns_resolved": true,
+        "tcp_connected": false,
+        "resolved_count": 1,
+        "all_addresses_private": true,
+        "error_class": "TimeoutError",
+        "errno": null
+      },
+      "hugegraph_rest": {
+        "explicit_inventory_target": true,
+        "port": 8080,
+        "dns_resolved": true,
+        "tcp_connected": false,
+        "resolved_count": 1,
+        "all_addresses_private": true,
+        "error_class": "TimeoutError",
+        "errno": null
+      },
+      "hugegraph_gremlin": {
+        "explicit_inventory_target": true,
+        "port": 8182,
+        "dns_resolved": true,
+        "tcp_connected": false,
+        "resolved_count": 1,
+        "all_addresses_private": true,
+        "error_class": "TimeoutError",
+        "errno": null
+      }
+    },
+    "clb": {
+      "load_balancer_id": "lb-ao2qcdid",
+      "region_source": "prod.COS_REGION_for_read_only_discovery_not_enrollment",
+      "region": "ap-shanghai",
+      "target_application_rule_confirmed": false,
+      "clb_credentials_source": "prod.TENCENT_CLOUD_SECRET_ID/KEY",
+      "read_only_actions": [
+        "DescribeListeners"
+      ],
+      "api_error_code": "UnauthorizedOperation",
+      "request_id": "519eff1f-72d1-4144-a842-ebe7996140af",
+      "available": false,
+      "error_class": "ValueError"
+    },
+    "storageclasses": [
+      {
+        "name": "cbs",
+        "provisioner": "com.tencent.cloud.csi.cbs",
+        "binding": "Immediate",
+        "expansion": null,
+        "default": null
+      }
+    ],
+    "existing_pvc_modes": [
+      [
+        "ReadWriteOnce"
+      ],
+      [
+        "ReadWriteOnce"
+      ]
+    ],
+    "current_identity": {
+      "namespace": "default",
+      "wildcard_all_resources": true,
+      "rules_rows": 21
+    },
+    "release_rbac_identified": []
+  },
+  "blockers": [
+    {
+      "id": "P01",
+      "area": "application_onboarding",
+      "evidence": "No matching LightRAG namespace, workload image/name/env keys, ingress or release RBAC identified",
+      "status": "not_enrolled_or_external_target_unidentified",
+      "next": "Confirm application target and treat as first onboarding unless existing external baseline is identified; no automatic takeover"
+    },
+    {
+      "id": "P02",
+      "area": "postgres_hugegraph",
+      "evidence": "Inventory endpoints resolve privately; supplied ports time out from this machine",
+      "status": "unverified_not_service_down",
+      "next": "Use approved existing private-network read-only vantage; no public exposure, exec/port-forward/Job or network-rule change authorized"
+    },
+    {
+      "id": "P03",
+      "area": "clb",
+      "evidence": "DescribeListeners rejected UnauthorizedOperation for discovered shared CLB",
+      "status": "blocked",
+      "next": "Supply scoped read-only CLB credential reference or signed operations observations; bind application domain/listener/location/certificate/direct-routing and controller version"
+    },
+    {
+      "id": "P04",
+      "area": "storage",
+      "evidence": "Current renderer requests RWX PVC; discovered only cbs StorageClass and two RWO claims",
+      "status": "current_manifest_not_ready",
+      "next": "Approve an RWX option, or separately review per-Pod scratch removal of RWX dependency; no new storage service provisioned"
+    },
+    {
+      "id": "P05",
+      "area": "s3_acl",
+      "evidence": "HEAD/List pass; ACL and policy AccessDenied; location PathStyleDomainForbidden",
+      "status": "read_available_isolation_and_write_unknown",
+      "next": "Verify exact bucket/prefix IAM and runtime endpoint addressing compatibility using authorized policy evidence; no write probe or permission expansion"
+    },
+    {
+      "id": "P06",
+      "area": "capacity",
+      "evidence": "CPU/memory request headroom exists; per-Pod approved resources, actual free ENI IPs, PG/graph/model quotas not known",
+      "status": "not_accepted",
+      "next": "Approve resources and total eight-Pod plus operator/observer/backend/model budgets before scheduling or load"
+    },
+    {
+      "id": "P07",
+      "area": "identity_and_artifact",
+      "evidence": "Current access identity has wildcard namespace permissions; no identified LightRAG runtime/operator identities or committed candidate artifact bound to target",
+      "status": "not_release_ready",
+      "next": "Prepare least-privilege identities and explicit production API-key alias mapping, model profile, commit/tag/digest and backup plan under separate authorization"
+    }
+  ],
+  "production_ready": false,
+  "cutover_ready": false,
+  "performance_accepted": false,
+  "read_only_preflight_completed_with_gaps": true,
+  "test_and_two_candidates": "not_accessed_or_changed",
+  "workloads_identity_unchanged": {
+    "available": true,
+    "workload_identity_image_replicas_unchanged": true,
+    "count": 41,
+    "observed_utc": "2026-10-23T07:20:31.568689+00:00"
+  },
+  "tasks": {
+    "complete": 41,
+    "remaining": 12,
+    "scenarios": 57
+  },
+  "parameters_and_form_approvals": "unchanged; existing false forms are not a denial of the current read-only user authorization",
+  "credential_handling": "only prod inventory parsed in memory; no test inventory, kubeconfig payload, secret values, object bodies, SQL body data or model requests printed/persisted; no CI/K8s secret import",
+  "evidence_sha256": {
+    "application-discovery.json": "59d4bd39d6f6853659993229be626c99d9e140ccf807a1d238cf6a720d59d873",
+    "capacity.json": "639c59255c48b0a7bf884830d71a666a0fdba7bde9e48abbb7736e4821cfde4b",
+    "clb.json": "fbc087823a07d2689cd2358f234a0b9c1063ff2f139b3e2bf1b2a84f25c7218d",
+    "cluster-pin.json": "d02cd467570f558f623db89c6e515f01ea340281ede1b6a9b672e0cf321ead32",
+    "current-identity-permissions.json": "0ff775e1b63ff690a2b5cdf6efa0f87ff3133da9dbe6e00dbc76303ce87d47ac",
+    "final-boundary.json": "01f4f8b298fca9508c1d900adf5508460528bb9fef58489612ce1df09c557af2",
+    "hugegraph.json": "bc58544771347f7d598bb01122f0b7f68f3002c9388e523d033883bc27f76667",
+    "ingress-route-metadata.json": "658b176352094b08d0d3fcb052ca7c68f5243afffb821ef0713227f92c4db929",
+    "ingressclasses.json": "dcb2457c965f89577ddced873ae09b93b7cbf0a2e889ede5771b6469132ee268",
+    "ingresses.json": "e939cdca878efe19d344378a11eb2de7c4a91637d3d7b8ffe2ea235016b419fe",
+    "namespaces.json": "df291346b8d2120579292ae446d7a0e82ff2b0c64e3c2f13b483a8d645a30ea4",
+    "network-reachability.json": "c475cac12419888a3dbcf25784fedddec2eb8ab365ef2d810491dbc0e16ae7c6",
+    "networkpolicies.json": "1ffe4369b4d4db7386ca60cf15db2fd2a62285c3235dd458c66bafee203953a6",
+    "node-topology.json": "36566efefa2ebde5bc092c8dd85c5d5ad00ec2af57abf771281276032e0f9e38",
+    "node-usage.json": "aad7b3178bc572f9ed55210257e0529c53795727d48101d8790984699ad61003",
+    "nodes.json": "30aabae0719e16049c73a2a64db21ad66e0a6b1a5fedebaad6af783198de9dc7",
+    "pods.json": "b48de06c39aacd5f4e2a3c6f94232a378a2926a14b1308384fae03de6582c452",
+    "postgres.json": "452908e2bd0e0b38a3e2d5923013a42e2d5863dc49b0828309d512d128971213",
+    "pvc-summary.json": "d36ab08aef2cd309cda72ac4704da34598f905c3ab9bff89861da64af3da210f",
+    "quotas.json": "9dfd099b8218ca7e4fd21cc3fb574af3d7e20a72605d962bc024eac12d1ccdeb",
+    "release-rbac-discovery.json": "063ef8f21381aee1b763298001b68142db9f22a1d8b84e87f9f87fece4f9aef2",
+    "s3.json": "4b0ba2508ca92962c58cc150e02667b9fbd349cfae4ddab5a5441874714464e4",
+    "server-version.json": "9e2497d62da384f336674994e27b7812cc2ab025843c6534933aa47dc031cc03",
+    "service-discovery.json": "4ddc918840547c573a6b1bbeb58dbfbecb69491970eefa895b1158bf56cc2a89",
+    "storageclasses.json": "1a0f0cad1037d754745ca68e5072d5ccd3d1a07cbc4892c1e3513f6f44579591",
+    "tke-controller-metadata.json": "24d5b976f432a728df2107ea2997e230de481872cf72949db5e6b26387ac9bbd",
+    "workloads.json": "e4290b7ff83c2b40749182e52ba30e1e80962a6f7590d036ce77f4c374bf0271"
+  },
+  "local_verification": {
+    "baseline_files": 1615,
+    "changed_existing": [
+      "openspec/changes/add-prod-zero-downtime-delivery/tasks.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/verification/implementation-ledger.md"
+    ],
+    "all_source_test_workflow_deploy_and_parameters_unchanged": true,
+    "branch_head_unchanged": true,
+    "prod_gate_still_disabled": true,
+    "tasks_complete": 41,
+    "tasks_remaining": 12,
+    "scenarios": 57,
+    "local_links_verified": 246,
+    "sensitive_value_scan_passed": true,
+    "local_probe_syntax_verified": true,
+    "select_metadata_queries_prepared": 9,
+    "pg_queries_actually_executed": 0,
+    "unit_tests_rerun": false,
+    "why_no_unit_tests": "no application/test code changes; actual read-only observations and local evidence validation only",
+    "openspec_strict": "passed",
+    "git_diff_check": "passed",
+    "scope": "read-only evidence and document update, not deployment acceptance"
+  }
+}

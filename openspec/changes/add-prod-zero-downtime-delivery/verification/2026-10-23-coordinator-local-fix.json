@@ -1,0 +1,210 @@
+{
+  "recorded_at_utc": "2026-10-23T01:07:55.710865+00:00",
+  "status": "local_fix_verified_remote_retest_pending_separate_confirmation",
+  "head": "beb4d64681c06d393255c577cdf0d988fdeecbfb",
+  "branch": "master",
+  "authorization": "local diagnosis, code fix, mock regressions and OpenSpec synchronization only",
+  "remote_actions": {
+    "cluster_connections": 0,
+    "shared_service_connections": 0,
+    "real_model_calls": 0,
+    "requests_replayed": 0,
+    "pod_restarts": 0,
+    "recover": 0,
+    "prod_actions": 0,
+    "secret_reads_or_imports": 0,
+    "commits_pushes_or_tags": 0
+  },
+  "scene": {
+    "historical_report": "2026-10-23-single-pod-ingestion-failure.json",
+    "historical_event_loop_lag_seconds": 12.407714788,
+    "original_exception_class": null,
+    "original_sqlstate": null,
+    "remote_scene_rechecked": false,
+    "fault_evidence_mutated": false,
+    "new_source_deployed": false,
+    "old_overlay_repacked": false
+  },
+  "local_mechanism": {
+    "sdk_lazy_resource_on_loop_confirmed": true,
+    "simulated_driver_timeout_with_old_blocking_variant_confirmed": true,
+    "remote_timeout_cause_proven": false,
+    "full_remote_lag_cause_proven": false,
+    "sdk_versions": {
+      "openai": "2.54.0",
+      "httpx": "0.28.1",
+      "asyncpg": "0.31.0",
+      "pydantic": "2.13.4"
+    }
+  },
+  "implementation": {
+    "sdk_setup_in_worker": true,
+    "http_stream_and_close_on_caller_loop": true,
+    "contextvars_propagated": true,
+    "per_call_client_ownership": true,
+    "setup_and_close_joined_on_repeated_cancellation": true,
+    "first_cause_and_poll_stop_for_release_on_and_off": true,
+    "unknown_transaction_pid_not_replaced_with_witness": true,
+    "logger_failure_still_fail_closed": true,
+    "coordination_command_timeout_changed": false,
+    "coordination_sql_or_checksum_changed": false,
+    "automatic_recovery_or_write_retry_added": false,
+    "test_probe_configuration_changed": false,
+    "provider_open_scope_changed_to_exclude_sdk_lazy_setup": true
+  },
+  "local_cold_probe": {
+    "kind": "offline memory HTTP and socket connect guard, one cold process each, two calls per process",
+    "before": {
+      "cold_seconds": 0.3089999170001647,
+      "warm_seconds": 0.0008067919998211437,
+      "max_event_loop_lag_seconds": 0.29217383300005895,
+      "mock_dispatches": 2,
+      "network_attempts": 0
+    },
+    "after": {
+      "cold_seconds": 0.21919729199998983,
+      "warm_seconds": 0.0010062499995910912,
+      "max_event_loop_lag_seconds": 0.011760332999481761,
+      "mock_dispatches": 2,
+      "network_attempts": 0
+    },
+    "production_slo_or_qps_claim": false
+  },
+  "verification": {
+    "targeted": {
+      "passed": 33,
+      "failed": 0,
+      "seconds": 0.61
+    },
+    "regression": {
+      "command": "PYTHON=.venv/bin/python PYTHON_DOTENV_DISABLED=1 TIKTOKEN_CACHE_DIR=\"$PWD/docker/tiktoken-cache\" ./scripts/test.sh tests/distributed tests/llm/openai_impl tests/llm/test_query_accounting.py tests/performance tests/api/routes/test_query_accounting_routes.py tests/api/test_query_performance_health.py tests/ci/test_prod_workflows.py tests/ci/test_prod_inputs.py tests/test_docstring_budget.py -q --tb=short",
+      "passed": 412,
+      "skipped": 116,
+      "failed": 0,
+      "warnings": 2,
+      "seconds": 14.76,
+      "integration_opt_in": false
+    },
+    "ruff_check_files": [
+      "lightrag/distributed/coordinator.py",
+      "lightrag/distributed/pipeline.py",
+      "lightrag/llm/openai.py",
+      "tests/distributed/test_coordinator_diagnostics.py",
+      "tests/llm/openai_impl/test_openai_nonblocking_setup.py"
+    ],
+    "ruff_format_scope": "whole new tests; only changed ranges in three existing source files",
+    "ruff_passed": true,
+    "frontend_changed_or_built": false,
+    "full_repository_test_suite_run": false,
+    "evidence_logs": {
+      "red.log": {
+        "path": "temp/coordinator-local-fix-20261023/red.log",
+        "sha256": "8bfea10b73621fdaa4ba1c500ed05cb9bb50c273177c5dcdd130dc3effd9adde",
+        "summary": "12 failed, 7 passed in 8.61s"
+      },
+      "green.log": {
+        "path": "temp/coordinator-local-fix-20261023/green.log",
+        "sha256": "bb726fa7932bd41ea1d7a90cbf7ced4ca6d0fdc74eb061cf764696de545e87e9",
+        "summary": "19 passed in 0.40s"
+      },
+      "uncertain-red.log": {
+        "path": "temp/coordinator-local-fix-20261023/uncertain-red.log",
+        "sha256": "05a9ffbe4a206e2925355a29af9e9ee7a75cdf05f24418066ec75abbc3b3a15f",
+        "summary": "1 failed, 10 deselected in 0.06s"
+      },
+      "coordination-interaction-red.log": {
+        "path": "temp/coordinator-local-fix-20261023/coordination-interaction-red.log",
+        "sha256": "c334d696723f4a1948c0f2a5e98f37621cf9dc4874dfc50e6c0e3c3ae3a69b8b",
+        "summary": "2 failed, 9 deselected in 1.47s"
+      },
+      "witness-pid-red.log": {
+        "path": "temp/coordinator-local-fix-20261023/witness-pid-red.log",
+        "sha256": "e1a5065a2c379630e6c077cc3221712074f68abb13dc3758564c0a0eb2e20f99",
+        "summary": "1 failed, 11 deselected in 0.08s"
+      },
+      "polling-red.log": {
+        "path": "temp/coordinator-local-fix-20261023/polling-red.log",
+        "sha256": "e9da366accb4eeca09a5aa09933ae2d6bfe12bbe95e0898e6b77f0300d6da486",
+        "summary": "2 failed, 1 passed, 12 deselected in 0.10s"
+      },
+      "unknown-pid-red.log": {
+        "path": "temp/coordinator-local-fix-20261023/unknown-pid-red.log",
+        "sha256": "6a781f344bf4f0d697b4928d05ee1e2fe9687f49ccb6f5455bb61415a5e72393",
+        "summary": "2 failed, 15 deselected in 0.08s"
+      },
+      "targeted-final-green.log": {
+        "path": "temp/coordinator-local-fix-20261023/targeted-final-green.log",
+        "sha256": "276895153f6bba325a28713834bdf3bcd99e4f01601ad5127f9c8083db78dee3",
+        "summary": "33 passed in 0.61s"
+      },
+      "final-with-polling-regression.log": {
+        "path": "temp/coordinator-local-fix-20261023/final-with-polling-regression.log",
+        "sha256": "430051ce7863f00d94335be69c5d7f71d972954d83daf97db7b4749598753712",
+        "summary": "412 passed, 116 skipped, 2 warnings in 14.76s"
+      },
+      "cold-before.log": {
+        "path": "temp/coordinator-local-fix-20261023/cold-before.log",
+        "sha256": "4b8990e6bc94bba9349c5dfaf6245916a1d071d036ec2c880c35e4c52f54c321",
+        "summary": null
+      },
+      "cold-after.log": {
+        "path": "temp/coordinator-local-fix-20261023/cold-after.log",
+        "sha256": "384c9f5b24f0234e077bf81fee927724c3b292f8cee39a8cadb7c9b1be230480",
+        "summary": null
+      }
+    },
+    "source_sha256": {
+      "lightrag/distributed/coordinator.py": "59007b22d3ee36a7183688da68a9ea6fbe259ff7b5b696ccbeea165347afb3eb",
+      "lightrag/distributed/pipeline.py": "03c8def41a0d5570181342a24abda1b97be6b59da2e3c0a3a1b8934c9df82feb",
+      "lightrag/llm/openai.py": "5af85eba350ab597c0e533c38f0b92735537c733e97a40ff8dcd61cba7e46b37",
+      "tests/distributed/test_coordinator_diagnostics.py": "4b357db43cf4f4c86dae9cfef9289ebd58379ae233e2e727f6040bf9dda2387b",
+      "tests/llm/openai_impl/test_openai_nonblocking_setup.py": "d0e55b4d1fbeb2df23562581b5d1f3371c42feccdcfc42dd1279448c188ab364"
+    },
+    "openspec_strict_passed": true,
+    "git_diff_check_passed": true,
+    "boundary_check": {
+      "existing_files_hashed": 1391,
+      "allowed_existing_changes": [
+        "docs/design/DistributedRuntimeContract.md",
+        "lightrag/distributed/coordinator.py",
+        "lightrag/distributed/pipeline.py",
+        "lightrag/llm/openai.py",
+        "openspec/changes/add-prod-zero-downtime-delivery/design.md",
+        "openspec/changes/add-prod-zero-downtime-delivery/specs/prod-delivery/spec.md",
+        "openspec/changes/add-prod-zero-downtime-delivery/tasks.md",
+        "openspec/changes/add-prod-zero-downtime-delivery/verification/implementation-ledger.md"
+      ],
+      "allowed_new_files": [
+        "openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-coordinator-local-fix.json",
+        "openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-coordinator-local-fix.md",
+        "tests/distributed/test_coordinator_diagnostics.py",
+        "tests/llm/openai_impl/test_openai_nonblocking_setup.py"
+      ],
+      "no_unexpected_existing_or_new_files": true,
+      "relative_links_checked": 208,
+      "head_and_branch_unchanged": true,
+      "original_test_workflows_script_and_overlays_unchanged_vs_head": true,
+      "coordination_migrations_unchanged_vs_head": true,
+      "formal_parameters_and_metric_sources_unchanged_vs_before": true,
+      "closed_prod_gate_unchanged": true,
+      "whitespace_and_source_evidence_sha256_passed": true
+    }
+  },
+  "openspec": {
+    "change": "add-prod-zero-downtime-delivery",
+    "total_tasks": 53,
+    "completed_tasks": 41,
+    "remaining_tasks": 12,
+    "scenarios": 57,
+    "newly_checked_tasks": [],
+    "formal_unknown_parameters_changed": false,
+    "production_gate_enabled": false
+  },
+  "limitations": [
+    "Historical driver exception and SQLSTATE were not logged and remain unknown.",
+    "Local mock timeout reproduces a possible failure mechanism, not the historical 12.4-second incident.",
+    "No real ingestion, query, concurrency, 4+4, CLB or performance SLO validation in this turn.",
+    "Executor queueing, GIL contention, other synchronous paths and optional instrumented SDK wrappers require appropriate further validation.",
+    "Separately confirm a new isolated candidate/data scope before remote retest; audit/recovery of accepted historical work requires separate authorization."
+  ]
+}

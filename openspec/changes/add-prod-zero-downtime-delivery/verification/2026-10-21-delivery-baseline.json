@@ -1,0 +1,81 @@
+{
+  "record_kind": "pre_implementation_local_delivery_baseline",
+  "date": "2026-10-21",
+  "head": "beb4d64681c06d393255c577cdf0d988fdeecbfb",
+  "branch": "master",
+  "authorization": {
+    "code_implementation_direction": true,
+    "plan_review": "pending",
+    "git_publish": false,
+    "secret_import": false,
+    "cluster_operations": false
+  },
+  "checks": [
+    {
+      "command": "./scripts/test.sh tests/ci -q",
+      "result": "passed",
+      "passed": 83,
+      "duration_seconds": 0.2
+    },
+    {
+      "command": "woodpecker-cli lint --strict .woodpecker/*.yml",
+      "result": "passed",
+      "workflows": 4,
+      "cli_version": "3.14.1"
+    },
+    {
+      "command": "kubectl kustomize k8s-deploy/lightrag-kustomize/overlays/test >/dev/null",
+      "result": "passed"
+    }
+  ],
+  "files": {
+    ".woodpecker/build-image.yml": "b0d64ef4571e11d639267e50f625a4060612ce9bb4f51ab79daba19b8648ba20",
+    ".woodpecker/deploy-test.yml": "547b3d7d64c19da34f6717aaf49882d93b985c732ce57f62a268302c7d2b38fc",
+    ".woodpecker/pre-deploy.yml": "505f8dfa0c1ea118ca2635914b4f8d27e669aef173170f73f7490526ed99b624",
+    ".woodpecker/validate-release.yml": "517a55879f16c9d7706b2548d8aaef08cb4ec5118ff72ca0dce32405346a5eb1",
+    "k8s-deploy/lightrag-kustomize/base/deployment.yaml": "55e3ddc099a34eeaccca007178a9584c6d307aeb58874efbfdbc6142a0d85005",
+    "k8s-deploy/lightrag-kustomize/base/ingress.yaml": "32f3dab1f27322f196c709c2f93c2a135ecc805f87d8cdd5652c4d54df1473e5",
+    "k8s-deploy/lightrag-kustomize/base/kustomization.yaml": "5994b620d965e569e868504145413e1d4688340c8e3b52a55b06966ce87e6238",
+    "k8s-deploy/lightrag-kustomize/base/networkpolicy.yaml": "6993ed0db0a9c7c29e4a93b222a2667cc57bb3f7366150c1d596608731526fa9",
+    "k8s-deploy/lightrag-kustomize/base/pvc.yaml": "6c9b7d85f843807b19ac8415b06dba08c1ac4a9917c2f69603bd6e4839a0bc7c",
+    "k8s-deploy/lightrag-kustomize/base/rbac.yaml": "cd7fd2ef60cdb9acdb0bb1e2da297e9f94f482b5ee5e4aedda6abbdf38536521",
+    "k8s-deploy/lightrag-kustomize/base/service.yaml": "010e2010ede9da291c98d4a7f48ed6091b5e78c955db6d742e9dde070318dbd7",
+    "k8s-deploy/lightrag-kustomize/base/serviceaccount.yaml": "ee14c43bcc12b2eec05e2e52732b11385a8b42992c5e28089e7621da7aa7b679",
+    "k8s-deploy/lightrag-kustomize/overlays/test/deployer-rbac.yaml": "65d001608acd2bfbf016b509234b67a1e11f1e473de6c0873a7a2b6daf8c1baa",
+    "k8s-deploy/lightrag-kustomize/overlays/test/kustomization.yaml": "975d7f99d8fad116a8ea8e222860fdbfb76c21c4d827b4aa8c5b38348a5b6faa",
+    "k8s-deploy/lightrag-kustomize/overlays/test/public-entrypoint.yaml": "3b138c18634140b206db6cc5511f45351b63744494e3c33a405aae8dd0c76488",
+    "k8s-deploy/lightrag-kustomize/overlays/test/release-image.yaml": "67d8efcb887a2dec2aaaebe5cf1b2a46f130f787e7cf197245891187bb61322d",
+    "k8s-deploy/lightrag-kustomize/overlays/test/workspace-profile.yaml": "4df54f6e074c68eb76201dba91c1cb62c61c014b5e440ff1679dac847acb78b1",
+    "scripts/ci/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "scripts/ci/backend-check.sh": "889ebd1f5428713d90c26d6546d84878e0798c780ea6e9736bf9a1be73f4d638",
+    "scripts/ci/base-images.lock.json": "48e4223826c2b27711644c5a1f7b41eec6f810c09893aa6b08a2015377760d6e",
+    "scripts/ci/build-image.sh": "3419bd5a5571516d5a9fc94d406c3d060089f269424d36f1dacec4c422be674d",
+    "scripts/ci/delivery-check.sh": "2459351284f33fbb1e3ea2773aa717c2ab225557f83fa258ba2ad74c06f5a48a",
+    "scripts/ci/delivery.py": "236f567c6fcf1e8adf57073fc13108c3daabf3362233ba1c62513a8bd11c64b8",
+    "scripts/ci/deploy-test.sh": "d7dfd1319f8c6edf7586dff018a3ea5f1df045ef9c0f91138f56c752d8e20ee3",
+    "scripts/ci/frontend-check.sh": "07ec6401ece366123a1245de2b80b43d639c3db561e7c72d0771c458226a1fab",
+    "scripts/ci/generate-test-instance-api-keys.py": "002b716f3a39f5c1360b05e46ff3479d3550abbed4087f8d7ab66722c42dae1a",
+    "scripts/ci/k8s_deploy.py": "0994faf6eecd7874e83371bb1260299561c731813c0048f7c820f186db752e4c",
+    "scripts/ci/source-artifact.sh": "2490d768e8558d562ef8ae4607ec7a64a7bbb80e3a67c0279eee62f9883ed8b4",
+    "scripts/ci/tool-images.lock.json": "04d535e19affc5704f55e1c1da5c7848cc23e0f2c9a3bbb33287587bc7237c10",
+    "tests/ci/test_delivery.py": "bdb3e66dada3af95c78c143736b2bbacc3e86a3edc9ad6a654d1c2954976cd6d",
+    "tests/ci/test_k8s_deploy.py": "03c37139be49f1017e52e7c30878f44666540350621a2f32c401d1c6df4892dd",
+    "tests/ci/test_kustomize_delivery.py": "89df074cd65df6fb2d017174f3037da22fa72c45bc72ca3b3144f781a29ea2eb",
+    "tests/ci/test_source_artifact_script.py": "0ad117cb5e0de243ee868b21d39a36a8b52d3a053ab6844b45174138a38c4a3c",
+    "tests/ci/test_test_environment_assets.py": "4fe8c21b7565e7cacc0137c8647de4289ec14156e1c9f972b3ca8708485ab65f",
+    "tests/ci/test_test_instance_api_keys.py": "cd2198ff3c5ac02a8d5084cc4ddf1b7b0ffd99d198325696cc255af73e68286d",
+    "tests/ci/test_workflows.py": "9679a2cb5ecd02a5e63c1810a10d295091a1bcfdae2ee5e00a1d0f7d2824228b"
+  },
+  "pre_existing_user_files": {
+    "lightrag/api/lightrag_server.py": "9c38d580df7db2f75b8c9bf0f06d040d4be9af2d5cde4b0111273ca7dfb2e3a8",
+    "lightrag/api/routers/query_routes.py": "cfb2de62e00569e7eb6820685d04defa168d7f9b7a9fae76db612635ffc37c4c",
+    "lightrag/llm/openai.py": "0eb0d97a21058539570374a5d9205fcf2be740a3dbfeef425cb2cebd17959761",
+    "lightrag/query_accounting.py": "66fbf20508abb33bd43f2165585fda001b635055e7bec07ed6160b3c5141a0d6"
+  },
+  "limitations": [
+    "No production implementation was exercised.",
+    "No cluster or backend was contacted.",
+    "Existing test/S3 proposal remote acceptance tasks remain incomplete.",
+    "Readiness/stream/finalization/quarantine risks are not fixed by this baseline."
+  ]
+}

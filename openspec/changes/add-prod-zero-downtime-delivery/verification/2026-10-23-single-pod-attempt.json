@@ -1,0 +1,164 @@
+{
+  "observed_at_utc": "2026-10-23T00:16:55.191211+00:00",
+  "environment": "test",
+  "status": "paused_startup_failure",
+  "namespace": "lightrag-loadtest-20261023",
+  "scope": "lightrag_lab_20261023",
+  "s3_prefix": "lightrag/release-lab-20261023/object-ingestion",
+  "replicas": 1,
+  "workers": 1,
+  "release_enabled": false,
+  "physical_services": "reused_existing_test_pg_hugegraph_s3",
+  "new_backend_services_created": false,
+  "namespace_uid": "36be76aa-bbd8-472b-b8dd-d0dc7c360abd",
+  "pod_uid": "ca44e8a5-bb67-458b-b17b-e9946f56b056",
+  "resources_created": 18,
+  "source": {
+    "candidate_source_verified": true,
+    "files": 419,
+    "source_sha256": "742e8bb3435c93045f854d8fcaf6f2e5cc6a93817fae1ad52556ccfdff907e5b",
+    "versions": {
+      "asyncpg": "0.31.0",
+      "pgvector": "0.4.2",
+      "openai": "2.54.0",
+      "httpx": "0.28.1",
+      "fastapi": "0.136.1",
+      "uvicorn": "0.46.0",
+      "aioboto3": "15.5.0"
+    },
+    "production_eligible": false,
+    "image": "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca",
+    "archive_sha256": "c45465f4f7f9d74752ab5edf697a7d830f99408dbee0b561b44212e979e841a3"
+  },
+  "original_resources_unchanged": true,
+  "candidate_phase": "Failed",
+  "candidate_containers": [
+    {
+      "imageID": "docker-hub.f123.pub/lfun/lightrag@sha256:82be927d0d3e8123179587311f2d12c5f8292fd5ac7fe43cd836d8f65a8614ca",
+      "name": "lightrag",
+      "ready": false,
+      "restartCount": 0,
+      "state": {
+        "terminated": {
+          "containerID": "containerd://40daced7f7af81247a22f74900d06e542b0fa80efbbc41625d7076fb377e6b2b",
+          "exitCode": 1,
+          "finishedAt": "2026-10-23T00:14:18Z",
+          "reason": "Error",
+          "startedAt": "2026-10-23T00:12:44Z"
+        }
+      }
+    }
+  ],
+  "postgres_after": {
+    "checked_at_utc": "2026-10-23T00:16:54.492407+00:00",
+    "schema_verified": true,
+    "original_workspaces": [
+      {
+        "deployment_id": "lightrag_test_01",
+        "workspace": "lightrag_test_01",
+        "generation": 1,
+        "fenced": false
+      },
+      {
+        "deployment_id": "lightrag_test_02",
+        "workspace": "lightrag_test_02",
+        "generation": 1,
+        "fenced": false
+      },
+      {
+        "deployment_id": "lightrag_test_03",
+        "workspace": "lightrag_test_03",
+        "generation": 2,
+        "fenced": false
+      },
+      {
+        "deployment_id": "lightrag_test_04",
+        "workspace": "lightrag_test_04",
+        "generation": 1,
+        "fenced": false
+      },
+      {
+        "deployment_id": "lightrag_test_05",
+        "workspace": "lightrag_test_05",
+        "generation": 1,
+        "fenced": false
+      }
+    ],
+    "pending_documents": [],
+    "pending_mutations": 0,
+    "new_scope_absent": true,
+    "new_doc_scope_absent": true,
+    "release_schema_exists": false
+  },
+  "postgres_prerequisites": {
+    "read_only": true,
+    "errors": [],
+    "coordination": {
+      "is_superuser": false,
+      "can_create_database": false,
+      "can_create_role": false,
+      "can_create_schema": true,
+      "can_create_public_object": true,
+      "can_enroll_workspace": true,
+      "database_owner_member": true
+    },
+    "same_configured_principal": true,
+    "business": {
+      "is_superuser": false,
+      "can_create_database": false,
+      "can_create_role": false,
+      "can_create_schema": true,
+      "can_create_public_object": true,
+      "can_enroll_workspace": true,
+      "database_owner_member": true
+    }
+  },
+  "graph_s3_readonly": {
+    "at_utc": "2026-10-23T00:00:35.222465+00:00",
+    "read_only": true,
+    "graph": {
+      "server_and_existing_schema_verified": true,
+      "auto_create_schema": false,
+      "proposed_scope_has_vertices": false,
+      "result_count": 0,
+      "scope_enforcement": "workspace+storage namespace, hashed IDs and lr_scope filters; not a tenant ACL"
+    },
+    "s3": {
+      "head_bucket_http_status": 200,
+      "proposed_prefix": "lightrag/release-lab-20261023/object-ingestion/",
+      "proposed_prefix_key_count": 0,
+      "is_truncated": false,
+      "put_delete_or_get_object_called": false,
+      "shared_bucket": true
+    },
+    "errors": [],
+    "business_mutations": 0,
+    "object_store_write_preflight_called": false
+  },
+  "startup_failure": {
+    "error_class": "ValueError",
+    "cause_class": "FileNotFoundError",
+    "path": "/app/data/logs/lightrag.log",
+    "stage": "configure_logging before create_app and lifespan",
+    "root_cause": "New LOG_DIR child did not exist; configure_logging creates dirname(log_dir), not log_dir"
+  },
+  "local_reproduction": {
+    "real_function_executed": true,
+    "missing_subdirectory_reproduces_FileNotFoundError": true,
+    "existing_mounted_root_logging_configuration_succeeds": true,
+    "remote_fix_applied": false
+  },
+  "api_requests_sent": 0,
+  "fixture_uploads_sent": 0,
+  "rag_queries_sent": 0,
+  "model_calls_sent": 0,
+  "automatic_restart_or_recover": false,
+  "database_migrations": false,
+  "production_operations": false,
+  "prod_credentials_read_or_imported": false,
+  "git_published": false,
+  "performance_targets_verified": false,
+  "application_4_plus_4_verified": false,
+  "clb_verified": false,
+  "production_accepted": false
+}

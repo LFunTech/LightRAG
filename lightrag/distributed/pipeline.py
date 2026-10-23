@@ -43,6 +43,8 @@ def _state(runtime: DistributedRuntime) -> dict[str, Any]:
 async def reset_requests(rag: LightRAG) -> None:
     """Persist target versions before reset; replay never resets a newer failure."""
     runtime = get_runtime(rag)
+    if runtime.release is not None and not await runtime.release.can_claim_batch():
+        return
     control = runtime.coordinator.pipeline_control
     if not (await control.status())["pending_retries"]:
         return
@@ -110,6 +112,8 @@ async def process(rag: LightRAG, *, resume: bool = True) -> None:
     status = _state(runtime)
     if resume:
         await runtime.coordinator.pipeline_control.resume()
+    if runtime.release is not None and not await runtime.release.can_claim_batch():
+        return
     # Local instance serialization protects _active_run_ctx, not the workspace.
     if runtime.pipeline_lock.locked():
         return
@@ -146,6 +150,11 @@ async def process(rag: LightRAG, *, resume: bool = True) -> None:
         )
         try:
             while position is not CURSOR_END:
+                if (
+                    runtime.release is not None
+                    and not await runtime.release.can_claim_batch()
+                ):
+                    return
                 if not resume and runtime.pipeline_stop.is_set():
                     return
                 async with runtime.operation("pipeline") as operation:
@@ -202,6 +211,14 @@ async def process(rag: LightRAG, *, resume: bool = True) -> None:
 
 
 async def start_polling(rag: LightRAG, *, interval: float = 1.0) -> None:
+    runtime = get_runtime(rag)
+    if runtime is not None and runtime.release is not None:
+        await runtime.release.start(polling=True, interval=interval)
+        return
+    await _start_polling(rag, interval=interval)
+
+
+async def _start_polling(rag: LightRAG, *, interval: float = 1.0) -> None:
     from math import isfinite
 
     if not isfinite(interval) or interval <= 0:
@@ -225,6 +242,27 @@ async def start_polling(rag: LightRAG, *, interval: float = 1.0) -> None:
                 runtime.pipeline_error = "CoordinationBusyError"
             except CoordinationError as error:
                 runtime.pipeline_error = type(error).__name__
+                import os
+                import re
+                from lightrag.utils import logger
+
+                def label(value):
+                    return re.sub(r"[^A-Za-z0-9_.-]", "?", str(value)[:128])
+
+                pod = (
+                    runtime.release.config.instance_id
+                    if runtime.release is not None
+                    else os.getenv("POD_NAME") or os.getenv("HOSTNAME") or "unknown"
+                )
+                logger.error(
+                    "Distributed polling stopped pod=%s workspace=%s deployment=%s "
+                    "reason=%s stopped_at=%s",
+                    label(pod),
+                    label(runtime.workspace),
+                    label(runtime.coordinator.deployment_id),
+                    label(type(error).__name__),
+                    datetime.now(timezone.utc).isoformat(),
+                )
                 # No mutation retry or local fallback after a durable fence.
                 return
             except Exception:
@@ -242,6 +280,13 @@ async def start_polling(rag: LightRAG, *, interval: float = 1.0) -> None:
 
 
 async def stop_polling(rag: LightRAG) -> None:
+    runtime = get_runtime(rag)
+    if runtime is not None and runtime.release is not None:
+        runtime.release.polling_desired = False
+    await _stop_polling(rag)
+
+
+async def _stop_polling(rag: LightRAG) -> None:
     runtime = get_runtime(rag)
     if runtime is None or not hasattr(runtime, "pipeline_stop"):
         return

@@ -186,18 +186,21 @@ class _RoleLLMMixin:
         model_kwargs: dict[str, Any],
     ) -> Callable[..., object]:
         spec = ROLES_BY_NAME[role_name]
-        return priority_limit_async_func_call(
+        limiter = priority_limit_async_func_call(
             max_async,
             llm_timeout=timeout,
             queue_name=spec.queue_name,
             concurrency_group=f"llm:{role_name}",
-        )(
-            partial(
+        )
+        raw = partial(
                 raw_func,
                 hashing_kv=self.llm_response_cache,
                 **model_kwargs,
-            )
         )
+        if getattr(self, "query_metrics_enabled", False) is True:
+            from lightrag.performance import queued_model
+            return queued_model(raw, role=role_name, limit_factory=limiter, metrics=self.query_metrics)
+        return limiter(raw)
 
     def _rebuild_role_llm_funcs(self) -> None:
         """Wrap each role's raw_func with its own priority queue.

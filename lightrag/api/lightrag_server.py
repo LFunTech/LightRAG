@@ -1516,7 +1516,7 @@ async def validation_exception_handler(
     )
 
 
-def create_app(args):
+def create_app(args, *, query_usage_authority=None):
     # Check frontend build first and get status. The two entries are checked
     # independently: an old build directory may carry only index.html, which
     # degrades /workspace alone (see check_workspace_frontend_build).
@@ -1673,6 +1673,7 @@ def create_app(args):
         """Lifespan context manager for startup and shutdown events"""
         # Store background tasks
         app.state.background_tasks = set()
+        metric_sampler = None
 
         try:
             # Initialize database connections
@@ -1724,9 +1725,15 @@ def create_app(args):
 
             ASCIIColors.green("\nServer is ready to accept connections! 🚀\n")
 
+            if getattr(rag, "query_metrics_enabled", False) is True:
+                metric_sampler = asyncio.create_task(rag.query_metrics.sample_loop())
+
             yield
 
         finally:
+            if metric_sampler is not None:
+                metric_sampler.cancel()
+                await asyncio.gather(metric_sampler, return_exceptions=True)
             # Cancel and join all reserved background tasks FIRST, so each
             # child's finally releases its reservation while shared state is
             # still alive. Resists repeated cancellation; a deferred shutdown
@@ -2620,6 +2627,8 @@ def create_app(args):
             },
             enable_llm_cache_for_entity_extract=args.enable_llm_cache_for_extract,
             enable_llm_cache=args.enable_llm_cache,
+            enable_query_answer_cache=getattr(args, "enable_query_answer_cache", True),
+            query_metrics_enabled=getattr(args, "query_metrics_enabled", False),
             vlm_process_enable=args.vlm_process_enable,
             rerank_model_func=rerank_model_func,
             rerank_model_max_async=args.rerank_max_async,
@@ -2692,7 +2701,17 @@ def create_app(args):
             upload_session_manager=object_upload_components.upload_session_manager,
         )
     )
-    app.include_router(create_query_routes(rag, api_key, args.top_k))
+    async def check_query_accounting_runtime():
+        from lightrag.query_accounting import QueryAccountingError
+
+        roles = rag.get_llm_role_config()
+        if (args.llm_binding != 'openai' or args.embedding_binding != 'openai'
+                or any(v.get('binding') != 'openai' for v in roles.values())
+                or rag.rerank_model_func is not None or rag.enable_llm_cache is not False):
+            raise QueryAccountingError('query_usage_runtime_not_supported')
+
+    app.include_router(create_query_routes(rag, api_key, args.top_k,
+        usage_authority=query_usage_authority, accounting_runtime_check=check_query_accounting_runtime))
     app.include_router(create_graph_routes(rag, api_key))
     # Public read-only customization surface — registered unconditionally:
     # without a bundle it answers 200 {"customized": false, ...}.
@@ -3068,6 +3087,9 @@ def create_app(args):
                 # independent checks over their own entry HTML — /health must
                 # be able to express "admin UI up, query entry missing".
                 "workspace_available": workspace_assets_exist,
+                "query_accounting": {"contract": "query-usage-v1",
+                    "enabled": query_usage_authority is not None, "retrieval_only": True,
+                    "max_calls": 16},
                 # Whether /docs, /redoc and /openapi.json are served — same
                 # liveness tier as webui_available: the state is trivially
                 # probeable by requesting /docs, so it leaks nothing.
@@ -3086,6 +3108,9 @@ def create_app(args):
             # and keyed-lock-cleanup calls also keep unauthenticated probes cheap.
             if not authenticated:
                 return status_data
+
+            if getattr(rag, "query_metrics_enabled", False) is True:
+                status_data["query_performance"] = rag.query_metrics.snapshot()
 
             # Cleanup expired keyed locks and get status
             keyed_lock_info = cleanup_keyed_lock()
@@ -3114,6 +3139,8 @@ def create_app(args):
                         ),
                         "enable_llm_cache_for_extract": args.enable_llm_cache_for_extract,
                         "enable_llm_cache": args.enable_llm_cache,
+                        "enable_query_answer_cache": getattr(args, "enable_query_answer_cache", True),
+                        "query_metrics_enabled": getattr(args, "query_metrics_enabled", False),
                         "vlm_process_enable": args.vlm_process_enable,
                         "workspace": default_workspace,
                         "storage_workspaces": _get_storage_workspaces(rag),
@@ -3398,6 +3425,22 @@ def create_app(args):
         async def workspace_unavailable(request: Request):
             return workspace_unavailable_response(request)
 
+    from lightrag.distributed.runtime import get_runtime
+
+    release_runtime = get_runtime(rag)
+    if release_runtime is not None and release_runtime.release is not None:
+        from lightrag.api.release_commands import install_release_api
+        from lightrag_delivery.profile import verify_server_profile
+
+        verify_server_profile(args, os.environ)
+        install_release_api(
+            app, release_runtime.release, api_key=api_key, auth_handler=auth_handler,
+            sessions=object_upload_components.upload_session_manager,
+            usage_authority=query_usage_authority,
+        )
+    if getattr(rag, "query_metrics_enabled", False) is True:
+        from lightrag.performance import QueryMetricsMiddleware
+        app.add_middleware(QueryMetricsMiddleware, metrics=rag.query_metrics)
     return app
 
 
@@ -3573,7 +3616,13 @@ def main():
     print(
         f"Starting Uvicorn server in single-process mode on {global_args.host}:{global_args.port}"
     )
-    uvicorn.run(**uvicorn_config)
+    runtime = getattr(app.state.rag, "_distributed_runtime", None)
+    if runtime is not None and runtime.release is not None:
+        from lightrag.api.release_lifecycle import run_release_uvicorn
+
+        run_release_uvicorn(app, uvicorn_config)
+    else:
+        uvicorn.run(**uvicorn_config)
 
 
 if __name__ == "__main__":

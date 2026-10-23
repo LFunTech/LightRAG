@@ -12,6 +12,7 @@ import secrets
 from typing import Any, AsyncIterator, Iterable, Mapping
 from uuid import UUID, uuid4
 from weakref import WeakKeyDictionary
+from lightrag.performance import measured_context
 
 
 class CoordinationError(RuntimeError):
@@ -65,6 +66,14 @@ def _label(value: str, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be non-empty")
     return value
+
+
+def _backend_pid(connection) -> int | None:
+    try:
+        value = connection.get_server_pid()
+        return value if type(value) is int else None
+    except Exception:
+        return None
 
 
 class PostgresCoordinator:
@@ -166,6 +175,7 @@ class PostgresCoordinator:
         if not read_only and self._manifest_hash is None:
             raise ValueError("Writer initialization requires a deployment manifest")
         self._read_only = read_only
+        backend_pid = None
         try:
             self._pool = await asyncpg.create_pool(
                 self._dsn,
@@ -174,6 +184,7 @@ class PostgresCoordinator:
                 command_timeout=self._command_timeout,
             )
             async with self._pool.acquire() as connection:
+                backend_pid = _backend_pid(connection)
                 await verify(connection)
                 if not read_only:
                     async with connection.transaction():
@@ -194,10 +205,12 @@ class PostgresCoordinator:
                                 "Workspace deployment manifest mismatch"
                             )
             if not read_only:
+                backend_pid = None
                 self._witness_connection = await asyncpg.connect(
                     self._dsn,
                     command_timeout=self._command_timeout,
                 )
+                backend_pid = _backend_pid(self._witness_connection)
                 acquired = await self._witness_connection.fetchval(
                     "SELECT pg_try_advisory_lock($1::bigint)",
                     self._witness,
@@ -214,24 +227,73 @@ class PostgresCoordinator:
                 except WorkspaceFencedError:
                     pass
         except BaseException as exc:
-            self._quarantine()
+            self._quarantine(error=exc, purpose="initialize", backend_pid=backend_pid)
             if isinstance(exc, (CoordinationError, asyncio.CancelledError)):
                 raise
             raise CoordinationUnavailableError(
                 "Coordination initialization failed"
             ) from None
 
-    def _quarantine(self) -> None:
+    def _quarantine(self, *, error=None, purpose="close", backend_pid=None) -> None:
+        first = not self._broken
         self._broken = True
-        if self._witness_connection is not None:
-            self._witness_connection.terminate()
-        if self._pool is not None:
-            self._pool.terminate()
+        try:
+            if first and purpose != "close":
+                import os
+                import re
+                from datetime import datetime, timezone
+                from lightrag.utils import logger
+
+                def label(value):
+                    return re.sub(r"[^A-Za-z0-9_.-]", "?", str(value)[:128])
+
+                code = getattr(error, "sqlstate", None)
+                code = (
+                    code
+                    if isinstance(code, str) and re.fullmatch(r"[A-Z0-9]{5}", code)
+                    else "unknown"
+                )
+                witness_pid = _backend_pid(self._witness_connection)
+                if backend_pid is None and purpose == "witness":
+                    backend_pid = witness_pid
+                context = getattr(self, "_release_context", None)
+                pod = (
+                    context.instance_id
+                    if context is not None
+                    else os.getenv("POD_NAME") or os.getenv("HOSTNAME") or "unknown"
+                )
+                logger.error(
+                    "Coordinator quarantine first_cause=%s sqlstate=%s purpose=%s "
+                    "pod=%s workspace=%s deployment=%s owner_id=%s backend_pid=%s witness_pid=%s "
+                    "command_timeout_seconds=%s stopped_at=%s",
+                    label(type(error).__name__)
+                    if error is not None
+                    else "WitnessUnavailable",
+                    code,
+                    label(purpose),
+                    label(pod),
+                    label(self.workspace),
+                    label(self.deployment_id),
+                    self._owner_id,
+                    backend_pid if type(backend_pid) is int else None,
+                    witness_pid,
+                    self._command_timeout,
+                    datetime.now(timezone.utc).isoformat(),
+                )
+        finally:
+            # Diagnostics cannot prevent fail-closed transport retirement.
+            try:
+                if self._witness_connection is not None:
+                    self._witness_connection.terminate()
+            finally:
+                if self._pool is not None:
+                    self._pool.terminate()
 
     async def close(self) -> None:
         """Close transport only; never release unresolved durable ownership."""
         self._quarantine()
 
+    @measured_context("coordination")
     @asynccontextmanager
     async def _transaction(self, *, administrative: bool = False):
         if self._pool is None or self._broken:
@@ -241,11 +303,13 @@ class PostgresCoordinator:
             or self._witness_connection is None
             or self._witness_connection.is_closed()
         ):
-            self._quarantine()
+            self._quarantine(purpose="witness")
             raise CoordinationUnavailableError("Writer witness is unavailable")
         delayed = None
+        backend_pid = None
         try:
             async with self._pool.acquire() as connection:
+                backend_pid = _backend_pid(connection)
                 async with connection.transaction():
                     row = await connection.fetchrow(
                         "SELECT * FROM lightrag_coordination.workspaces "
@@ -264,7 +328,7 @@ class PostgresCoordinator:
         except BaseException as exc:
             # A commit response can be lost. Removing only the witness makes the
             # durable operation/pending row observable as orphaned to every peer.
-            self._quarantine()
+            self._quarantine(error=exc, purpose="transaction", backend_pid=backend_pid)
             if isinstance(exc, asyncio.CancelledError):
                 raise
             raise CoordinationUnavailableError(
@@ -431,10 +495,10 @@ class PostgresCoordinator:
                     "UPDATE lightrag_coordination.operations SET phase='uncertain' WHERE id=$1",
                     operation.id,
                 )
-        except BaseException:
+        except BaseException as error:
             # Fence durability could not be confirmed. Witness removal is a
             # fail-closed fallback, not cleanup; the original failure still raises.
-            self._quarantine()
+            self._quarantine(error=error, purpose="uncertain")
 
     def _task_id(self) -> UUID:
         task = asyncio.current_task()

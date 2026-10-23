@@ -1,0 +1,93 @@
+[
+  [
+    "propertykeys",
+    {
+      "name": "lightrag_scope",
+      "data_type": "TEXT",
+      "cardinality": "SINGLE",
+      "aggregate_type": "NONE",
+      "write_type": "OLTP",
+      "properties": []
+    }
+  ],
+  [
+    "propertykeys",
+    {
+      "name": "lightrag_name",
+      "data_type": "TEXT",
+      "cardinality": "SINGLE",
+      "aggregate_type": "NONE",
+      "write_type": "OLTP",
+      "properties": []
+    }
+  ],
+  [
+    "propertykeys",
+    {
+      "name": "lightrag_data",
+      "data_type": "TEXT",
+      "cardinality": "SINGLE",
+      "aggregate_type": "NONE",
+      "write_type": "OLTP",
+      "properties": []
+    }
+  ],
+  [
+    "vertexlabels",
+    {
+      "name": "lightrag_entity_v1",
+      "id_strategy": "CUSTOMIZE_STRING",
+      "properties": [
+        "lightrag_scope",
+        "lightrag_name",
+        "lightrag_data"
+      ],
+      "primary_keys": [],
+      "nullable_keys": [],
+      "enable_label_index": true,
+      "ttl": 0
+    }
+  ],
+  [
+    "edgelabels",
+    {
+      "name": "lightrag_relation_v1",
+      "source_label": "lightrag_entity_v1",
+      "target_label": "lightrag_entity_v1",
+      "frequency": "SINGLE",
+      "properties": [
+        "lightrag_scope",
+        "lightrag_data"
+      ],
+      "sort_keys": [],
+      "nullable_keys": [],
+      "enable_label_index": true,
+      "ttl": 0
+    }
+  ],
+  [
+    "indexlabels",
+    {
+      "name": "lightrag_entity_scope_name_v1",
+      "base_type": "VERTEX_LABEL",
+      "base_value": "lightrag_entity_v1",
+      "index_type": "SECONDARY",
+      "fields": [
+        "lightrag_scope",
+        "lightrag_name"
+      ]
+    }
+  ],
+  [
+    "indexlabels",
+    {
+      "name": "lightrag_relation_scope_v1",
+      "base_type": "EDGE_LABEL",
+      "base_value": "lightrag_relation_v1",
+      "index_type": "SECONDARY",
+      "fields": [
+        "lightrag_scope"
+      ]
+    }
+  ]
+]

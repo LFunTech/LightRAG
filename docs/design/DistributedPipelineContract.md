@@ -214,3 +214,41 @@ Normal API replicas only initialize/verify, never call data migration on startup
 - Shared-path configuration is an operator assertion, not a proof of RWX mounts.
   Independent-process deployment/fault acceptance is separate from in-process
   integration tests and belongs to deployment verification.
+
+## Optional release gate and durable command acceptance
+
+The production release protocol is separately enabled and enrolled; none of the
+rules in this section change default test polling, startup or finalization.
+Both slots use the same distributed workspace/deployment identity and original
+claims. A standby verifies dependencies without DDL, polling or production
+mutation. It may serve authorized private queries with cache fills skipped.
+
+An active pipeline checks release authority before each new scheduling batch,
+including when an existing parent operation remains valid. Closing the gate
+does not cancel already-admitted work, rewrite doc-status, consume a new FAILED
+retry or introduce a second source of pipeline truth. After handover only the
+new slot can claim new work; stale instances retain only their admitted work.
+
+The HTTP/SDK release queue stores explicitly registered JSON/versioned commands,
+principal fingerprints and durable source references, never Python callbacks,
+temporary paths or raw credentials. Waiting holds no business transaction or
+workspace lock. Execution rechecks current authorization and runs the original
+handler/validation/coordination path. Stable idempotency identities share one
+command/result; conflicting payloads refuse. Executor death or unknown ACK
+never changes EXECUTING/UNCERTAIN back to QUEUED automatically.
+
+Queue acceptance is not document acceptance. Release-enabled text/file handlers
+signal their original async acceptance only after enqueue persists; their
+detached worker keeps an independent ticket through later writes. Synchronous
+operations retain their original response semantics. Disconnecting the waiter
+does not delete the command; authenticated status is restricted to its principal.
+The existing doc-status task and manual retry semantics are not duplicated by
+the release queue. S3/session cleanup and command admission are ordered under
+the same scope lock; unfinished command references protect their sources.
+
+Queue count/byte capacity, finite waiting/drain/cutover budgets and retention
+inequalities are explicit onboarding policy. Known pre-transfer budget expiry
+can safely reopen Blue only after real route/owner proof, then retires Green
+while retaining the release owner. Unknown state, fence or ACK stops progress,
+not work. See [the production runbook](../ProdDelivery.md) for operational phases
+and the separately authorized 4/8-Pod continuity and capacity rehearsals.

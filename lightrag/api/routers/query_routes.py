@@ -6,7 +6,8 @@ import asyncio
 import json
 import time
 from typing import Any, Dict, List, Literal, Optional
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from lightrag.query_accounting import QueryAccountingError, query_usage_scope, retrieval_digest
 from lightrag.base import QueryParam
 from lightrag.api.input_limits import count_conversation_input_chars
 from lightrag.api.utils_api import get_combined_auth_dependency, internal_server_error
@@ -27,7 +28,14 @@ from lightrag.utils import logger
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
+class QueryAccountingRequest(BaseModel):
+    model_config = {'extra': 'forbid'}
+    query_id: str = Field(min_length=1, max_length=255)
+    grant: str = Field(min_length=1, max_length=255, repr=False)
+
+
 class QueryRequest(BaseModel):
+    accounting: QueryAccountingRequest | None = Field(default=None, repr=False)
     query: str = Field(
         max_length=MAX_QUERY_CHARS,
         description=(
@@ -262,7 +270,7 @@ class QueryRequest(BaseModel):
         # Exclude API-level parameters that don't belong in QueryParam
         request_data = self.model_dump(
             exclude_none=True,
-            exclude={"query", "include_chunk_content", "include_progress"},
+            exclude={"query", "include_chunk_content", "include_progress", "accounting"},
         )
 
         # Ensure `mode` and `stream` are set explicitly
@@ -283,6 +291,7 @@ class ReferenceItem(BaseModel):
 
 
 class QueryResponse(BaseModel):
+    usage_receipt: dict | None = None
     response: str = Field(
         description="The generated response",
     )
@@ -364,7 +373,8 @@ class StreamChunkResponse(BaseModel):
     )
 
 
-def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
+def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60, *,
+                        usage_authority=None, accounting_runtime_check=None):
     # Fresh router per call. A module-level instance would accumulate
     # duplicate routes when the factory is invoked more than once in the
     # same process (e.g. across tests), which triggers FastAPI's
@@ -376,6 +386,7 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
     @router.post(
         "/query",
         response_model=QueryResponse,
+        response_model_exclude_unset=True,
         dependencies=[Depends(combined_auth)],
         responses={
             200: {
@@ -591,6 +602,17 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
                 - 422: Request validation failed (e.g., query empty or too short)
                 - 500: Internal processing error (e.g., LLM service unavailable)
         """
+        if request.accounting is not None:
+            allowed = {'query', 'mode', 'only_need_context', 'include_references', 'accounting'}
+            if (request.model_fields_set - allowed or request.only_need_context is not True
+                    or request.include_references is not True or request.mode == 'bypass'):
+                raise HTTPException(422, 'Accounted queries require the bounded retrieval-only contract')
+            if usage_authority is None or accounting_runtime_check is None:
+                raise HTTPException(503, 'Query usage authority is unavailable')
+            try:
+                await accounting_runtime_check()
+            except QueryAccountingError as e:
+                raise HTTPException(503, str(e)) from None
         try:
             param = request.to_query_params(
                 False
@@ -599,7 +621,18 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
             param.stream = False
             # Unified approach: always use aquery_llm for both cases
             start_time = time.perf_counter()
-            result = await rag.aquery_llm(request.query, param=param)
+            receipt = None
+            if request.accounting is not None:
+                async with query_usage_scope(usage_authority,
+                        query_id=request.accounting.query_id, grant=request.accounting.grant,
+                        request_digest=retrieval_digest(request.query, request.mode),
+                        workspace=rag.workspace) as accounting_scope:
+                    result = await rag.aquery_llm(request.query, param=param)
+                receipt = accounting_scope.receipt
+                if not isinstance(receipt, dict) or receipt.get('state') != 'settled':
+                    raise QueryAccountingError('query_usage_receipt_unconfirmed')
+            else:
+                result = await rag.aquery_llm(request.query, param=param)
             response_time = round(time.perf_counter() - start_time, 3)
 
             # Extract LLM response and references from unified result
@@ -647,6 +680,7 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
                     references=references,
                     response_time=response_time,
                     llm_generated=llm_generated,
+                    **({'usage_receipt': receipt} if receipt is not None else {}),
                 )
             else:
                 return QueryResponse(
@@ -654,7 +688,10 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
                     references=None,
                     response_time=response_time,
                     llm_generated=llm_generated,
+                    **({'usage_receipt': receipt} if receipt is not None else {}),
                 )
+        except QueryAccountingError as e:
+            raise HTTPException(503, str(e)) from None
         except Exception as e:
             logger.error(f"Error processing query: {str(e)}", exc_info=True)
             raise internal_server_error(e)
@@ -985,6 +1022,8 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
             This endpoint is ideal for applications requiring flexible response delivery.
             Use streaming mode for real-time interfaces and non-streaming for batch processing.
         """
+        if request.accounting is not None:
+            raise HTTPException(422, 'Accounted queries use the retrieval-only /query endpoint')
         try:
             # Use the stream parameter from the request, defaulting to True if not specified
             stream_mode = request.stream if request.stream is not None else True
@@ -1524,6 +1563,8 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
             as structured data analysis typically requires source attribution.
         """
         try:
+            if request.accounting is not None:
+                raise HTTPException(422, 'Accounted queries use the retrieval-only /query endpoint')
             param = request.to_query_params(False)  # No streaming for data endpoint
             response = await rag.aquery_data(request.query, param=param)
 
@@ -1538,6 +1579,8 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
                     data={},
                     metadata={},
                 )
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error processing data query: {str(e)}", exc_info=True)
             raise internal_server_error(e)

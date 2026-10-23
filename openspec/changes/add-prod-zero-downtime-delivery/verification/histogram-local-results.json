@@ -1,0 +1,168 @@
+{
+  "date": "2026-10-22",
+  "record_kind": "histogram_boundary_local_verification",
+  "thresholds_seconds": [
+    0.2,
+    3.0,
+    20.0
+  ],
+  "layouts": {
+    "lightrag/performance.py": {
+      "finite_buckets": 19,
+      "added_boundaries_seconds": [
+        0.2,
+        3.0,
+        20.0
+      ]
+    },
+    "scripts/performance/query_load.py": {
+      "finite_buckets": 20,
+      "added_boundaries_seconds": [
+        0.2,
+        3.0
+      ]
+    }
+  },
+  "only_runtime_bucket_ast_changed": true,
+  "preexisting_test_bodies_unchanged": true,
+  "red": {
+    "failed": 20,
+    "passed": 10,
+    "deselected": 38
+  },
+  "green": {
+    "passed": 30,
+    "deselected": 38
+  },
+  "regression": {
+    "passed": 257,
+    "seconds": 17.0,
+    "command": "PYTHON=.venv/bin/python PYTHON_DOTENV_DISABLED=1 ./scripts/test.sh tests/performance tests/ci tests/api/test_query_performance_health.py tests/api/test_health_auth.py -q --tb=short"
+  },
+  "unknown_plan_offline_ready": false,
+  "unknown_plan_exit_code": 2,
+  "parameter_sha256": "d0737a273834e0a955d09907f441f19b226eb628e620890dea1ad2a4dbfbf202",
+  "parameters_byte_unchanged": true,
+  "null_parameters": 195,
+  "unapproved_scopes": 12,
+  "capability_scenarios": 57,
+  "tasks": {
+    "total": 53,
+    "complete": 41,
+    "remaining": 12
+  },
+  "relative_file_links": 171,
+  "baseline_files": 1137,
+  "changed_existing_files": [
+    "lightrag/performance.py",
+    "scripts/performance/README.md",
+    "scripts/performance/query_load.py",
+    "tests/performance/test_metrics.py",
+    "tests/performance/test_report.py",
+    "tests/performance/test_load.py",
+    "openspec/changes/add-prod-zero-downtime-delivery/tasks.md",
+    "openspec/changes/add-prod-zero-downtime-delivery/design.md",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/scenario-evidence.md",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/implementation-ledger.md",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/README.md",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/metrics.md",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/preflight-gaps.json",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/preflight-gaps.md",
+    "openspec/changes/add-prod-zero-downtime-delivery/specs/prod-delivery/spec.md"
+  ],
+  "all_unrelated_files_unchanged": true,
+  "test_workflows_and_configuration_unchanged": true,
+  "prod_gate_disabled": true,
+  "git_identity_unchanged": true,
+  "real_load_not_run": true,
+  "target_environment_not_accessed": true,
+  "capacity_accepted": false,
+  "production_accepted": false,
+  "static_checks": {
+    "ruff_check": "passed",
+    "ruff_format_check": "passed",
+    "openspec_scoped_strict": "passed",
+    "git_diff_check": "passed"
+  },
+  "final_review": {
+    "critical": 0,
+    "important": 0,
+    "minor_deferred": 1,
+    "scope": "this_histogram_slice_only",
+    "deferred_minor": "client mixed-rank and report zero-delta/overflow-quantile edge tests",
+    "capacity_or_production_endorsement": false
+  },
+  "follow_up_quantile_tests": {
+    "date": "2026-10-22",
+    "record_kind": "test_only_quantile_followup",
+    "resolved_historical_deferred_minor": true,
+    "remaining_deferred_minors_from_that_review": 0,
+    "new_parametrized_cases": 9,
+    "targeted": {
+      "passed": 9,
+      "deselected": 46
+    },
+    "memory_only_mutation_checks": [
+      {
+        "name": "client_floor_rank",
+        "expected_exit_code": 1,
+        "failed": 3,
+        "passed": 0,
+        "product_files_edited": false
+      },
+      {
+        "name": "client_p99_uses_p95",
+        "expected_exit_code": 1,
+        "failed": 3,
+        "passed": 0,
+        "product_files_edited": false
+      },
+      {
+        "name": "report_zero_becomes_zero",
+        "expected_exit_code": 1,
+        "failed": 1,
+        "passed": 1,
+        "product_files_edited": false
+      },
+      {
+        "name": "report_overflow_is_clamped",
+        "expected_exit_code": 1,
+        "failed": 4,
+        "passed": 0,
+        "product_files_edited": false
+      }
+    ],
+    "regression": {
+      "command": "PYTHON=.venv/bin/python PYTHON_DOTENV_DISABLED=1 ./scripts/test.sh tests/performance -q --tb=short",
+      "passed": 123,
+      "seconds": 9.58
+    },
+    "static_checks": {
+      "ruff_check": "passed",
+      "ruff_format_check": "passed",
+      "openspec_scoped_strict": "passed",
+      "git_diff_check": "passed"
+    },
+    "production_source_files_unchanged": true,
+    "preexisting_test_bodies_unchanged": true,
+    "parameter_source_and_execution_worksheets_byte_unchanged": true,
+    "null_parameters": 195,
+    "unapproved_scopes": 12,
+    "tasks": {
+      "total": 53,
+      "complete": 41,
+      "remaining": 12
+    },
+    "capability_scenarios": 57,
+    "valid_relative_file_links": 172,
+    "baseline_files": 1139,
+    "git_identity_unchanged": true,
+    "test_workflows_and_configuration_unchanged": true,
+    "prod_gate_disabled": true,
+    "all_unrelated_files_unchanged": true,
+    "real_load_not_run": true,
+    "target_environment_not_accessed": true,
+    "capacity_accepted": false,
+    "production_accepted": false
+  }
+}

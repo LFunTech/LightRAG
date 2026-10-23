@@ -83,7 +83,14 @@ def background_operation(*, exclusive=False, scan=False):
                         metadata=metadata,
                     )
                 )
-                if started is not None:
+                if (
+                    runtime.release is not None
+                    and started is not None
+                    and function.__name__
+                    in {"pipeline_index_texts", "pipeline_index_file"}
+                ):
+                    kwargs["_release_accepted"] = started
+                elif started is not None:
                     started.set()
                 token = _scan_scope.set(stack) if scan else None
                 try:

@@ -1,0 +1,51 @@
+{
+  "started_at_utc": "2026-10-22T16:35:05.271622+00:00",
+  "environment": "test",
+  "context": "default",
+  "cluster_uid": "d693583f-5864-4ee6-ab4f-c31302ffcc01",
+  "read_only": true,
+  "candidate_deployed": false,
+  "performance_accepted": false,
+  "pods": [
+    {
+      "namespace": "lightrag-test-01",
+      "pod": "lightrag-7bd8fd4f5-77x9r",
+      "uid": "da52276a-c9fb-4d4d-be4a-07ff49cf94ea",
+      "ready": true,
+      "restarts": 0,
+      "deployment_generation": 58,
+      "secret_uid": "498c30dc-2ade-4ea9-8cc5-ddf653298d30",
+      "secret_resource_version": "50004083",
+      "health": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0841
+      },
+      "pipeline_status": {
+        "http_status": 200,
+        "elapsed_seconds": 0.0701
+      },
+      "coordinator": {
+        "paused": false,
+        "pending_retries": 0,
+        "active_operations": 0,
+        "claimed_documents": 0,
+        "fenced": false,
+        "generation": 1,
+        "recovery_required": false,
+        "orphaned_operations": false,
+        "polling_active": true,
+        "discovery_stopped": false,
+        "polling_error_present": false
+      }
+    }
+  ],
+  "status_counts": {},
+  "stop_reason": "INVALID_DOCUMENT_COUNTS",
+  "prior_observer_failure": {
+    "evidence": "2026-10-23-test-preflight.json",
+    "classification": "Observer selector defect, not a cluster replica change",
+    "reason": "The original observer used app=lightrag; repository Deployment uses app.kubernetes.io/name and instance. No Pod was accessed in that attempt.",
+    "fix": "Derive the label selector from the live Deployment spec rather than guessing labels."
+  },
+  "finished_at_utc": "2026-10-22T16:35:06.126059+00:00"
+}

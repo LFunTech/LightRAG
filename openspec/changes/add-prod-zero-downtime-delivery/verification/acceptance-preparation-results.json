@@ -1,0 +1,99 @@
+{
+  "date": "2026-10-21",
+  "record_kind": "acceptance_preparation_document_validation",
+  "status": "local_documents_validated",
+  "scope": "OpenSpec documents only; no implementation or execution authorization",
+  "production_accepted": false,
+  "capacity_accepted": false,
+  "real_load_run": false,
+  "cluster_operations": false,
+  "database_operations": false,
+  "secret_access_or_import": false,
+  "git_publish": false,
+  "runtime_test_suites_run": false,
+  "openspec_strict_valid": true,
+  "apply_progress": {
+    "total": 53,
+    "complete": 41,
+    "remaining": 12
+  },
+  "audit": {
+    "parameter_null_leaves": 198,
+    "execution_approvals_false": 12,
+    "catalog": {
+      "WRITE_ROUTES": 19,
+      "SDK_WRITES": 17,
+      "BACKGROUND_OPERATIONS": 7
+    },
+    "http_paths_verified": 19,
+    "fault_cases": 26,
+    "metric_items": 20,
+    "capability_scenarios_unchanged": 57,
+    "tasks": {
+      "complete": 41,
+      "remaining": 12,
+      "total": 53
+    },
+    "valid_local_links": 121,
+    "baseline_snapshot_files": 1120,
+    "changed_existing_files": [
+      "openspec/changes/add-prod-zero-downtime-delivery/tasks.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/design.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/proposal.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/verification/implementation-ledger.md",
+      "openspec/changes/add-prod-zero-downtime-delivery/specs/prod-delivery/spec.md"
+    ],
+    "git_state_unchanged": true,
+    "prod_gate_disabled": true,
+    "non_openspec_source_unchanged": true
+  },
+  "reader_testing": {
+    "question_groups": 8,
+    "fresh_readers": 1,
+    "initial_substantive_issues": 2,
+    "fixed": 2,
+    "same_reader_recheck": "two_fixed_issues_only",
+    "unresolved_reported_issues": 0
+  },
+  "offline_draft_cli_exit_code": 2,
+  "document_sha256": {
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/README.md": "10d7dcd553df475f5392f3c1712b03511435de7ed5853512179bb961f97c69a2",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/isolated-job.md": "39d2270dba841393dc6b806f00486e23c75b3403015c1233d5602270ca194b7f",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/metrics.md": "c963a42ba7393d593e342d4cc75ab533f38c12b6c226089070465d6691be7fcf",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/parameters.json": "aa30933c300925a23c9d2db6f5367b90bf9bcbb0c8b50b20e0f701ef8b66271a",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/scenarios.md": "fdf134bf8a7a8fade696b0ca2be569bf8743586662470c8cf3726a7a9e1f67e1",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/stop-plan.md": "3df72e3565cd82b0cd1d761593ac9179bdf59e4aa427575def09af68e1ba9d47",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance/write-entrypoints.md": "2bdda6acc79ba316d0d71cc131c18fb6d492324d4b50dfcac12f18e10c79a102",
+    "openspec/changes/add-prod-zero-downtime-delivery/proposal.md": "2f1f551a0110b4aeab224bc5b7373acbfb1d4a16a4a6da301fbd4b5da6bc156d",
+    "openspec/changes/add-prod-zero-downtime-delivery/design.md": "26afceacb66fe3a102a6a9499bc962e2f2d99df75042069f08a7341ea89d6264",
+    "openspec/changes/add-prod-zero-downtime-delivery/tasks.md": "36f0de08dc062d8d0b65ba381c0dcf332996572f368433226a61e39520a833dd",
+    "openspec/changes/add-prod-zero-downtime-delivery/specs/prod-delivery/spec.md": "08587cb84eff75d508fd6c12152c90c53f993d1de3d84d318dc6c8789355da9e",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/implementation-ledger.md": "3a73f2acdd4d17d2c8f96ed377d97bddeae784489a5295e365d1c6851ad54ca0",
+    "openspec/changes/add-prod-zero-downtime-delivery/verification/acceptance-preparation-results.md": "83a4bc1a8fcf64e3d2ff2e3f60ac1b3bb0999fdb89be50039a74adac864fc56f"
+  },
+  "source_reference_sha256": {
+    "lightrag/api/release_commands.py": "b26726d49aa14fcfbf1bc0361318d88c77e6819065fe8cbaf77a69a45aa60fb2",
+    "lightrag/api/routers/document_routes.py": "4831b975a62bf8f3888435da739736ba79af70d9bbc28778863136c531aaf438",
+    "lightrag/api/routers/graph_routes.py": "3a2cb8aad838b55b2c3c9304d4ad187fd72a7a6646587356047ee43d6eeb5508",
+    "lightrag/distributed/release/runtime.py": "3325743a60cb0bad3dadff63b62b4b05355dbbcfc00883937aa43ca2b18ace19",
+    "lightrag/distributed/release/store.py": "b6f37fefea40cfa53ad9728bd1e28d61f1cb6be5e50fc2dfc6c4d171241e37f3",
+    "lightrag/distributed/release/evidence.py": "39b14675550941f9f0a78269b28c083f39f0cbe8c9faee5d02ccc23961644e1e",
+    "lightrag/performance.py": "3c3e3eee37883d38f731eeb2556fb84f310a25513901dd56035fe0c0e456630b",
+    "scripts/performance/query_load.py": "817641cd5fd7d4863acbd78c5895eb9675560bde3435597e64f1b34fc024c2e0",
+    "scripts/performance/report.py": "0da6a68fc4d89fef5973274f1b5e4b8864953f9a6aa3712d7b3845e883bfc488"
+  },
+  "logs": [
+    {
+      "path": "temp/prod-delivery-implementation/acceptance-preparation-openspec.log",
+      "sha256": "3801952317aebf234a2f5ac3b45a0c88a3ec645d3e45dd02949845393e70d156"
+    },
+    {
+      "path": "temp/prod-delivery-implementation/acceptance-preparation-audit.json",
+      "sha256": "dd6e7f22c18107735ed0375215ef6535270258d5b1ea04e670922838d1e1d1fe"
+    },
+    {
+      "path": "temp/prod-delivery-implementation/acceptance-preparation-non-executable.log",
+      "sha256": "3c745590a79db01ffc9833de681f6a4f57535128c8ea967fa1e0389c06c28ce5"
+    }
+  ]
+}

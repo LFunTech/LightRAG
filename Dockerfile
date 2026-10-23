@@ -60,6 +60,7 @@ RUN uv sync --frozen --no-dev --extra api --extra offline --no-install-project -
 
 # Copy project sources after the dependency layer.
 COPY lightrag/ ./lightrag/
+COPY lightrag_delivery/ ./lightrag_delivery/
 COPY --from=frontend-builder /app/lightrag/api/webui ./lightrag/api/webui
 COPY docker/tiktoken-cache/ /app/tiktoken_cache/
 

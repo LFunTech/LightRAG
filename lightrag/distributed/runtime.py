@@ -6,7 +6,7 @@ Keep runtime objects off dataclass fields and API configuration dictionaries.
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import wraps
@@ -26,6 +26,7 @@ class _Permit:
     exclusive: bool
     maintenance: bool = False
     active: bool = True
+    kind: str = ""
 
 
 _current: ContextVar[_Permit | None] = ContextVar("distributed_operation", default=None)
@@ -60,6 +61,7 @@ class DistributedRuntime:
         self._db_init_lock = asyncio.Lock()
         self._init_lock = asyncio.Lock()
         self._pg_maintenance_schema_checked = False
+        self.release = None
 
     async def initialize(self):
         if self.closed:
@@ -68,7 +70,16 @@ class DistributedRuntime:
             )
         async with self._init_lock:
             if not self.initialized:
+                if (
+                    self.release is not None
+                    and getattr(self, "storage_migration_plan", None) is not None
+                ):
+                    from lightrag.provisioning.runtime import verify_runtime_storage
+
+                    await verify_runtime_storage(self)
                 await self.coordinator.initialize()
+                if self.release is not None:
+                    await self.release.initialize()
                 self.initialized = True
 
     def permit(self, *, exclusive=False, maintenance=False) -> _Permit:
@@ -104,18 +115,37 @@ class DistributedRuntime:
             return
         if self.closed:
             raise OperationOwnershipError("Distributed runtime is closed")
+        read_failure = None
         try:
-            async with self.coordinator.operation(
-                kind, exclusive=exclusive, metadata=metadata
-            ) as operation:
-                permit = _Permit(self, operation, exclusive, maintenance)
-                token = _current.set(permit)
-                try:
-                    yield operation
-                finally:
-                    # Children inherit this object, not a reusable bearer token.
-                    permit.active = False
-                    _current.reset(token)
+            async with AsyncExitStack() as stack:
+                if self.release is not None:
+                    await stack.enter_async_context(
+                        self.release.operation(
+                            kind, maintenance=maintenance, detached=detached
+                        )
+                    )
+                async with self.coordinator.operation(
+                    kind, exclusive=exclusive, metadata=metadata
+                ) as operation:
+                    if self.release is not None:
+                        await self.release.bind_operation(operation)
+                    permit = _Permit(self, operation, exclusive, maintenance, kind=kind)
+                    token = _current.set(permit)
+                    try:
+                        yield operation
+                    except BaseException as error:
+                        if (
+                            self.release is None
+                            or not await self.release.confirm_read_end(kind, operation)
+                        ):
+                            raise
+                        read_failure = error
+                    finally:
+                        # Children inherit this object, not a reusable bearer token.
+                        permit.active = False
+                        _current.reset(token)
+                if read_failure is not None:
+                    raise read_failure
         finally:
             if self._close_requested:
                 await self.close()
@@ -150,7 +180,7 @@ class DistributedRuntime:
             storage.db = self.db
             if storage.db.workspace and storage.db.workspace != self.workspace:
                 raise ValueError("PostgreSQL workspace override disagrees with runtime")
-            if permit.maintenance:
+            if permit.maintenance and self.release is None:
                 if isinstance(storage, PGVectorStorage):
                     existing = await self.db.query(
                         "SELECT to_regclass($1) AS table_name",
@@ -288,6 +318,17 @@ def operation_guard(*, exclusive=False):
             runtime = get_runtime(self)
             if runtime is None:
                 return await function(self, *args, **kwargs)
+            if runtime.release is not None and _current.get() is None:
+                from .release.runtime import READ_OPERATIONS
+
+                if function.__name__ in READ_OPERATIONS:
+                    return await runtime.release.query(
+                        function, self, args, kwargs, exclusive=exclusive
+                    )
+                if not runtime.release.has_ticket():
+                    return await runtime.release.submit_sdk(
+                        function, self, args, kwargs
+                    )
             async with runtime.operation(function.__name__, exclusive=exclusive):
                 try:
                     result = await function(self, *args, **kwargs)
@@ -333,6 +374,13 @@ def storage_write(function):
         permit = runtime.permit(
             exclusive=function.__name__ in {"drop", "repair_source_conflict"}
         )
+        if runtime.release is not None:
+            from .release.runtime import INITIAL_OPERATIONS
+
+            if not (
+                function.__name__ == "initialize" and permit.kind in INITIAL_OPERATIONS
+            ):
+                await runtime.release.require_writer()
         await runtime.coordinator.heartbeat(permit.operation)
         token = _write.set(
             (runtime, type(self).__name__, self.namespace, function.__name__)
@@ -368,10 +416,14 @@ async def physical_write():
         return
     runtime, backend, namespace, method = descriptor
     permit = runtime.permit()
-    async with runtime.coordinator.mutation(
-        permit.operation, backend, namespace, method
-    ):
-        yield
+    async with AsyncExitStack() as stack:
+        if runtime.release is not None:
+            await runtime.release.require_writer()
+            await stack.enter_async_context(runtime.release.lifecycle.track("backend"))
+        async with runtime.coordinator.mutation(
+            permit.operation, backend, namespace, method
+        ):
+            yield
 
 
 def configure_runtime(rag) -> DistributedRuntime | None:
@@ -462,12 +514,56 @@ def configure_runtime(rag) -> DistributedRuntime | None:
     }
     if object_storage_provider is not None:
         manifest["object_storage"] = {"provider": object_storage_provider}
+    from .release.config import ReleaseConfig
+
+    release_config = ReleaseConfig.from_env(distributed_writes=rag.distributed_writes)
+    if release_config is not None:
+        from lightrag_delivery.profile import physical_profile_hash
+
+        profile = dict(os.environ)
+        profile.update(
+            {
+                "LIGHTRAG_DEPLOYMENT_ID": deployment,
+                "WORKSPACE": rag.workspace,
+                "POSTGRES_HOST": str(pg["host"]),
+                "POSTGRES_PORT": str(pg["port"]),
+                "POSTGRES_DATABASE": str(pg["database"]),
+                "POSTGRES_VECTOR_INDEX_TYPE": str(pg["vector_index_type"]),
+                "POSTGRES_HNSW_M": str(pg["hnsw_m"]),
+                "POSTGRES_HNSW_EF": str(pg["hnsw_ef"]),
+                "WORKING_DIR": manifest["paths"]["working"],
+                "INPUT_DIR": manifest["paths"]["input"],
+                "HUGEGRAPH_URI": graph.uri,
+                "HUGEGRAPH_GRAPHSPACE": graph.graphspace,
+                "HUGEGRAPH_GRAPH": graph.graph,
+                "EMBEDDING_MODEL": model,
+                "EMBEDDING_DIM": str(dimension),
+            }
+        )
+        physical_hash = physical_profile_hash(profile)
+        if physical_hash != release_config.profile_hash:
+            raise ValueError("Release physical profile differs from enrollment")
+        manifest["release_protocol"] = 1
+        manifest["release_physical_profile"] = physical_hash
+        from lightrag.provisioning.plan import build_plan
+        from lightrag.provisioning.manifest import production_manifest
+
+        migration_plan = build_plan(profile)
+        if production_manifest(profile) != manifest:
+            raise ValueError("Storage migration manifest differs from the runtime")
     runtime = DistributedRuntime(
         PostgresCoordinator(dsn, deployment, rag.workspace, manifest),
         workspace=rag.workspace,
     )
     # Private runtime-only configuration: never a dataclass or exported config.
     runtime.pg_config = pg
+    if release_config is not None:
+        runtime.storage_migration_plan = migration_plan
+        runtime.release_require_privileges = True
+        runtime.coordinator._release_context = release_config
+        from .release.runtime import ReleaseRuntime
+
+        runtime.release = ReleaseRuntime(runtime, rag, release_config)
     return runtime
 
 
@@ -490,6 +586,8 @@ def finalization_guard(function):
         runtime = get_runtime(self)
         if runtime is None:
             return await function(self, *args, **kwargs)
+        if runtime.release is not None:
+            return await runtime.release.close_instance(function, self, args, kwargs)
         from .pipeline import stop_polling
 
         await stop_polling(self)
