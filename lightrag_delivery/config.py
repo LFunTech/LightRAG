@@ -224,13 +224,22 @@ def load_prod_config(path: Path) -> ProdConfig:
         r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", _text(data["repo"], "repo")
     ):
         raise ProdConfigError("repo: invalid identity")
+    kubernetes_only = (
+        isinstance(data["ingress"], dict)
+        and data["ingress"].get("mode") == "kubernetes"
+    )
+    ephemeral = kubernetes_only and data["target"]["storage_class"] is None
     for field, value in data["target"].items():
+        if field == "storage_class" and ephemeral:
+            continue
         _text(value, f"target.{field}")
         if not re.fullmatch(r"[A-Za-z0-9_.\-/]+", value) or ".." in value.split("/"):
             raise ProdConfigError(f"target.{field}: invalid identifier")
         if re.search(r"(^|[_\-/])test([_\-/]|$)", value, re.I):
             raise ProdConfigError(f"target.{field}: test target forbidden")
     for field in ("namespace", "ingress_class", "storage_class"):
+        if field == "storage_class" and ephemeral:
+            continue
         if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", data["target"][field]):
             raise ProdConfigError(f"target.{field}: invalid Kubernetes name")
     if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", data["target"]["host"]):
@@ -244,7 +253,8 @@ def load_prod_config(path: Path) -> ProdConfig:
             )
     isolation = data["isolation"]
     if (
-        isolation["acl_verified"] is not True
+        (isolation["acl_verified"] is not True and not kubernetes_only)
+        or type(isolation["acl_verified"]) is not bool
         or not isinstance(isolation["test_scopes"], list)
         or not isolation["test_scopes"]
     ):
@@ -469,7 +479,12 @@ INGRESS_FIELDS = {
 def validate_delivery_profile(data):
     import ipaddress
 
-    _keys(data["runtime"], RUNTIME_FIELDS, "runtime")
+    runtime_optional = (
+        ({"POSTGRES_SSL_MODE", "S3_REGION"} & set(data["runtime"]))
+        if isinstance(data["runtime"], dict)
+        else set()
+    )
+    _keys(data["runtime"], RUNTIME_FIELDS | runtime_optional, "runtime")
     optional = (
         {"first_release_credential_exception"}
         if isinstance(data["onboarding"], dict)
@@ -477,51 +492,75 @@ def validate_delivery_profile(data):
         else set()
     )
     _keys(data["onboarding"], ONBOARDING_FIELDS | optional, "onboarding")
-    ingress_fields = INGRESS_FIELDS
-    if isinstance(data["ingress"], dict) and data["ingress"].get("mode") == "edgeone":
+    kubernetes_only = (
+        isinstance(data["ingress"], dict)
+        and data["ingress"].get("mode") == "kubernetes"
+    )
+    ingress_fields = (
+        {"provider", "mode", "load_balancer_id", "backend_port", "path"}
+        if kubernetes_only
+        else INGRESS_FIELDS
+    )
+    if (
+        not kubernetes_only
+        and isinstance(data["ingress"], dict)
+        and data["ingress"].get("mode") == "edgeone"
+    ):
         ingress_fields = ingress_fields | {"edgeone"}
     _keys(data["ingress"], ingress_fields, "ingress")
     _keys(data["network"], {"ingress_cidrs", "egress"}, "network")
     if data["target"]["ingress_class"] != "qcloud":
         raise ProdConfigError("target.ingress_class: qcloud required")
     i, o, r = data["ingress"], data["onboarding"], data["runtime"]
-    if (
-        i["provider"] != "qcloud"
-        or not isinstance(i["mode"], str)
-        or not isinstance(i["protocol"], str)
-        or (i["mode"], i["protocol"]) not in {("direct", "HTTPS"), ("edgeone", "HTTP")}
-        or i["backend_port"] != 9621
-        or i["path"] != "/"
-        or i["force_close_disabled"] is not True
-    ):
-        raise ProdConfigError(
-            "ingress: explicit cloud HTTPS termination and direct HTTP backend contract required"
-        )
-    if i["mode"] == "edgeone":
-        from .edgeone import validate_profile
-
-        validate_profile(i["edgeone"], host=data["target"]["host"])
-        if i["certificate_id"] != "":
-            raise ProdConfigError(
-                "ingress: EdgeOne HTTP origin must not configure CLB TLS"
-            )
-    else:
-        _text(i["certificate_id"], "ingress.certificate_id")
-    for field, prefix in [
-        ("load_balancer_id", "lb-"),
-        ("listener_id", "lbl-"),
-        ("location_id", "loc-"),
-    ]:
-        if not isinstance(i[field], str) or not re.fullmatch(
-            prefix + r"[a-z0-9]+", i[field]
+    if kubernetes_only:
+        if (
+            i["provider"] != "qcloud"
+            or type(i["backend_port"]) is not int
+            or i["backend_port"] != 9621
+            or i["path"] != "/"
+            or not isinstance(i["load_balancer_id"], str)
+            or not re.fullmatch(r"lb-[a-z0-9]+", i["load_balancer_id"])
         ):
-            raise ProdConfigError("ingress." + field + ": invalid identifier")
-    for field in (
-        "region",
-        "controller_version",
-        "streaming_evidence_id",
-    ):
-        _text(i[field], "ingress." + field)
+            raise ProdConfigError("ingress: explicit Kubernetes HTTP profile required")
+    else:
+        if (
+            i["provider"] != "qcloud"
+            or not isinstance(i["mode"], str)
+            or not isinstance(i["protocol"], str)
+            or (i["mode"], i["protocol"])
+            not in {("direct", "HTTPS"), ("edgeone", "HTTP")}
+            or i["backend_port"] != 9621
+            or i["path"] != "/"
+            or i["force_close_disabled"] is not True
+        ):
+            raise ProdConfigError(
+                "ingress: explicit cloud HTTPS termination and direct HTTP backend contract required"
+            )
+        if i["mode"] == "edgeone":
+            from .edgeone import validate_profile
+
+            validate_profile(i["edgeone"], host=data["target"]["host"])
+            if i["certificate_id"] != "":
+                raise ProdConfigError(
+                    "ingress: EdgeOne HTTP origin must not configure CLB TLS"
+                )
+        else:
+            _text(i["certificate_id"], "ingress.certificate_id")
+        for field, prefix in [
+            ("load_balancer_id", "lb-"),
+            ("listener_id", "lbl-"),
+            ("location_id", "loc-"),
+        ]:
+            if not isinstance(i[field], str) or not re.fullmatch(
+                prefix + r"[a-z0-9]+", i[field]
+            ):
+                raise ProdConfigError("ingress." + field + ": invalid identifier")
+        for field in (
+            "region",
+            "controller_version",
+            "streaming_evidence_id",
+        ):
+            _text(i[field], "ingress." + field)
     for field, value in o.items():
         if field == "first_release_credential_exception":
             from .credentials import CredentialException
@@ -551,6 +590,15 @@ def validate_delivery_profile(data):
     for field, value in r.items():
         if not isinstance(value, str) or any(ord(c) < 32 for c in value):
             raise ProdConfigError("runtime." + field + ": string required")
+    if "POSTGRES_SSL_MODE" in r and r["POSTGRES_SSL_MODE"] not in {
+        "disable",
+        "require",
+        "verify-ca",
+        "verify-full",
+    }:
+        raise ProdConfigError("runtime.POSTGRES_SSL_MODE: explicit transport required")
+    if "S3_REGION" in r and not re.fullmatch(r"[a-z0-9-]+", r["S3_REGION"]):
+        raise ProdConfigError("runtime.S3_REGION: explicit region required")
     if (
         r["LLM_BINDING"] != "openai"
         or r["EMBEDDING_BINDING"] != "openai"
@@ -610,6 +658,8 @@ def validate_delivery_profile(data):
         raise ProdConfigError(
             "runtime: reranker requires a separately budgeted verified profile"
         )
+    if kubernetes_only and data["network"] == {"ingress_cidrs": [], "egress": []}:
+        return
     for cidr in data["network"]["ingress_cidrs"]:
         try:
             net = ipaddress.ip_network(cidr, strict=True)

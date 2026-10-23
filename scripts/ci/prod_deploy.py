@@ -28,28 +28,48 @@ class Kubectl:
             namespace,
         ]
 
-    def run(self, *args, body=None):
-        result = subprocess.run(
-            [*self.prefix, *args],
-            input=json.dumps(body) if body is not None else None,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+    def run(self, *args, body=None, timeout=30):
+        if type(timeout) not in (int, float) or timeout <= 0:
+            raise ProdConfigError("Finite Kubernetes request budget required")
+        try:
+            result = subprocess.run(
+                [
+                    *self.prefix,
+                    f"--request-timeout={max(timeout * 0.9, 0.001):.3f}s",
+                    *args,
+                ],
+                input=json.dumps(body) if body is not None else None,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            raise ProdConfigError(
+                "Kubernetes client timed out; remote outcome retained without retry"
+            ) from None
         if result.returncode:
             raise ProdConfigError(
                 "Kubernetes operation failed; protected diagnostics required"
             )
         return result.stdout
 
-    def get(self, kind, name):
-        output = self.run("get", kind, name, "--ignore-not-found", "-o", "json")
+    def get(self, kind, name, *, timeout=30):
+        output = self.run(
+            "get", kind, name, "--ignore-not-found", "-o", "json", timeout=timeout
+        )
         return json.loads(output) if output.strip() else None
 
-    def create_immutable(self, resource):
-        old = self.get(resource["kind"], resource["metadata"]["name"])
+    def create_immutable(self, resource, *, timeout=30):
+        deadline = time.monotonic() + timeout
+        old = self.get(resource["kind"], resource["metadata"]["name"], timeout=timeout)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ProdConfigError(
+                "Kubernetes observation budget expired; no further mutation attempted"
+            )
         if old is None:
-            self.run("create", "-f", "-", body=resource)
+            self.run("create", "-f", "-", body=resource, timeout=remaining)
             return
         wanted = resource.get("data", {})
         if resource["kind"] == "Secret":
@@ -64,10 +84,25 @@ class Kubectl:
 def verified_inputs(
     config, *, image_record, source_archive, source_record, environment
 ):
-    if "first_release_credential_exception" in config.onboarding:
+    if (
+        "first_release_credential_exception" in config.onboarding
+        or config.ingress["mode"] == "kubernetes"
+    ):
         raise ProdConfigError(
             "First-release credentials require explicit initial delivery, not ordinary upgrade"
         )
+    return verified_artifact_inputs(
+        config,
+        image_record=image_record,
+        source_archive=source_archive,
+        source_record=source_record,
+        environment=environment,
+    )
+
+
+def verified_artifact_inputs(
+    config, *, image_record, source_archive, source_record, environment
+):
     event, tag, commit, pipeline, repo = (
         environment.get(k, "")
         for k in (
@@ -228,7 +263,7 @@ def render_control_job(config, identity, environment, *, image, attempt):
     return configmap, secret, job
 
 
-def validate_target(kube, config):
+def validate_cluster_identity(kube, config):
     raw = json.loads(kube.run("config", "view", "--minify", "-o", "json"))
     clusters = raw.get("clusters", [])
     if len(clusters) != 1:
@@ -247,6 +282,10 @@ def validate_target(kube, config):
         obj = kube.get("namespace", ns)
         if obj is None or obj["metadata"]["uid"] != config.onboarding[key]:
             raise ProdConfigError("Cluster/namespace UID differs")
+
+
+def validate_target(kube, config):
+    validate_cluster_identity(kube, config)
     for verb, resource in [
         ("create", "jobs.batch"),
         ("get", "pods"),
@@ -321,35 +360,84 @@ def main(argv=None):
     parser.add_argument("--source-record", required=True, type=Path)
     parser.add_argument("--kubeconfig", type=Path)
     parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--initial-settings", type=Path)
     args = parser.parse_args(argv)
     try:
         config = load_prod_config(args.config)
-        identity, runtime, image = verified_inputs(
-            config,
-            image_record=json.loads(args.image_record.read_text()),
-            source_archive=args.source_archive,
-            source_record=json.loads(args.source_record.read_text()),
-            environment=os.environ,
-        )
-        resources = render_control_job(
-            config,
-            identity,
-            runtime,
-            image=image,
-            attempt=os.environ["CI_PIPELINE_NUMBER"],
-        )
-        if args.execute:
-            if not args.kubeconfig:
-                raise ProdConfigError("Explicit prod kubeconfig required")
-            result = execute(
-                Kubectl(args.kubeconfig, config.target["namespace"]), config, resources
+        if args.initial_settings is not None:
+            from .prod_initial import (
+                verified_initial_inputs,
+                render_initial_job,
+                execute_initial,
             )
+
+            settings = json.loads(args.initial_settings.read_text())
+            identity, runtime, image = verified_initial_inputs(
+                config,
+                settings=settings,
+                image_record=json.loads(args.image_record.read_text()),
+                source_archive=args.source_archive,
+                source_record=json.loads(args.source_record.read_text()),
+                environment=os.environ,
+            )
+            operator = json.loads(os.environ.get("LIGHTRAG_PROD_OPERATOR_JSON", ""))
+            resources = render_initial_job(
+                config,
+                identity,
+                runtime,
+                settings,
+                operator,
+                image=image,
+                attempt=os.environ["CI_PIPELINE_NUMBER"],
+            )
+            if args.execute:
+                if not args.kubeconfig:
+                    raise ProdConfigError("Explicit prod kubeconfig required")
+                result = execute_initial(
+                    Kubectl(args.kubeconfig, config.target["namespace"]),
+                    config,
+                    identity,
+                    runtime,
+                    settings,
+                    resources,
+                    image=image,
+                )
+            else:
+                result = {
+                    "planned": True,
+                    "boundary": "kubernetes",
+                    "identity": identity,
+                    "resources": [r["kind"] for r in resources],
+                }
         else:
-            result = {
-                "planned": True,
-                "identity": identity,
-                "resources": [r["kind"] for r in resources],
-            }
+            identity, runtime, image = verified_inputs(
+                config,
+                image_record=json.loads(args.image_record.read_text()),
+                source_archive=args.source_archive,
+                source_record=json.loads(args.source_record.read_text()),
+                environment=os.environ,
+            )
+            resources = render_control_job(
+                config,
+                identity,
+                runtime,
+                image=image,
+                attempt=os.environ["CI_PIPELINE_NUMBER"],
+            )
+            if args.execute:
+                if not args.kubeconfig:
+                    raise ProdConfigError("Explicit prod kubeconfig required")
+                result = execute(
+                    Kubectl(args.kubeconfig, config.target["namespace"]),
+                    config,
+                    resources,
+                )
+            else:
+                result = {
+                    "planned": True,
+                    "identity": identity,
+                    "resources": [r["kind"] for r in resources],
+                }
         print(json.dumps(result, sort_keys=True))
         return 0
     except Exception as error:

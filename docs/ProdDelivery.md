@@ -1,12 +1,29 @@
 # 生产蓝绿发布手册
 
-## 当前边界
+## 当前首发边界：仅 Kubernetes（用户明确要求，2026-10-23）
+
+本节覆盖下文历史云入口门禁对本次首发的要求。流水线只负责指定K8s资源与4×1 Pod就绪，不调用或要求CLB/EdgeOne API、云身份、listener/location/certificate、EO hash、公网HTTPS/流式或性能报告。用户已授权启用正式tag的prod部署；`-test/-pre`仍排除，运行器仍要求enabled配置及显式initial settings。K8s只提供HTTP，不创建TLS Secret或挂载证书；云侧TLS最高规则不变。
+
+首次环境使用`ingress.mode=kubernetes`（provider=qcloud、现有load_balancer_id、backend_port=9621、path=/），不是伪造已有Blue再走普通升级。配置保留真实`acl_verified=false`和未知模型额度；容量字段在本模式仅表示申请的连接/并发上限，不宣称后端/供应商容量已验收。普通自动4+4退休不由本次首发批准，不拿EndpointSlice冒充CLB传播证明。
+
+`LIGHTRAG_PROD_INITIAL_RELEASE_JSON`提供独立非敏感settings：version、approval_id、confirm_maintenance/confirm_empty_target/confirm_shared_credentials、expected_plan_hash、graph_wait_seconds、job_wait_seconds、startup_wait_seconds。写确认必须来自本次输入；观察预算不杀Job，不设置自动重试。初始化Job名称按scope固定，immutable执行claim绑定首次identity/settings；不同pipeline不能另建Job重放，claim存在而Job缺失也必须停下审计。kubectl请求/子进程及阶段观察均有剩余时间预算，超时后的成功观察不允许继续创建应用或入口。`LIGHTRAG_PROD_OPERATOR_JSON`为仅4个专用operator字段的受保护JSON：LIGHTRAG_STORAGE_MIGRATION_DSN、LIGHTRAG_RELEASE_OPERATOR_DSN、LIGHTRAG_GRAPH_MIGRATION_USERNAME/PASSWORD；独立于runtime、不得含云凭据。首发共用专用账号仍受下文已批准例外约束，不需要CREATEROLE。
+
+`scripts/ci/deploy-prod.sh`将上述输入写入私有临时目录，调用既有prod runner的显式`--initial-settings`分支。复用原源码归档/digest，不重建平台/基础组件。CI先核对目标集群与namespace，拒绝已有不同应用；只建立app ServiceAccount、显式选用的网络策略、版本化输入和固定镜像初始化Job。Job依次调用已有apply→verify→register→enroll；失败/未知结果即停并保留账本/Job，不自动recover、重放或rollback。然后建立Blue4×1，等待原`/ready`（包含coordinator/witness/polling）使Pod Ready，再创建HTTP Service/Ingress。结果为`KUBERNETES_READY`，明确`external_entry_verified=false`、`capacity_accepted=false`。
+
+当`target.storage_class=null`时，`working_storage`是每Pod emptyDir sizeLimit，**不创建PVC**。仅允许已有PGKV/PGDocStatus/PGVector/HugeGraph与S3、关闭本地文件入库；原文/解析产物持久化在S3，PG/图保存持久业务，临时盘仅用于下载解析/日志等scratch。既有RWX profile不改。可选runtime的POSTGRES_SSL_MODE及S3_REGION显式记录传输与签名地域，不修改原test。
+
+本次network显式空列表表示不新建NetworkPolicy，保留namespace既有策略；不推测CLB源网段，也不以0/0或拆分网段绕过旧profile限制。
+
+下文原cloud-aware普通升级能力仍保留，但其流程/证据不作为本次K8s首发结果，不代表真实入口、查询连续、蓝绿或1000QPS已验收。最终真实tag、流水线和Pod结果另记，不以本地测试或构建成功当部署。
+
+
+## 历史 cloud-aware 模式边界（不作为本次首发门禁）
 
 - 在原 test 的唯一源码归档、COS 传递、Kaniko 构建及平台/revision/digest 校验链上新增生产部署；不复制第二套构建。
 - 原四个 workflow、test 脚本、五个 workspace、base/test overlay 和 Secret 映射保持原样。
-- `.woodpecker/deploy-prod.yml` 仍以常量 `evaluate: 'false'` 静态禁用。解除此 gate 需要单独生产启用授权，不能删除正式 tag 限制：workflow 排除 `-test`/`-pre`，接收 prod 凭据的 step 另有独立严格 `vX.Y.Z` 条件。脚本还校验事件、仓库、tag、commit、归档记录、digest 和 enabled onboarding。
+- 历史准备阶段 `.woodpecker/deploy-prod.yml` 以常量false禁用；本次按用户明确授权启用K8s首发，保留正式tag限制：workflow 排除 `-test`/`-pre`，接收 prod 凭据的 step 另有独立严格 `vX.Y.Z` 条件。脚本还校验事件、仓库、tag、commit、归档记录、digest 和 enabled onboarding。
 - **禁止应用侧 Kubernetes TLS**：TLS 终止与证书管理放在云侧 EdgeOne/CLB；K8s Service/Pod 仅 HTTP，不创建/复制 TLS Secret、不挂载证书或私钥、不在应用 Pod/Ingress 控制器开启 TLS。不再需要 `target.tls_secret`，旧字段直接拒绝；Pod 显式 `SSL=false`，渲染及启动均拒绝应用 SSL/证书路径。Ingress 中的云侧证书 ID 仅指示外部 CLB，不包含证书材料；云侧 HTTPS/入口核验仍是门禁。其他业务和控制面 TLS 不变。
-- 本地代码/测试通过不代表 Tencent CLB、跨节点或高并发验收通过。2026-10-23 用户另行授权本次生产必需改动的提交、推送和正式生产 tag；该 Git 授权不替代运行账号隔离、初始化、入口及实际验收。最新准备快照见[首次发布准备记录](../openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-first-release-preparation.md)，生产静态 gate 仍关闭，尚无应用上线或切流完成证据。
+- 本地代码/测试通过不代表 Tencent CLB、跨节点或高并发验收通过。2026-10-23 用户另行授权本次生产必需改动的提交、推送和正式生产 tag；该 Git 授权不替代运行账号隔离、初始化、入口及实际验收。最新准备快照见[首次发布准备记录](../openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-first-release-preparation.md)，此为历史准备记录；本次K8s首发的实际流水线结果另列，不代表外部切流完成。
 
 ## 架构与容量
 

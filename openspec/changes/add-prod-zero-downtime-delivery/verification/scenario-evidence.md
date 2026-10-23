@@ -126,3 +126,11 @@ K8s/CLB/入口 fake。真实 4/8 Pod、TKE/CLB、多节点存储、故障/容量
 | --- | --- | --- |
 | A dedicated non-superuser initializes the approved first Blue | `tests/provisioning/test_shared_credentials.py`：隔离本地PG中无CREATEROLE等权限的专用owner实际apply/重复/verify/register、7项MockHTTP图DDL；实际release store持久批准及runtime注册；`tests/ci/test_prod_shared_credentials.py`：显式Job确认、配置hash及4×1 Blue渲染 | 共用owner的DDL/控制表风险已获批准；真实prod未迁移/登记/部署，MockHTTP不代表HugeGraph实测，初始流水线编排仍待实现 |
 | A shared credential exception is reused or drifts | 三份`test_shared_credentials.py`：缺失/畸形/跨scope/profile/tag/身份拒绝、current/session用户与权限、持久policy/epoch/phase漂移、5个初始化写入口副作用前拒绝、enroll DSN host/port连接前拒绝、Job独立boolean执行确认及普通pipeline/deliver/store升级副作用前拒绝 | 默认test无例外路径不变；不是永久权限豁免，真实后续4+4需先完成身份整改及另行验收 |
+
+## prod-delivery K8s-only 首次部署（新增3项，总计71场景）
+
+| 场景 | 本地实现/证据 | 边界/未验证部分 |
+| --- | --- | --- |
+| The first target has no running Blue | `tests/ci/test_prod_initial.py`：实际CLI初次分支、产物/目标校验、4×1创建顺序、固定digest、无云API/应用TLS；`tests/provisioning/test_initial.py`：隔离PG实际apply→verify→register→enroll及持久首发批准 | 图服务为MockHTTP，真实TKE结果另列；不认领公网入口/模型额度/容量 |
+| Initial deployment has an uncertain or failed result | 同CI测试：scope固定Job/immutable claim，不同pipeline/输入/缺失Job拒绝重放；阶段失败、错误digest、kubectl读写预算/迟到成功均停止，保留远端现场 | 没有自动recover/rollback/重启，真实网络未知故障未注入 |
+| Production objects are durable outside the Pod | 同CI测试：null storage只允许S3+PG/图，拒绝文件storage/local ingestion；有界emptyDir、不造PVC；实际输入JSONSchema独立校验 | 不宣称S3真实ACL/写入已验；原RWX/test配置不改 |

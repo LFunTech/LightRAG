@@ -6,11 +6,12 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_prod_workflow_is_statically_disabled_and_has_no_test_credentials():
+def test_authorized_prod_workflow_requires_formal_tag_and_has_no_test_credentials():
     workflow = yaml.safe_load((ROOT / ".woodpecker/deploy-prod.yml").read_text())
     assert (
         workflow["when"][0]["event"] == "tag"
-        and workflow["when"][0]["evaluate"] == "false"
+        and workflow["when"][0]["evaluate"]
+        == 'CI_COMMIT_TAG matches "^v[0-9]+[.][0-9]+[.][0-9]+$"'
     )
     assert set(workflow["when"][0]["ref"]["exclude"]) == {
         "refs/tags/*-test",

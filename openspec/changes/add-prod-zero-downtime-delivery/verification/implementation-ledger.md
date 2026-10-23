@@ -448,3 +448,14 @@
 - Final review: 0 Critical/3 Important/0 Minor。逐项核对均可达：初始化写未查持久scope、enroll DSN未绑物理host/port、Job自动代填执行确认。同一fix pass补21项反例，先21 RED；自动缩进错误造成19 passed/2语法failed后立即修复，21 GREEN，不把语法失败当行为RED。新增持久首发状态统一检查（PG/图/登记/授权入口）、连接前精确DSN检查及Job独立boolean确认，默认旧Job不强制新增字段。
 - Final: 补准确operator目标enroll接线正例、只读Job及类型/未批准反例；真实隔离PG中同持久批准可重复apply、后续epoch/Green/COMPLETED立即拒绝，7项图POST未增加。定向最终646 passed/144 skipped/2既有warning（5.33s），PG联合240 passed/2既有warning（8.00s），PG已停；20文件Ruff/format、5配置strict lint、17项源码/资源wheel/sdist比对及scoped OpenSpec通过。无复审，见本轮审查报告。
 - Task 12.1–12.6: complete（本地能力）；当前53/65、68场景，原12真实待办不变。Ruling: 不因共用账号获准就启用尚无首次初始化编排的普通prod升级流水线或再打只构建tag — 不虚构Blue且云只读观测仍被拒绝 — 应用仍未上线；不再把第二套账号/CREATEROLE当首发阻断。未知预算/hash不填fixture，本轮无prod/test/候选访问或密钥导入，Git交付沿用已获必要commit/push授权。
+
+## 2026-10-23 首发继续：用户明确取消流水线云入口校验
+
+- 只读复核目标prod/kube-system UID匹配，无LightRAG标签资源。当前prod清单一次CLB DescribeListeners仍UnauthorizedOperation（RequestId 640926f6-aa7c-4734-9966-e6691bd5e325），未生产写。用户随后明确无需CLB/EO校验、流水线只部署K8s，此要求覆盖此前相关首发门禁；不再索取云身份或重试云API。
+- Ruling: 显式K8s-only首发，不将K8s状态冒充CLB/EO已生效或跨入口零停机 — 用户明确收窄边界 — 旧4+4自动退休不在该首发模式获准。保留可信产物/实际migration/目标边界，未验ACL/容量为false/未知，不填假证据。
+- Ruling: 目标仅cbs、无RWX；生产manifest在S3模式已声明shared_filesystem_required=false，因此首发采用有界per-Pod emptyDir scratch — 不为文档持久性新造卷/基础组件 — 必须拒绝文件型storage/local ingestion，全部durable对象在原PG/图/S3。
+- 模型Host的首次/v1/models 404是执行者路径选择错误；官方/本机百炼文档明确专属域名应/compatible-mode/v1。一次正确GET返回200/178模型，qwen-plus与qwen3.5-flash可见，未生成token；用户授权百炼Embedding选型，采用text-embedding-v4/1024（catalog支持，models清单未列出不等于无权限）。不读取test或用其模型兜底，缺额度不作容量结论。
+
+- 首发本地最终：678 passed/146 skipped/2既有warning；独立PG联合247 passed/1 skipped/2既有warning，server stopped；临时jsonschema环境完整首发CI29 passed。组间重叠不相加。11文件Ruff/format、5workflow strict、shell、11项生产源码/资源wheel/sdist比对及OpenSpec通过。唯一审查2 Important经一次fix pass修复（scope防重放、kubectl/阶段预算）；实际schema空network RED→GREEN另记。
+- CI导入初次image带点tag被422拒绝；只读确认不存在后按官方commands语义仅repo/tag限定成功导入23个prod-only输入，原26项Secret元数据未变。没有更改test映射/输入，未输出密钥。正式tag启用已获用户授权，仍排除test/pre并核对源码/digest。
+- Tasks13.1–13.5本地完成，当前58/71、71场景；13.6真实部署与原12项真实验收未完成。当前无prod Job/应用/后端写，不把即将执行写为成功；见[本轮验证](2026-10-23-kubernetes-initial-local.md)。

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Explicit production onboarding (not deployment configuration)",
-  "description": "No live defaults. Runtime validation enforces identities, aggregate pools, budgets, reviewed cloud HTTPS termination (CLB direct or EdgeOne HTTP origin) and enrollment evidence.",
+  "description": "Production inputs. Explicit Kubernetes-only initial delivery does not certify or inspect cloud entrypoints, ACLs or capacity; legacy cloud modes retain their contracts.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -40,7 +40,7 @@
           }
         },
         "acl_verified": {
-          "const": true
+          "type": "boolean"
         },
         "evidence_id": {
           "type": "string",
@@ -102,18 +102,10 @@
       "type": "object",
       "required": [
         "backend_port",
-        "certificate_id",
-        "controller_version",
-        "force_close_disabled",
-        "listener_id",
         "load_balancer_id",
-        "location_id",
         "mode",
         "path",
-        "protocol",
-        "provider",
-        "region",
-        "streaming_evidence_id"
+        "provider"
       ],
       "additionalProperties": false,
       "properties": {
@@ -141,7 +133,8 @@
         "mode": {
           "enum": [
             "direct",
-            "edgeone"
+            "edgeone",
+            "kubernetes"
           ]
         },
         "path": {
@@ -221,38 +214,117 @@
           "if": {
             "properties": {
               "mode": {
-                "const": "edgeone"
+                "const": "kubernetes"
               }
             }
           },
           "then": {
-            "required": [
-              "edgeone"
-            ],
-            "properties": {
-              "protocol": {
-                "const": "HTTP"
-              },
-              "certificate_id": {
-                "const": ""
-              }
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "certificate_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "controller_version"
+                  ]
+                },
+                {
+                  "required": [
+                    "force_close_disabled"
+                  ]
+                },
+                {
+                  "required": [
+                    "listener_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "location_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "protocol"
+                  ]
+                },
+                {
+                  "required": [
+                    "region"
+                  ]
+                },
+                {
+                  "required": [
+                    "streaming_evidence_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "edgeone"
+                  ]
+                }
+              ]
             }
           },
           "else": {
-            "properties": {
-              "protocol": {
-                "const": "HTTPS"
-              },
-              "certificate_id": {
-                "type": "string",
-                "minLength": 1
+            "required": [
+              "backend_port",
+              "certificate_id",
+              "controller_version",
+              "force_close_disabled",
+              "listener_id",
+              "load_balancer_id",
+              "location_id",
+              "mode",
+              "path",
+              "protocol",
+              "provider",
+              "region",
+              "streaming_evidence_id"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "mode": {
+                      "const": "edgeone"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "edgeone"
+                  ],
+                  "properties": {
+                    "protocol": {
+                      "const": "HTTP"
+                    },
+                    "certificate_id": {
+                      "const": ""
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "protocol": {
+                      "const": "HTTPS"
+                    },
+                    "certificate_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "not": {
+                    "required": [
+                      "edgeone"
+                    ]
+                  }
+                }
               }
-            },
-            "not": {
-              "required": [
-                "edgeone"
-              ]
-            }
+            ]
           }
         }
       ]
@@ -415,7 +487,10 @@
           "type": "string"
         },
         "storage_class": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "workspace": {
           "type": "string"
@@ -535,6 +610,18 @@
             "true",
             "false"
           ]
+        },
+        "POSTGRES_SSL_MODE": {
+          "enum": [
+            "disable",
+            "require",
+            "verify-ca",
+            "verify-full"
+          ]
+        },
+        "S3_REGION": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -643,14 +730,12 @@
       "properties": {
         "ingress_cidrs": {
           "type": "array",
-          "minItems": 1,
           "items": {
             "type": "string"
           }
         },
         "egress": {
           "type": "array",
-          "minItems": 1,
           "items": {
             "type": "object",
             "required": [
@@ -698,5 +783,92 @@
     "repo": {
       "type": "string"
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "ingress": {
+            "properties": {
+              "mode": {
+                "enum": [
+                  "direct",
+                  "edgeone"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "isolation": {
+            "properties": {
+              "acl_verified": {
+                "const": true
+              }
+            }
+          },
+          "target": {
+            "properties": {
+              "storage_class": {
+                "type": "string"
+              }
+            }
+          },
+          "network": {
+            "properties": {
+              "ingress_cidrs": {
+                "minItems": 1
+              },
+              "egress": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ingress": {
+            "properties": {
+              "mode": {
+                "const": "kubernetes"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "network": {
+            "anyOf": [
+              {
+                "properties": {
+                  "ingress_cidrs": {
+                    "maxItems": 0
+                  },
+                  "egress": {
+                    "maxItems": 0
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "ingress_cidrs": {
+                    "minItems": 1
+                  },
+                  "egress": {
+                    "minItems": 1
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
 }

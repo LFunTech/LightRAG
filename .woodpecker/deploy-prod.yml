@@ -5,14 +5,14 @@ workspace:
   base: /woodpecker
   path: src
 
-# Static safety gate. Removing it requires separate production activation approval.
-# The runner independently requires an enabled onboarding and a formal tag event.
+# Production activation explicitly authorized for Kubernetes-only initial delivery.
+# The runner still requires enabled onboarding, formal tag and explicit initial settings.
 when:
   - event: tag
     ref:
       include: [refs/tags/v*.*.*]
       exclude: [refs/tags/*-test, refs/tags/*-pre]
-    evaluate: 'false'
+    evaluate: 'CI_COMMIT_TAG matches "^v[0-9]+[.][0-9]+[.][0-9]+$"'
 
 depends_on: [pre-deploy]
 
@@ -131,6 +131,10 @@ steps:
         from_secret: lightrag_prod_kubeconfig
       LIGHTRAG_PROD_ONBOARDING_JSON:
         from_secret: lightrag_prod_onboarding_json
+      LIGHTRAG_PROD_INITIAL_RELEASE_JSON:
+        from_secret: lightrag_prod_initial_release_json
+      LIGHTRAG_PROD_OPERATOR_JSON:
+        from_secret: lightrag_prod_operator_json
       LIGHTRAG_PROD_API_KEY:
         from_secret: lightrag_prod_api_key
       LIGHTRAG_PROD_LLM_API_KEY:

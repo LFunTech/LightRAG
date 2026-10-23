@@ -7,10 +7,10 @@ import math
 import os
 from pathlib import Path
 import sys
-from urllib.parse import parse_qs, urlsplit
 
 from .plan import build_plan, digest
 from .manifest import manifest_hash
+from lightrag_delivery.credentials import validate_operator_dsn as check_dsn
 
 
 def parser():
@@ -25,43 +25,6 @@ def parser():
     result.add_argument("--expected-manifest-hash")
     result.add_argument("--graph-wait-seconds", type=float)
     return result
-
-
-def check_dsn(dsn, environment, *, confirm_shared=False):
-    try:
-        from urllib.parse import unquote
-        from lightrag_delivery.credentials import from_environment
-
-        policy = from_environment(environment)
-        if confirm_shared and policy is None:
-            raise ValueError()
-
-        uri = urlsplit(dsn)
-        query = parse_qs(uri.query, keep_blank_values=True)
-        mode = query.get("sslmode", [])
-        if (
-            uri.scheme not in {"postgres", "postgresql"}
-            or uri.hostname != environment["POSTGRES_HOST"]
-            or uri.port != int(environment["POSTGRES_PORT"])
-            or not uri.path.startswith("/")
-            or unquote(uri.path[1:]) != environment["POSTGRES_DATABASE"]
-            or not uri.username
-            or (
-                unquote(uri.username) == environment["POSTGRES_USER"]
-                and (policy is None or not confirm_shared)
-            )
-            or (policy is not None and unquote(uri.username) != policy.postgres_user)
-            or uri.fragment
-            or set(query) - {"sslmode", "sslrootcert", "sslcert", "sslkey", "sslcrl"}
-            or any(len(v) != 1 for v in query.values())
-            or len(mode) != 1
-            or mode[0] not in {"disable", "require", "verify-full", "verify-ca"}
-        ):
-            raise ValueError()
-    except Exception:
-        raise ValueError(
-            "Dedicated operator DSN must match the target and declare its transport policy"
-        ) from None
 
 
 async def run(args, environment, plan, dsn):

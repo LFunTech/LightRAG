@@ -368,3 +368,15 @@ PG 业务池、coordination 池/witness、HugeGraph 客户端池以及 LLM/embed
 迁移CLI仍显式传入operator DSN/图迁移凭据；例外仅允许准确共用，不做runtime凭据隐式fallback。真实PG连接检查当前数据库/账号及非superuser、无CREATEROLE/CREATEDB/复制/BYPASSRLS和高权限继承；仅豁免专用对象所有权/DDL/控制表权限。原SQL/checksum不改、migration/verify/register/enroll不合并为应用启动DDL，不生成角色或密码。生产runtime以只读事务核验schema/完整CRUD/批准scope，release初始化核验持久policy与例外完全一致，普通发布器在任何网络/变更前拒绝该例外。
 
 本轮按既有OpenSpec实施：先反例回归，再贯通清单→环境→初始化/登记→runtime/持久enroll及普通升级拒绝，补独立本地PG测试。初始化写入口还需先读取批准scope的持久状态：允许未enroll，或准确相同批准的Blue/epoch1/IDLE/open/no-owner，其余在GRANT/DDL/图操作前拒绝；enroll在网络连接前核对DSN host/显式port/数据库/用户。Job渲染的`confirm_shared_credentials=true`必须来自独立本次执行输入，不能由静态批准自动生成，只读verify不要求该写确认。实际prod初始化、首发流水线串接、EO/CLB自动观测和真实验收仍是原独立前置；不得以本例外复用测试凭据、假造入口hash/已运行Blue或取消其他门禁。
+
+## 14. 用户收窄后的首次 K8s 部署边界（2026-10-23）
+
+用户明确要求流水线只负责部署到K8s，不允许增加CLB/EdgeOne校验。当前首发选择显式`ingress.mode=kubernetes`，仅声明qcloud Ingress的现有LB引用、HTTP后端端口和路径；不请求云API身份、listener/location/certificate、EO hash、外部HTTPS/流式演练或性能报告作为本次流水线门禁。原云观测实现保留为历史可选模式，不在本次首发路径构造或调用。K8s部署成功仅表示指定4×1 Pod及Service/Ingress资源就绪，不等于入口已生效、零停机或1000QPS达标。
+
+首发不伪造已运行Blue，也不进入普通升级器。以原可信源码/digest链为基础增加显式initial settings：固定计划hash、维护/空目标/共用身份执行确认和有限等待。CI创建独立固定digest初始化Job，顺序调用已有apply→verify→register→enroll，结果未知即停且保留Job/账本；不重放未知写或自动recover。然后CI创建Blue4×1，使用原/ready的协调器+witness+polling状态确认Pod就绪；不运行压测或操作原test/候选。运行和operator Secret继续分开，仅operator Job持迁移凭据；不把云密钥注入任何步骤。
+
+工作数据全部使用现有PG/HugeGraph/S3，用户此前已否定业务必须RWX的假设。显式`target.storage_class=null`仅用于本K8s/S3首发profile，`working_storage`作为每Pod有界emptyDir scratch容量，不创建PVC或基础组件；拒绝本地文件入库及文件型存储，原有持久卷profile不改变。应用TLS始终false，没有TLS Secret/证书挂载；Ingress只声明HTTP，云侧证书/入口不由本次流水线处理。
+
+本模式中的容量配置仅为所申请Pod的连接/并发上限，不声明供应商已给额度；isolation中未实测ACL必须诚实保留false，不伪造“已验收”。环境身份、数据域显式性、可信产物、版本化migration和实际运行权限仍保留；外部ACL/入口/SLO结果另记，不混入K8s部署成功条件。普通升级和4+4自动退休不因首发模式而获准，仍需独立方案/授权，避免把K8s EndpointSlice当CLB全连接传播证明。
+
+首发防重放按scope固定Job名和immutable execution claim，而非pipeline编号；不同输入/Job缺失必须停下审计。kubectl单请求/子进程有上限，各阶段读写共享剩余时间预算，观察超时不杀远端Job也不允许迟到成功触发下一阶段。K8s-only profile显式空network表示不创建新NetworkPolicy、保留namespace既有策略，不猜CLB源网段或用宽CIDR替代未知值。

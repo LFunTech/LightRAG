@@ -49,6 +49,24 @@ def render_slot(config, identity, slot, *, image, environment):
     from .credentials import validate_slot
 
     validate_slot(config, identity, slot, environment)
+    ephemeral = config.target["storage_class"] is None
+    if ephemeral and (
+        config.ingress["mode"] != "kubernetes"
+        or any(
+            environment.get(key) != value
+            for key, value in {
+                "LIGHTRAG_OBJECT_STORAGE": "s3",
+                "ENABLE_LOCAL_FILE_INGESTION": "false",
+                "LIGHTRAG_KV_STORAGE": "PGKVStorage",
+                "LIGHTRAG_VECTOR_STORAGE": "PGVectorStorage",
+                "LIGHTRAG_DOC_STATUS_STORAGE": "PGDocStatusStorage",
+                "LIGHTRAG_GRAPH_STORAGE": "HugeGraphStorage",
+            }.items()
+        )
+    ):
+        raise ValueError(
+            "Ephemeral scratch requires explicit durable S3/PG/graph storage"
+        )
     if environment.get("SSL", "false") != "false" or any(
         environment.get(field) for field in ("SSL_CERTFILE", "SSL_KEYFILE")
     ):
@@ -216,7 +234,19 @@ def render_slot(config, identity, slot, *, image, environment):
                     "volumes": [
                         {
                             "name": "working",
-                            "persistentVolumeClaim": {"claimName": "lightrag-working"},
+                            **(
+                                {
+                                    "emptyDir": {
+                                        "sizeLimit": resources["working_storage"]
+                                    }
+                                }
+                                if ephemeral
+                                else {
+                                    "persistentVolumeClaim": {
+                                        "claimName": "lightrag-working"
+                                    }
+                                }
+                            ),
                         },
                         {"name": "tmp", "emptyDir": {}},
                         {"name": "release", "configMap": {"name": config_name}},
@@ -266,6 +296,20 @@ def render_entrypoint(config, slot):
             ],
         },
     )
+    if config.ingress["mode"] == "kubernetes":
+        ingress["metadata"]["annotations"] = {
+            "kubernetes.io/ingress.existLbId": config.ingress["load_balancer_id"],
+            "kubernetes.io/ingress.http-rules": json.dumps(
+                [
+                    {
+                        "host": config.target["host"],
+                        "path": "/",
+                        "backend": {"serviceName": "lightrag", "servicePort": 9621},
+                    }
+                ]
+            ),
+        }
+        return [svc, ingress]
     ingress["metadata"]["annotations"] = {
         "kubernetes.io/ingress.existLbId": config.ingress["load_balancer_id"],
         "ingress.cloud.tencent.com/direct-access": "true",
@@ -412,7 +456,7 @@ def render_foundation(config):
         },
         subjects=[{"kind": "ServiceAccount", "name": control, "namespace": ns}],
     )
-    return [
+    resources = [
         account,
         control_sa,
         pvc,
@@ -422,6 +466,14 @@ def render_foundation(config):
         identity_role,
         identity_binding,
     ]
+    if config.target["storage_class"] is None:
+        resources = [r for r in resources if r["kind"] != "PersistentVolumeClaim"]
+    if config.ingress["mode"] == "kubernetes" and config.network == {
+        "ingress_cidrs": [],
+        "egress": [],
+    }:
+        resources = [r for r in resources if r["kind"] != "NetworkPolicy"]
+    return resources
 
 
 def content_hash(value):

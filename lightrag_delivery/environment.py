@@ -105,6 +105,10 @@ def runtime_environment(config, secrets):
         + "/"
         + quote(secrets["postgres_database"], safe="")
     )
+    if config.runtime.get("POSTGRES_SSL_MODE"):
+        environment["LIGHTRAG_COORDINATION_DSN"] += (
+            "?sslmode=" + config.runtime["POSTGRES_SSL_MODE"]
+        )
     for key in ("EMBEDDING_DOCUMENT_PREFIX", "EMBEDDING_QUERY_PREFIX"):
         if environment[key] == "":
             environment[key] = "NO_PREFIX"

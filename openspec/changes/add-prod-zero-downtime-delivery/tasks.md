@@ -414,3 +414,14 @@ Git 发布与生产放行分开：runtime/operator 引用、生产域名/TLS、�
 第12节本地实施完成：仅豁免已批准首发的运行/迁移身份分离，不再索取CREATEROLE或额外运行角色。当前 **53/65**，仍有原 **12项真实任务未完成**、68场景。定向646 passed/144 skipped、独立本地PG联合240 passed（两组重叠、不相加）；唯一审查3 Important均经21项RED→GREEN和一次fix pass修复。20文件Ruff/format、干净wheel/sdist各17项源码/资源、OpenSpec与原test/SQL基线核验通过，见[本轮验证](verification/2026-10-23-first-shared-credentials-local.md)及[审查修复](verification/2026-10-23-first-shared-credentials-review.md)。
 
 本轮未操作prod/原test/两个候选，未导入密钥或创建tag。首发初始化与4×1 Blue的真实流水线串接仍是实现侧待办，合格EO/CLB只读引用/审阅hash及S3/入口/资源/真实验收仍需完成；不把账户例外或本地通过当上线，不勾原9.2–9.4/性能任务，prod gate保持false。
+
+## 13. 首次 K8s 部署串接（用户要求不做 CLB/EdgeOne 校验）
+
+- [x] 13.1 同步K8s-only部署边界、配置/schema/HTTP Ingress与S3有界scratch；保留旧test/原模式，不伪造云侧/ACL/性能已验收。
+- [x] 13.2 复用可信源码/digest校验，增加显式initial settings和固定digest初始化Job；额外执行确认由本次输入提供，operator凭据不进入app。
+- [x] 13.3 串接已有migration apply→verify→register→enroll，准确绑定scope/profile/计划/tag/目标；未知结果即停，不自动recover/重放/rollback。
+- [x] 13.4 CI依次部署初始化Job、Blue4×1与HTTP Service/Ingress，确认K8s Pod就绪；既有应用拒绝替换，Job观察超时保留现场，不调用CLB/EO或公网入口。
+- [x] 13.5 补对应反例/正例、真实隔离PG联合、原test非回归、静态/包/OpenSpec检查及一次新鲜审查；区分本地与真实结果。
+- [ ] 13.6 按已获授权准备仅prod输入、必要commit/push和真实首发流水线；仅通过本次K8s边界后报告部署，失败立即停并保存实际证据，不认领外部入口/容量验收。
+
+第13节本地13.1–13.5完成：**58/71，13项剩余**（原12项真实验收及13.6真实部署），capability共71场景。见[本轮验证](verification/2026-10-23-kubernetes-initial-local.md)及[唯一审查修复](verification/2026-10-23-kubernetes-initial-review.md)。本轮已按授权准备23项prod-only CI输入，实际commit/tag/流水线/Pod结果另列，不将本地模拟或镜像构建当部署。

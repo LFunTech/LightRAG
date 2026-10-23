@@ -283,3 +283,19 @@ Embedding输入预处理 SHALL 不阻塞事件循环并在取消时join；同次
 #### Scenario: Initialization Job is prepared without deployment authority
 - **WHEN** 本地渲染或检查初始化计划/Job
 - **THEN** 仅输出固定镜像与既有凭据引用，不创建Secret、业务Deployment或入口，不执行迁移/模型调用或修改test及普通prod发布gate
+
+### Requirement: Support the explicitly requested Kubernetes-only initial deployment
+
+用户选择K8s-only首发时，流水线 SHALL 仅负责可信产物下的指定K8s资源部署及Pod就绪，MUST NOT 调用或要求CLB/EdgeOne API、云身份/hash或外部HTTPS/流式/容量验收作为门禁。运行TLS仍 MUST 在云侧，K8s仅HTTP。未验收的ACL/容量 MUST 保持未验收，不伪报为已批准证据。
+
+#### Scenario: The first target has no running Blue
+- **WHEN** 获准正式tag采用K8s-only首发并给出明确计划和本次执行确认
+- **THEN** 固定digest初始化Job顺序执行已有migration/verify/register/enroll，再部署4×1 Blue及HTTP Service/Ingress；不制造旧Blue或借普通升级器越过初建步骤
+
+#### Scenario: Initial deployment has an uncertain or failed result
+- **WHEN** 初始化、资源创建或有限观察失败/超时，或发现已有不同应用资源
+- **THEN** 保留Job/实例/账本并停止，不自动重发未知写、替换既有应用、recover或rollback，不把K8s成功解释成云入口/零停机/性能通过
+
+#### Scenario: Production objects are durable outside the Pod
+- **WHEN** K8s-only S3 profile明确选择无StorageClass
+- **THEN** 工作目录使用每Pod有界scratch且不创建PVC，拒绝本地文件入库/文件型存储；持久业务仍在既有PG、图和S3，不改变原test存储路径
