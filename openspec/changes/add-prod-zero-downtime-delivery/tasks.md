@@ -425,3 +425,5 @@ Git 发布与生产放行分开：runtime/operator 引用、生产域名/TLS、�
 - [ ] 13.6 按已获授权准备仅prod输入、必要commit/push和真实首发流水线；仅通过本次K8s边界后报告部署，失败立即停并保存实际证据，不认领外部入口/容量验收。
 
 第13节本地13.1–13.5完成：**58/71，13项剩余**（原12项真实验收及13.6真实部署），capability共71场景。见[本轮验证](verification/2026-10-23-kubernetes-initial-local.md)及[唯一审查修复](verification/2026-10-23-kubernetes-initial-review.md)。本轮已按授权准备23项prod-only CI输入，实际commit/tag/流水线/Pod结果另列，不将本地模拟或镜像构建当部署。
+
+实际首发#76：正式v1.5.9已推送；初始化Job成功（INITIALIZED/epoch1/exit0），运行Secret正确落地，但后续K8s编排失败，Deployment/Service/Ingress均不存在。**13.6未完成，prod未部署成功**。已停止、未重跑或改tag；只读核对及本地脱敏诊断修复见[实际失败记录](verification/2026-10-23-prod-pipeline-76-failure.md)。当前58/71不变，恢复须复用成功初始化结果、仅续部署应用，不能盲目整条重跑。

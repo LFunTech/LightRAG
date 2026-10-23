@@ -1,5 +1,9 @@
 # 生产蓝绿发布手册
 
+## 实际首发结果（2026-10-23）
+
+正式v1.5.9 / 流水线#76：初始化Job成功，运行Secret已落地，但后续K8s编排失败，应用Deployment/Service/Ingress未创建，**prod尚未部署成功**。已停止并保留现场，未重跑迁移/流水线或换tag。见[实际证据与续部署边界](../openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-prod-pipeline-76-failure.md)。仅续部署应用必须复用原成功初始化回执、镜像digest和runtime，不重新构建或重放迁移；不能把整条重跑当默认修复。
+
 ## 当前首发边界：仅 Kubernetes（用户明确要求，2026-10-23）
 
 本节覆盖下文历史云入口门禁对本次首发的要求。流水线只负责指定K8s资源与4×1 Pod就绪，不调用或要求CLB/EdgeOne API、云身份、listener/location/certificate、EO hash、公网HTTPS/流式或性能报告。用户已授权启用正式tag的prod部署；`-test/-pre`仍排除，运行器仍要求enabled配置及显式initial settings。K8s只提供HTTP，不创建TLS Secret或挂载证书；云侧TLS最高规则不变。

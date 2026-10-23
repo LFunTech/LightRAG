@@ -31,6 +31,7 @@ class Kubectl:
     def run(self, *args, body=None, timeout=30):
         if type(timeout) not in (int, float) or timeout <= 0:
             raise ProdConfigError("Finite Kubernetes request budget required")
+        started = time.monotonic()
         try:
             result = subprocess.run(
                 [
@@ -45,14 +46,67 @@ class Kubectl:
                 timeout=timeout,
             )
         except subprocess.TimeoutExpired:
+            self.report_failure(args, body, started, timeout, "CLIENT_TIMEOUT")
             raise ProdConfigError(
                 "Kubernetes client timed out; remote outcome retained without retry"
             ) from None
         if result.returncode:
+            reason = re.search(
+                r"Error from server \((Forbidden|Unauthorized|NotFound|AlreadyExists|"
+                r"Invalid|Timeout|ServerTimeout|TooManyRequests|InternalError|"
+                r"ServiceUnavailable)\)",
+                result.stderr or "",
+            )
+            self.report_failure(
+                args,
+                body,
+                started,
+                timeout,
+                reason.group(1) if reason else "COMMAND_FAILED",
+                result.returncode,
+            )
             raise ProdConfigError(
                 "Kubernetes operation failed; protected diagnostics required"
             )
         return result.stdout
+
+    def report_failure(self, args, body, started, timeout, reason, exit_code=None):
+        operation = (
+            args[0]
+            if args
+            and args[0]
+            in {"get", "create", "auth", "config", "patch", "apply", "delete"}
+            else "other"
+        )
+        kind = body.get("kind") if isinstance(body, dict) else None
+        if kind not in {
+            "Secret",
+            "ConfigMap",
+            "Job",
+            "Deployment",
+            "Service",
+            "Ingress",
+            "ServiceAccount",
+            "NetworkPolicy",
+            "PersistentVolumeClaim",
+        }:
+            kind = "unspecified"
+        print(
+            json.dumps(
+                dict(
+                    event="kubernetes_request_failed",
+                    operation=operation,
+                    resource_kind=kind,
+                    reason=reason,
+                    exit_code=exit_code,
+                    timeout_seconds=timeout,
+                    elapsed_seconds=round(time.monotonic() - started, 3),
+                    remote_outcome="unknown" if operation != "get" else "read_failed",
+                ),
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+        )
 
     def get(self, kind, name, *, timeout=30):
         output = self.run(

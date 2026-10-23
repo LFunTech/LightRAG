@@ -459,3 +459,6 @@
 - 首发本地最终：678 passed/146 skipped/2既有warning；独立PG联合247 passed/1 skipped/2既有warning，server stopped；临时jsonschema环境完整首发CI29 passed。组间重叠不相加。11文件Ruff/format、5workflow strict、shell、11项生产源码/资源wheel/sdist比对及OpenSpec通过。唯一审查2 Important经一次fix pass修复（scope防重放、kubectl/阶段预算）；实际schema空network RED→GREEN另记。
 - CI导入初次image带点tag被422拒绝；只读确认不存在后按官方commands语义仅repo/tag限定成功导入23个prod-only输入，原26项Secret元数据未变。没有更改test映射/输入，未输出密钥。正式tag启用已获用户授权，仍排除test/pre并核对源码/digest。
 - Tasks13.1–13.5本地完成，当前58/71、71场景；13.6真实部署与原12项真实验收未完成。当前无prod Job/应用/后端写，不把即将执行写为成功；见[本轮验证](2026-10-23-kubernetes-initial-local.md)。
+
+- 实际正式tag v1.5.9/commit18df4f5c3/流水线76：构建及产物链成功，prod初始化Job exit0/INITIALIZED/epoch1，运行Secret与批准runtime一致，但deploy-prod失败，后续ConfigMap/Deployment/Service/Ingress未创建。未认领prod上线，13.6仍未勾选。失败后仅只读核对并保留现场，无重跑迁移/Job/流水线、新tag或recover。原prod业务UID/spec不变，原test/两候选未访问。
+- Ruling: 不从统一ProdConfigError推断真实kubectl原因，不把15s预算假设写成根因；先修复已证实的日志隐藏缺陷 — 仅记录固定脱敏字段/白名单原因，不输出原始stderr或Secret — 2 RED→2 GREEN，定向680 passed/146 skipped/2既有warning，日志修复不等于真实失败已解决。详见[实际失败及续部署边界](2026-10-23-prod-pipeline-76-failure.md)。

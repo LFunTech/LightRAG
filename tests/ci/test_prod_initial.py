@@ -692,3 +692,46 @@ def test_success_returned_after_startup_deadline_does_not_publish_entrypoint(
             kube, config, identity, runtime, settings, resources, image=image
         )
     assert "Service" not in kube.created and "Ingress" not in kube.created
+
+
+@pytest.mark.parametrize("failure", ["timeout", "forbidden"])
+def test_kubernetes_failure_reports_safe_operation_without_credentials(
+    monkeypatch, capsys, failure
+):
+    import subprocess
+    from types import SimpleNamespace
+    from scripts.ci.prod_deploy import Kubectl
+
+    secret_value = "synthetic-private-body-do-not-log"
+
+    def run(args, **kwargs):
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(
+                args, 3, output=secret_value, stderr=secret_value
+            )
+        return SimpleNamespace(
+            returncode=1,
+            stdout=secret_value,
+            stderr="Error from server (Forbidden): " + secret_value,
+        )
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(ValueError):
+        Kubectl("explicit-config", "prod").run(
+            "create",
+            "-f",
+            "-",
+            body={"kind": "Secret", "stringData": {"password": secret_value}},
+            timeout=3,
+        )
+    captured = capsys.readouterr()
+    assert secret_value not in captured.out + captured.err
+    report = json.loads(captured.err)
+    assert report["event"] == "kubernetes_request_failed"
+    assert report["operation"] == "create"
+    assert report["resource_kind"] == "Secret"
+    assert report["reason"] == (
+        "CLIENT_TIMEOUT" if failure == "timeout" else "Forbidden"
+    )
+    assert report["remote_outcome"] == "unknown"
+    assert report["timeout_seconds"] == 3
