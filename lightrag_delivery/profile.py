@@ -42,6 +42,10 @@ def physical_profile_hash(environment):
 
 
 def verify_server_profile(args, environment):
+    if getattr(args, "ssl", False) or any(
+        getattr(args, name, None) for name in ("ssl_certfile", "ssl_keyfile")
+    ):
+        raise ValueError("Application TLS is forbidden; terminate TLS in the cloud")
     for name in (
         "embedding_binding",
         "embedding_binding_host",

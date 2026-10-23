@@ -46,6 +46,10 @@ def labels(config, slot=None):
 
 
 def render_slot(config, identity, slot, *, image, environment):
+    if environment.get("SSL", "false") != "false" or any(
+        environment.get(field) for field in ("SSL_CERTFILE", "SSL_KEYFILE")
+    ):
+        raise ValueError("Application TLS is forbidden; terminate TLS in the cloud")
     if (
         slot not in {"blue", "green"}
         or not re.fullmatch(r"[a-f0-9]{64}", identity["config_hash"])
@@ -88,6 +92,7 @@ def render_slot(config, identity, slot, *, image, environment):
                 "HOST": "0.0.0.0",
                 "PORT": "9621",
                 "WORKERS": "1",
+                "SSL": "false",
                 "LIGHTRAG_RELEASE_ENABLED": "true",
                 "LIGHTRAG_RELEASE_SLOT": slot,
                 "LIGHTRAG_RELEASE_CONFIG_HASH": identity["config_hash"],

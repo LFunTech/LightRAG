@@ -5,6 +5,7 @@
 - 在原 test 的唯一源码归档、COS 传递、Kaniko 构建及平台/revision/digest 校验链上新增生产部署；不复制第二套构建。
 - 原四个 workflow、test 脚本、五个 workspace、base/test overlay 和 Secret 映射保持原样。
 - `.woodpecker/deploy-prod.yml` 仍以常量 `evaluate: 'false'` 静态禁用。解除此 gate 需要单独生产启用授权，不能删除正式 tag 限制：workflow 排除 `-test`/`-pre`，接收 prod 凭据的 step 另有独立严格 `vX.Y.Z` 条件。脚本还校验事件、仓库、tag、commit、归档记录、digest 和 enabled onboarding。
+- **禁止应用侧 Kubernetes TLS**：TLS 终止与证书管理放在云侧 EdgeOne/CLB；K8s Service/Pod 仅 HTTP，不创建/复制 TLS Secret、不挂载证书或私钥、不在应用 Pod/Ingress 控制器开启 TLS。不再需要 `target.tls_secret`，旧字段直接拒绝；Pod 显式 `SSL=false`，渲染及启动均拒绝应用 SSL/证书路径。Ingress 中的云侧证书 ID 仅指示外部 CLB，不包含证书材料；云侧 HTTPS/入口核验仍是门禁。其他业务和控制面 TLS 不变。
 - 本地代码/测试通过不代表 Tencent CLB、跨节点或高并发验收通过。2026-10-23 用户另行授权本次生产必需改动的提交、推送和正式生产 tag；该 Git 授权不替代运行账号隔离、初始化、入口及实际验收。最新准备快照见[首次发布准备记录](../openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-first-release-preparation.md)，生产静态 gate 仍关闭，尚无应用上线或切流完成证据。
 
 ## 架构与容量
@@ -78,7 +79,7 @@ OpenAI-compatible调用按SDK dispatch，默认内部重试为0；若显式改�
 
 1. 仓库、Kubernetes API endpoint SHA256、kube-system/目标 namespace UID、独立 kubeconfig；
 2. workspace/deployment、PG database/运行角色、HugeGraph graphspace/graph、S3 bucket/prefix 的实际 ACL；
-3. 生产域名、CLB/listener/location/certificate、控制器版本、直连能力、无强制断流策略及流式演练证据；
+3. 生产域名、云侧 CLB/listener/location/certificate 引用、实际 TLS 终止/回源边界、控制器版本、直连能力、无强制断流策略及流式演练证据；不索要 Kubernetes TLS Secret；
 4. 已初始化的业务、coordination、release schema 与物理 profile/协议 manifest；
 5. 全部 API/SDK/后台 writer、命令格式及新旧读写兼容批准；
 6. 应用/控制 Job 的 ServiceAccount、registry pull Secret、独立 operator Secret 和受限网络出口；

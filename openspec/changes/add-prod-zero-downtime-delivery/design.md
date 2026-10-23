@@ -77,6 +77,10 @@ prod 的 namespace、域名/TLS、workspace、deployment id、PG 数据域、图
 
 用户已确认入口为腾讯云 qcloud Ingress。首版仅接入 HTTPS 七层、CLB 直连 Pod、HTTP 后端：Service CAS 先扩展为两个已验证 slot，等 EndpointSlice 与只读 CLB API 观测到全部 8 个健康后端，再收窄 Green；再次核对 CLB 精确目标及真实 HTTPS 返回的候选 UID/config/profile。EndpointSlice 不能独自证明 CLB 传播。CLB 观测使用独立只读授权，不假定 COS 凭据有该权限。真实 controller/kubelet 的连接保持、超时和长流行为仍需隔离演练。
 
+2026-10-23 用户新增硬约束：**应用交付不在 Kubernetes 内终止或承载 TLS**。云侧 EdgeOne/CLB 管理证书和 TLS，K8s Service/Pod 只承接 HTTP；禁止 TLS Secret、证书/私钥挂载和应用 SSL。此前未使用的 `target.tls_secret` 从校验器及 schema 移除，旧字段直接拒绝而非填占位；渲染前拒绝 SSL/证书路径并显式设置 Pod `SSL=false`，启动 profile 再复核。Ingress 中如存在云侧证书 ID，只是指示外部 CLB 的控制元数据，不包含证书/私钥或 K8s TLS 终止。原 test、其他业务和 Kubernetes 控制面自身的 TLS 不在本次修改范围。
+
+本次[只读引用核对](verification/2026-10-23-prod-reference-audit.md)已找到现有 prod 账密、pull 引用和 CLB，但无 LightRAG 专属运行/控制 Secret 或已配置域名；公网通配证书已验证，CNAME 指向 EO 样式域名，K8s 可见 ServiceConfig 均 HTTP/80，CLB DescribeListeners 被现有身份拒绝。**尚不能据此认定既有 CLB 已满足 HTTPS/direct profile，也不能自动放宽为任意 HTTP 公网入口**。复用 EO/CLB 的实际终止、回源、访问边界和流式行为仍需只读权限及真实证据；本地去掉无用字段不解除这些门禁。
+
 2026-10-23用户批准分层验证：在现有RKE2/nginx test内为候选应用使用新的namespace，**默认复用test已有PG、图服务和S3，通过受支持且经核验的数据域与权限隔离**，做功能、低并发及应用层4+4协议验证。独立数据域不等于独立物理组件；此前执行者将其扩大为重建PG/图/S3并写作用户批准要求，是范围判断错误，现已撤回，不再要求提供MinIO镜像。真实qcloud/CLB传播/长流保持另用腾讯云非生产目标，生产Transport与校验不扩展为nginx模式。先只读核对现有连接、数据库/受控workspace、图域、bucket/prefix、权限和共享资源余量，再按代码支持的方式准备获准隔离数据域与候选；不能仅换名字就认定隔离。确有隔离不足时报告具体缺口，再评审所需增量，不预设重建基础组件。已有本地overlay只是可选候选交付准备，不证明依赖/挂载或8.3/8.6通过，也不是继续排查现有服务的前置。
 
 首次 foundation 显式安装 namespace Role/Binding，另以 ClusterRole/Binding 只允许 control 身份 `get` 指定目标 namespace 与 `kube-system` 对象供 UID 校验。普通发布不创建 cluster RBAC，应用无 K8s token。当前获准的预算 profile 限 PG/pgvector + HugeGraph + S3、OpenAI-compatible LLM/embedding、native parser、无 reranker；其他 provider 必须先补预算和验证，不静默继承 test 参数。

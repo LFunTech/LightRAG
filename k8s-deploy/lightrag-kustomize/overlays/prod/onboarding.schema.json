@@ -232,7 +232,6 @@
         "s3_bucket",
         "s3_prefix",
         "storage_class",
-        "tls_secret",
         "workspace"
       ],
       "additionalProperties": false,
@@ -268,9 +267,6 @@
           "type": "string"
         },
         "storage_class": {
-          "type": "string"
-        },
-        "tls_secret": {
           "type": "string"
         },
         "workspace": {

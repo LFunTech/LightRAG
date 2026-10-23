@@ -409,3 +409,18 @@
 - Ruling: 不采用含工作站 node_modules 的本地脏树打包结果 — artifact 身份不能受本机目录污染 — 从1655个明确仓库/候选路径导出的干净源码重新构建，wheel/sdist各65项必需源码/迁移资源与工作区一致，禁入路径0。该本地包不是生产镜像/digest。
 - Ruff 对144个候选 Python 文件发现仅既有 `tests/llm/test_query_accounting.py` 的10项 E701；保留该既有业务测试原样，不作无关格式化。其余143文件全通过，完整后端测试覆盖该文件；不声称全量 Ruff 通过。严格 workflow lint、shell/Python、OpenSpec 和 test render 另记录。
 - 当前 prod gate false；运行身份、域名/TLS、初始化/ACL/预算及真实验收仍阻断。仅代码提交推送可先进行，正式 tag 不为触发构建而提前消耗，9.2–9.4/其余真实任务未勾。详见[首次发布准备快照](2026-10-23-first-release-preparation.md)，不是上线完成报告。
+
+## 2026-10-23 prod 引用自行核对与云侧 TLS 硬约束
+
+- 用户授权从prod清单与既有prod资源只读核对，随后明确禁止在K8s做应用TLS。已发现PG `lightrag`、图 `lightrag001`、prod文件内唯一历史API key别名、`prod/lfun`及既有CLB；不再要求用户重复密码或提供K8s TLS Secret。
+- 实际读取全局Deployment/StatefulSet、21份Ingress、6份TkeServiceConfig、208项Secret服务端Table元数据；prod只有pull/两份Helm Secret，没有已发现的LightRAG运行/控制引用。只解析公开证书；唯一K8s TLS Secret为内部APISIX clientAuth，不复用为公网服务端。公网通配证书已验证，CNAME为EO样式、可见ServiceConfig均HTTP/80；云侧CLB只读身份本轮`DescribeListeners`一次UnauthorizedOperation后停止，不重试/换身份。EO实际回源/证书引用未核验，不以推断放行。
+- Ruling: 移除未被render使用的`target.tls_secret`而不是创建新TLS Secret或填假引用 — 用户禁止K8s TLS，外部证书必须按真实终止点核验 — schema/解析器拒绝旧字段，Pod显式SSL=false，渲染和启动profile拒绝SSL及证书路径。保留云侧证书ID/HTTPS/direct/force-close门禁；云侧ID只作控制元数据，不包含证书/私钥，不改变test/local或控制面TLS。
+- TDD：10 failed/1 passed → 11 passed；补三项外部门禁负例后，相关`tests/ci tests/distributed/release tests/provisioning tests/api/config` **405 passed/60 skipped/2既有warning（2.99s）**。未启用真实integration；原9661是上次提交的全套快照，不覆盖本轮新代码。scoped Ruff、compile、schema、workflow与OpenSpec核验另见机器记录。
+- 三个prod工作负载、21份Ingress、6份ServiceConfig UID/spec/路由引用前后一致；无生产写、Pod/Job创建、exec/port-forward、PG/图/S3/业务HTTP请求或密钥导入，原test和两个候选未访问/修改。本轮无Git发布/tag/部署，prod gate false。新采集器的本地断言与全量Secret列举失败如实记录，后者原因未知、不沿用wrapper flag引起的错误Timeout分类，不将失败当空列表。
+- 只需补本轮最小外部输入：独立runtime身份引用/运维预置、正式域名/DNS、云侧入口/证书与CLB只读身份引用；不要求新基础组件或K8s TLS。其余迁移/权限/资源/4+4/性能门禁仍在，47/59与原12项未完成不变；新增1安全场景后共63。见[完整核对及最小补充](2026-10-23-prod-reference-audit.md)及JSON，不签署生产/SLO通过。
+
+## 2026-10-23 最高规则落库及正式构建流水线
+
+- 用户要求最高规则和跑流水线，沿用本次必要Git发布/tag授权。Ruling: 最高持久规则写入当前仓库根AGENTS.md，不擅自修改其他仓库/用户全局文件；外部客户端HTTPS和控制面TLS不因“禁止应用K8s TLS”被关闭。
+- Ruling: 生产缺口未齐时，仅运行既有正式tag构建/产物校验，保持prod静态gate false — 跑流水线不能解释成豁免真实前置 — 不触发test tag、不改其他业务/candidate资源，不将CI通过当prod上线。已向用户明确该边界。
+- 提交前fresh相关回归405 passed/60 skipped/2既有warning（2.92s）；其余静态及基线结果见[流水线准备快照](2026-10-23-formal-pipeline-preparation.md)。该快照在Git写入前生成，tag/commit/pipeline实际回执另存执行记录，不伪造未完成阶段。

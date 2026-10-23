@@ -81,7 +81,6 @@ def config_data():
             "s3_prefix": "prod/objects",
             "storage_class": "prod-rwx",
             "host": "rag.example.invalid",
-            "tls_secret": "rag-prod-tls",
             "ingress_class": "qcloud",
         },
         "replicas": 4,

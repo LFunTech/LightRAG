@@ -1,5 +1,15 @@
 # Repository Guidelines
 
+## 最高部署规则：禁止应用在 Kubernetes 内做 TLS
+
+本节是本仓库的最高部署约束，优先于其他部署文档、示例及自动化默认值；不得以赶上线、排障或跑流水线为由绕过。除非用户明确撤销，所有后续应用 Kubernetes 部署均须遵守：
+
+- **TLS 终止和证书管理只放在云侧 EdgeOne/CLB；Kubernetes Service/Pod 仅提供 HTTP 后端。** 禁止在应用 Pod、Ingress 控制器、sidecar 或 service mesh 内终止应用 TLS。
+- 禁止为本应用创建、复制或导入 TLS Secret；禁止将服务端证书/私钥写入 Kubernetes Secret、ConfigMap、环境变量、镜像或挂载卷。不要求提供 `tls_secret`，不使用假引用或临时证书填充门禁。
+- 生产 Pod 显式 `SSL=false`；渲染和启动必须拒绝应用 SSL、`SSL_CERTFILE`、`SSL_KEYFILE` 等服务端证书参数。允许以**云侧证书 ID**作为外部 CLB 的路由控制元数据，但不携带证书或私钥，也不在 Kubernetes 内终止 TLS。
+- 外部 HTTPS、真实 TLS 终止/回源边界、权限隔离、入口传播和流式连续性仍须验收；禁止借此规则降级外部安全或关闭生产门禁。流水线构建成功不等于生产上线成功。
+- 本规则不要求关闭客户端出站 HTTPS 或 Kubernetes API 自身的 TLS，不授权修改其他既有业务/控制面 TLS。原 test、两个候选现场及其数据/流水线保持不变，不借本规则重启、recover、重放或清理现场。
+
 ## Project Overview
 
 LightRAG is a Retrieval-Augmented Generation (RAG) framework that uses graph-based knowledge representation for enhanced information retrieval. The system extracts entities and relationships from documents, builds a knowledge graph, and uses multiple retrieval modes (`local`, `global`, `hybrid`, `mix`, `naive`) for queries.

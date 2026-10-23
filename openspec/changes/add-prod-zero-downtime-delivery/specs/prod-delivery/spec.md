@@ -64,6 +64,14 @@ prod SHALL 独立声明集群身份、namespace、域名/TLS、workspace、数�
 - **WHEN** prod 和 test 使用同一个物理数据库、图服务或对象存储服务
 - **THEN** 接入验证确认独立数据域和实际权限边界，不能仅以命名不同宣称已隔离
 
+### Requirement: Terminate production TLS outside application Kubernetes resources
+
+生产应用 TLS SHALL 只在云侧 EdgeOne/CLB 终止，Service/Pod SHALL 使用 HTTP 后端。交付 MUST NOT 创建或复制 TLS Secret、保存/挂载服务端证书与私钥，或在应用 Pod/Ingress 控制器启用 TLS。生产接入 MUST NOT 要求 Kubernetes `tls_secret` 引用；旧字段、应用 SSL 和证书文件参数 MUST 被拒绝，而非静默忽略或填占位。云侧证书 ID MAY 作为外部 CLB 路由控制元数据，但 MUST 保留云侧 HTTPS、精确目标、访问边界和流式验收，不得把外部 TLS 观察误报为 CLB 已验证。现有 test、其他业务和控制面 TLS MUST 保持不变。
+
+#### Scenario: An input attempts to enable application Kubernetes TLS
+- **WHEN** 生产接入包含 `tls_secret`，或候选渲染/启动配置试图启用应用 SSL、服务端证书或私钥文件
+- **THEN** 在应用运行或集群变更前拒绝；合规产物只暴露 HTTP 后端且不含 TLS Secret/证书挂载，云侧 HTTPS 与路由验收门禁继续生效
+
 ### Requirement: Require an initialized compatible production baseline
 
 生产普通升级 SHALL 仅接收已初始化并接入发布协议的环境，以及存储、协调协议、命令格式、API 和新旧查询数据格式均兼容的候选版本。日常发布 MUST NOT 自动执行业务 bootstrap、故障 recover、不兼容 schema 迁移或 embedding 模型/维度切换。首次空环境初始化及已有环境协议接入 SHALL 是独立授权步骤，不改变 test 的初始化合同。

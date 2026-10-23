@@ -1,0 +1,136 @@
+{
+  "record_kind": "highest_repository_rule_and_formal_pipeline_preparation_before_git_write",
+  "at_utc": "2026-10-23T11:12:58.220141+00:00",
+  "baseline_commit": "1664db64b00fe6910fbdfa9ae4e51515db819a16",
+  "highest_rule_path": "AGENTS.md",
+  "outside_repository_instruction_files_modified": false,
+  "candidate_tag": "v1.5.8",
+  "remote_latest_formal_tag_at_preflight": "v1.5.7",
+  "authorized_necessary_commit_push_and_formal_tag": true,
+  "scope": "existing_formal_build_and_image_validation_only_while_prod_gate_is_closed",
+  "ci": {
+    "server": "https://woodpecker.f123.pub",
+    "observed_server_version": "3.19.0",
+    "repo": "LFunTech/LightRAG",
+    "repo_id": 57,
+    "public_metadata_available": true,
+    "ci_token_read_or_imported": false
+  },
+  "tests": {
+    "command": "PYTHON_DOTENV_DISABLED=1 PYTHON=\"$PWD/.venv/bin/python\" ./scripts/test.sh tests/ci tests/distributed/release tests/provisioning tests/api/config",
+    "passed": 405,
+    "skipped": 60,
+    "warnings": 2,
+    "seconds": 2.92,
+    "log_sha256": "6793978a544c12cd55b69f445d2003cd6d2b4e30341bef23b08c284d903ad68c",
+    "external_integration_enabled": false
+  },
+  "checks": [
+    {
+      "command": [
+        ".venv/bin/ruff",
+        "check",
+        "lightrag_delivery/config.py",
+        "lightrag_delivery/profile.py",
+        "lightrag_delivery/render.py",
+        "tests/ci/test_prod_config.py",
+        "tests/ci/test_prod_cloud_tls.py"
+      ],
+      "exit_code": 0,
+      "local_log": "ruff.log"
+    },
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "compileall",
+        "-q",
+        "lightrag_delivery",
+        "tests/ci/test_prod_cloud_tls.py"
+      ],
+      "exit_code": 0,
+      "local_log": "compile.log"
+    },
+    {
+      "command": [
+        "woodpecker-cli",
+        "lint",
+        "--strict",
+        ".woodpecker/build-image.yml",
+        ".woodpecker/deploy-prod.yml",
+        ".woodpecker/deploy-test.yml",
+        ".woodpecker/pre-deploy.yml",
+        ".woodpecker/validate-release.yml"
+      ],
+      "exit_code": 0,
+      "local_log": "workflows.log"
+    },
+    {
+      "command": [
+        "sh",
+        "-n",
+        "scripts/ci/deploy-prod.sh"
+      ],
+      "exit_code": 0,
+      "local_log": "shell.log"
+    },
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "json.tool",
+        "k8s-deploy/lightrag-kustomize/overlays/prod/onboarding.schema.json"
+      ],
+      "exit_code": 0,
+      "local_log": "schema.log"
+    },
+    {
+      "command": [
+        "kubectl",
+        "--kubeconfig",
+        "/Users/minwang/.kube/test-config",
+        "--context",
+        "default",
+        "kustomize",
+        "k8s-deploy/lightrag-kustomize/overlays/test"
+      ],
+      "exit_code": 0,
+      "local_log": "test-render.yaml"
+    },
+    {
+      "command": [
+        "openspec",
+        "validate",
+        "add-prod-zero-downtime-delivery",
+        "--strict"
+      ],
+      "exit_code": 0,
+      "local_log": "openspec.log"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "local_log": "whitespace.log"
+    }
+  ],
+  "original_delivery_baseline_files_matched": 35,
+  "application_kubernetes_tls": "forbidden",
+  "production_static_gate": false,
+  "test_tag_or_deploy_selected": false,
+  "unknown_onboarding_values_approved": false,
+  "production_credentials_imported": false,
+  "production_initialization_or_deployment_performed": false,
+  "production_traffic_switched": false,
+  "load_started": false,
+  "openspec": {
+    "complete": 47,
+    "total": 59,
+    "remaining": 12,
+    "scenarios": 63
+  },
+  "git_trigger_state": "pre_commit_snapshot_not_a_pipeline_receipt"
+}

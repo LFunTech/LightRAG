@@ -117,7 +117,7 @@
 - [x] 6.1 在原 workflow 回归基础上增加正式 tag 的生产显式启用选择测试，以及 `-test`/`-pre`/push/PR 不选择 prod 的拒绝测试。
 - [x] 6.2 从现有 `deploy-test.yml` 的结构派生 `deploy-prod.yml`，复用相同 `pre-deploy` 依赖、内部工具镜像、`skip_clone`、COS 源码下载校验和镜像解析；不改原三个构建/验证阶段或 test 入口。
 - [x] 6.3 增加薄 `deploy-prod.sh` 和必要 CLI 调用，复用现有安全工具；测试复杂运行协议不进入 YAML、不复制整份 test 脚本、不依赖跨 workflow 的本地文件。
-- [x] 6.4 增加 prod overlay 的稳定入口与 slot selector、digest 注入、独立配置/Secret、TLS/流式代理、资源/存储/网络策略及待命参数；render 检查无测试目标残留、不重叠 selector、不暂停全部查询。
+- [x] 6.4 增加 prod overlay 的稳定入口与 slot selector、digest 注入、独立配置/Secret、云侧TLS/HTTP后端及流式代理、资源/存储/网络策略及待命参数；render 检查无测试目标残留、不重叠 selector、不暂停全部查询；禁止应用K8s TLS/证书Secret与挂载。
 - [x] 6.5 最小扩展现有交付静态检查覆盖生产脚本/manifest；证明不增加仓库测试套件步骤、不重复构建、不改变现有 test 实例与验收行为。
 - [x] 6.6 固定 prod 稳态 4 Pod、每 Pod `WORKERS=1`、蓝绿 Blue 4 + Green 4 的容量参数和 render 回归；验证首次上线也是 4 Pod、8 个应用 Pod 资源/后端预算不足时保留 Blue 并拒绝推进，test/base 的副本、worker、资源默认值不变。
 
@@ -380,3 +380,15 @@
 完整本地后端里程碑 **9661 passed / 384 skipped / 2 warnings / 0 failed**；原 test 交付基线未变。首次失败的本机 Cairo 搜索路径和 scratch dotenv 夹具隔离已明确记录，未改业务超时或安装依赖。干净源码 wheel/sdist 中65项发布源码/迁移资源逐字节一致；详见[首发准备快照与阻断](verification/2026-10-23-first-release-preparation.md)。
 
 Git 发布与生产放行分开：runtime/operator 引用、生产域名/TLS、显式迁移/登记/enroll、S3 权限及工作卷/预算、CLB 和真实发布/性能证据仍需补齐。未打 tag、未解除 gate，也未以“尽快上线”默认为同意降低既定 SLO 或免除上线前置。当前 **47/59，12项未完成** 不变，不勾9.2–9.4，不覆盖原现场和历史验收记录。
+
+## 2026-10-23 只读引用核对与禁止应用 K8s TLS
+
+用户要求执行者自行从prod清单和既有资源核对账号、域名、TLS引用，随后明确禁止在K8s中做应用TLS。已经核对目标身份、全局Deployment/StatefulSet及21份Ingress、6份TkeServiceConfig、208项Secret服务端Table元数据，并仅解析所需公开证书；无生产写、Pod/Job创建、exec/port-forward、PG/图/S3请求或密钥导入，原test/两个候选未访问。原三个prod工作负载、21份Ingress及6份ServiceConfig的UID/spec/路由引用前后一致。
+
+可复用候选为prod清单已有PG/图连接、该文件内唯一历史名称API key别名、`prod/lfun`拉取引用及既有CLB；不能把其他应用凭据或APISIX客户端证书当成LightRAG运行权限/公网服务端证书。公网`*.eplus2.cn`证书有效，但CLB只读调用被当前COS用途身份拒绝，真实云侧绑定未证实；正式LightRAG域名未配置。最小补充集中在独立runtime/运维身份分离、正式域名/DNS、既有云侧证书/入口引用及CLB只读观测权限，**不需要K8s TLS Secret**。详见[本轮核对和最小补充清单](verification/2026-10-23-prod-reference-audit.md)。
+
+本地已将该硬约束接入6.4：移除无实际用途的`target.tls_secret`和schema字段、拒绝旧字段及应用SSL/证书路径、Pod显式`SSL=false`、启动profile再次拒绝TLS；外部云证书/HTTPS/direct及流式门禁不放宽。TDD初始10 failed/1 passed后11 passed，新增外部HTTPS负例及相关目录最终数见报告。仅本地改动，未推送、打tag、触发流水线或应用到prod；47/59与原12项真实未完成不变，场景从62增至63，不把禁止K8s TLS解释成取消外部HTTPS验收。
+
+## 2026-10-23 最高规则与正式流水线授权
+
+用户再次明确要求将禁止应用K8s TLS写入最高规则，然后跑流水线。已将约束置于本仓库根`AGENTS.md`最前部署规则；不改仓库边界外的全局规则。按既有Git授权交付本轮必要代码/规则/验收记录，再选择未占用正式semver触发既有构建和产物校验链；**不推test tag、不修改test发布，prod静态gate继续false**。这不是对已有账号/域名/云入口阻断的豁免，不将跳过prod部署的流水线报告成已上线，不勾9.2–9.4。执行前核对见[本轮流水线准备快照](verification/2026-10-23-formal-pipeline-preparation.md)。

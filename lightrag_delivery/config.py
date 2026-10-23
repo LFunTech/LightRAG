@@ -28,7 +28,6 @@ TARGET_FIELDS = {
     "s3_prefix",
     "storage_class",
     "host",
-    "tls_secret",
     "ingress_class",
 }
 RESOURCE_FIELDS = {
@@ -231,7 +230,7 @@ def load_prod_config(path: Path) -> ProdConfig:
             raise ProdConfigError(f"target.{field}: invalid identifier")
         if re.search(r"(^|[_\-/])test([_\-/]|$)", value, re.I):
             raise ProdConfigError(f"target.{field}: test target forbidden")
-    for field in ("namespace", "tls_secret", "ingress_class", "storage_class"):
+    for field in ("namespace", "ingress_class", "storage_class"):
         if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", data["target"][field]):
             raise ProdConfigError(f"target.{field}: invalid Kubernetes name")
     if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", data["target"]["host"]):

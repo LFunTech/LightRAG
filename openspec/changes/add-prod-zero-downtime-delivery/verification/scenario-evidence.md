@@ -1,6 +1,6 @@
 # Capability 场景逐项证据矩阵
 
-日期：2026-10-23；当前 **62 个场景**全部列出：原57项保留既有证据，新增5个首次迁移场景列于末表，真实容量/优化对照未验证。**本地通过不等于真实上线验收**。
+日期：2026-10-23；当前 **63 个场景**全部列出：原57项保留既有证据，新增5个首次迁移场景及1个云侧TLS/HTTP后端场景列于末表，真实容量/优化对照未验证。**本地通过不等于真实上线验收**。
 测试文件路径以仓库根为基准；`test_*` 缩写归属 `tests/distributed/release/`，除非显式写
 `tests/ci/` 或 object_storage。所有实际最终命令/pass/skip 见 [local-verification.md](local-verification.md)。
 
@@ -104,3 +104,9 @@ K8s/CLB/入口 fake。真实 4/8 Pod、TKE/CLB、多节点存储、故障/容量
 | Initialization Job is prepared without deployment authority | `test_cli.py`、`test_job.py`：离线无网络、目标/编码/DSN覆盖拒绝、现有引用、固定digest、无app/Secret/apply | 真实引用/预算为空；未导入密钥或创建Job，不启用prod gate |
 
 本轮最终命令与本地证据见 [首次迁移验证](2026-10-23-storage-provisioning-local.md)；旧表中的历史结果不与本轮数字重复相加。
+
+## prod-delivery 云侧 TLS / HTTP 后端（新增1项）
+
+| 场景 | 本地实现/证据 | 边界/未验证部分 |
+| --- | --- | --- |
+| An input attempts to enable application Kubernetes TLS | `tests/ci/test_prod_cloud_tls.py`：真实配置/schema/渲染/启动profile拒绝TLSSecret、SSL及证书路径；Blue/Green HTTP、无TLS Secret或证书挂载；云侧HTTPS/证书/流式门禁继续拒绝无效输入 | 本地RED→GREEN及相关目录结果见[引用核对与本地约束验证](2026-10-23-prod-reference-audit.md)；未部署，云侧CLB证书绑定/连接保持未验 |

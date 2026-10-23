@@ -9,6 +9,7 @@
 - 保留现有源码单次 clone、COS 源码归档、Kaniko 构建、镜像来源/digest 校验、内部工具镜像及 Kustomize 交付方式；不重建一套 CI/CD 平台、不另建生产 Dockerfile。
 - 从现有 `deploy-test` workflow 的组织方式增量派生 `deploy-prod`，继续依赖同一 `pre-deploy`。保留 `-test` 的现有触发、五套实例、Secret 映射和部署行为；`-pre` 仍只构建及校验。正式 `vX.Y.Z` tag 仅在生产接入显式启用后允许部署 prod。
 - 增加 prod overlay、生产专属配置和薄发布入口。生产日常发布采用“新版本待命 → 关闭新写准入并排空旧写 → 蓝绿切流 → 新版本接管排队写入 → 旧实例连接排空退出”，不暂停查询路由、不把全部服务副本缩到零。
+- 用户明确禁止在应用 Kubernetes 交付中做 TLS：TLS 终止及证书管理在云侧 EdgeOne/CLB，Pod/Service 后端仅 HTTP；不创建/复制 TLS Secret、不挂载证书或私钥、不在 Pod/Ingress 控制器启用 TLS。云侧证书 ID 仅作为外部路由元数据核验，不能用公网证书或占位 TLS Secret 代替真实入口证据。
 - 生产初始容量基线为 **4 个应用 Pod，每 Pod 1 个 worker（`WORKERS=1`）**；蓝绿发布期间按 **Blue 4 + Green 4，共 8 个应用 Pod** 预留调度资源和后端容量。此数量不含数据库、图服务或维护 Job，不修改现有 test 的副本数、worker 数和资源配置，也不将起步基线等同于已验证的高并发容量。
 - 增加默认关闭、prod 显式启用的发布控制能力：持久化发布锁/阶段、实例待命与排空、跨实例写入闸门、有界且可追踪的排队请求、查询与写入分类、旧版本写权限撤销及条件回退。查询缓存等附带写入不能绕过写入交接，已发送而结果不确定的存储写入不能自动重放。
 - `.secrets/prod.secrets` 仅供 prod，`.secrets/test.secrets` 仅供 test；通过显式字段映射分别导入环境专属 CI Secrets 与 Kubernetes Secret。缺项直接失败，不跨环境读取、覆盖或兜底，不将密钥放入源码包、镜像、日志或提案。
