@@ -386,3 +386,18 @@ PG 业务池、coordination 池/witness、HugeGraph 客户端池以及 LLM/embed
 沿用第13节K8s-only边界，不整条重跑#76：独立manual/master工作流，仅检出本次CI精确commit的交付脚本，无构建/registry push/tag/PG图迁移或enroll调用。执行确认必须等于版本化非敏感approval ID，输入绑定#76原tag/commit/digest/config、初始化Job UID/spec hash、唯一成功Pod UID、immutable初始化配置和execution claim。只读加载原Job的immutable config/runtime；核验成功termination回执及真实imageID、原配置/profile/hash和目标集群UID；不读取operator Secret、不请求PG/图/S3/模型/云入口。
 
 通过后只核对既有app SA/pull引用，复用已创建且逐字段一致的runtime Secret，只创建缺失的应用ConfigMap、4×1 Blue、HTTP Service/Ingress；已有同spec资源仅观察，漂移/Green/不同Pod拒绝，不替换、不restart、不recover。K8s单请求60秒且受原startup观察总预算约束，GET/POST共享剩余预算，不把原任意15秒上限当生产延迟承诺；错误输出仅固定脱敏字段。失败立即停止保留成功初始化及所有已受理资源，不自动重试。manual事件只向该步骤提供既有prod kubeconfig，原test发布和其他workflow不改；凭据值/应用配置不变。成功仍只称KUBERNETES_READY，不认领云入口/查询/SLO/4+4通过。
+
+## 16. 最新用户约束：原代码、test流水线微调、qcloud固定CLB（2026-10-24）
+
+用户新指令优先：不允许修改应用代码，只在现有test流水线基础上做必要prod微调；Ingress固定qcloud并引用lb-ao2qcdid，K8s只提供HTTP。前述S3/认证代码修复授权被覆盖，未提交的代码/测试与临时tag筛选已撤回并在忽略目录保留patch；不构建或发布含这些改动的版本。原test及两候选保持，原成功初始化不重跑，不新增S3/CLB/EO流水线校验。
+
+原HEAD应用在不修改源码的情况下，已离线证明可由只读AWS_CONFIG_FILE的`[default] s3/addressing_style=virtual`产生正确COS虚拟主机请求；通过显式WHITELIST_PATHS=/health收紧认证默认，无需修改API代码。SDK配置文件不包含密钥，凭据继续用prod专属Secret；配置文件路径、内容和环境变量必须纳入最终运行配置绑定，不能为了避免登记更新而藏在hash之外。此前v1.5.10代码修复方案的f684…登记批准没有执行、不得复用；最终配置另算精确hash并按必要范围报批。
+
+原prod渲染结果已具备ingressClassName=qcloud、kubernetes.io/ingress.existLbId=lb-ao2qcdid、host=llm-rag.eplus2.cn、HTTP Service端口9621且无spec.tls；真实资源仍未部署，不能将本地渲染称为入口可用。执行以test已验证的源码/构建/部署组织方式为基础，只保留prod必需差异，不再扩充独立通用发布器；test恢复/初始化行为不是可复制到已初始化prod的授权。
+
+
+### 本次配置增量的精确实现
+
+只在既有manual/master app-resume步骤分支中采用test已验证的apply/rollout方式，复用v1.5.9原digest及#76初始化结果；不新建workflow/通用发布器、不改应用代码。immutable AWS ConfigMap复用原release挂载，JSONPatch以旧UID和完整spec原子核对，仅env与ConfigMap引用变化。入口参照目标TKE既有共享CLB的NodePort/group声明，固定qcloud和lb-ao2qcdid，HTTP/无TLS。修正既有检查的GET失败传播，不新增S3或云API门禁。
+
+新runtime hash为eead1664412b7738eeedfc28e229b7e735d02cac80b2457830aa5ef9cea6b1ae，SDK配置内容SHA通过显式环境计入hash；原profile/物理manifest/首发v1.5.9 policy不变。scopes.config_hash单列更新仍单独待批，不复用f684…旧批准或通过migration/enroll绕过。原失败4Pod为0Ready，Recreate仅适用本次首发补全，不认领在线零停机。具体配置与本地/真实状态见[本轮记录](verification/2026-10-24-prod-config-only-scope.md)。

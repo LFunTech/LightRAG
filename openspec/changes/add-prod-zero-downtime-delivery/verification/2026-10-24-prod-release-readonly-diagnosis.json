@@ -1,0 +1,107 @@
+{
+  "record_kind": "prod_existing_pod_readonly_root_cause",
+  "observed_at_utc": "2026-10-23T16:29:35.679240+00:00",
+  "namespace": "prod",
+  "pod": "lightrag-blue-74576c58f9-tx6bh",
+  "pod_uid": "57c7d9e7-0289-4766-b3ac-9c514104d2d1",
+  "new_pods": 0,
+  "manual_restarts": 0,
+  "database_mutations": 0,
+  "s3_http_requests_this_diagnosis": 0,
+  "transaction": {
+    "read_only": "on",
+    "explicit_selects": 7
+  },
+  "scope": {
+    "active_slot": "blue",
+    "candidate_slot": null,
+    "config_hash": "e5da9efed3c2cfbb4ad614209cf349f7598b3715d5c76b7f525a7dd55ee1a049",
+    "epoch": 1,
+    "gate_open": true,
+    "owner_present": false,
+    "phase": "IDLE",
+    "profile_hash": "96b87f2d07634bde59cca2588372c06912051229b884dbb9e4d2980316daaa92",
+    "protocol_version": 1,
+    "runtime_config_matches": true,
+    "runtime_profile_matches": true,
+    "scope": "lightrag_prod/lightrag_prod",
+    "updated_at": "2026-10-23 13:54:32.623204+00:00"
+  },
+  "instance_count": 4,
+  "instances": [
+    {
+      "closed": true,
+      "config_hash": "e5da9efed3c2cfbb4ad614209cf349f7598b3715d5c76b7f525a7dd55ee1a049",
+      "instance_id": "18e5846a-f399-4b6e-ab38-a5c46bcad138",
+      "observed_at": "2026-10-23 15:35:48.522746+00:00",
+      "profile_hash": "96b87f2d07634bde59cca2588372c06912051229b884dbb9e4d2980316daaa92",
+      "retiring": true,
+      "slot": "blue"
+    },
+    {
+      "closed": true,
+      "config_hash": "e5da9efed3c2cfbb4ad614209cf349f7598b3715d5c76b7f525a7dd55ee1a049",
+      "instance_id": "6ad162e2-bcde-43be-920f-fef65ebccb0d",
+      "observed_at": "2026-10-23 15:41:50.541008+00:00",
+      "profile_hash": "96b87f2d07634bde59cca2588372c06912051229b884dbb9e4d2980316daaa92",
+      "retiring": true,
+      "slot": "blue"
+    },
+    {
+      "closed": true,
+      "config_hash": "e5da9efed3c2cfbb4ad614209cf349f7598b3715d5c76b7f525a7dd55ee1a049",
+      "instance_id": "57c7d9e7-0289-4766-b3ac-9c514104d2d1",
+      "observed_at": "2026-10-23 15:42:00.440038+00:00",
+      "profile_hash": "96b87f2d07634bde59cca2588372c06912051229b884dbb9e4d2980316daaa92",
+      "retiring": true,
+      "slot": "blue"
+    },
+    {
+      "closed": true,
+      "config_hash": "e5da9efed3c2cfbb4ad614209cf349f7598b3715d5c76b7f525a7dd55ee1a049",
+      "instance_id": "c30e3244-11a1-423f-b3ee-40bd68e6af9c",
+      "observed_at": "2026-10-23 15:42:03.096016+00:00",
+      "profile_hash": "96b87f2d07634bde59cca2588372c06912051229b884dbb9e4d2980316daaa92",
+      "retiring": true,
+      "slot": "blue"
+    }
+  ],
+  "commands_by_state": [],
+  "tickets_by_state": [],
+  "first_log_error": {
+    "file": "lightrag.log",
+    "sha256_read": "0dcbc0df9e0b0e83d5222a4a8900958e95e5bf2dd6a3a7e1907ae982e21c5f7e",
+    "first_traceback_line": 41,
+    "first_log_record_utc": "2026-10-23 15:41:57.864",
+    "failure_utc": "2026-10-23 15:42:00.450",
+    "operation": "S3.HeadBucket",
+    "http_status": 403,
+    "error_class": "ObjectStoreUnavailableError",
+    "stage": "lifespan.object_store.preflight"
+  },
+  "offline_s3_comparison": {
+    "credential_comparison": {
+      "access_key_matches_current_prod_inventory": true,
+      "secret_key_matches_current_prod_inventory": true
+    },
+    "network_sends": 0,
+    "offline_request_shapes": [
+      {
+        "mode": "approved_application_auto",
+        "method": "HEAD",
+        "url": "https://cos.ap-shanghai.myqcloud.com/lightrag-1302760640"
+      },
+      {
+        "mode": "previous_probe_explicit_virtual",
+        "method": "HEAD",
+        "url": "https://lightrag-1302760640.cos.ap-shanghai.myqcloud.com/"
+      }
+    ]
+  },
+  "limits": [
+    "One existing Pod first-start file examined; not all four first-start files.",
+    "403 response body not retained by HEAD; exact COS error code not verified.",
+    "Closed release rows explain subsequent registration conflicts; no repair performed.",
+    "Original probe counter said 8; AST and executed call sites prove 7 explicit SELECTs; original private result retained."
+  ]
+}

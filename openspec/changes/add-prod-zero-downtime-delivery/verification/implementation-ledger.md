@@ -481,3 +481,22 @@
 - Ruling: 严格比对仅归一化实际观察的fieldRef v1和绑定TKE Pod的requests/limits均为1的ENI资源 — 平台注入不代表原运行配置漂移 — 自定义数量、Deployment模板ENI及额外运行行为仍拒绝；2 RED→GREEN，相关719 passed/146 skipped/2既有warning。只是本地工具修复，不重试部署。
 - Ruling: ReleaseConflict的P0001隐藏了profile/config与instance/owner/closed两个分支，不能凭后续自动重启日志决定清登记或enroll — 防止破坏最初故障证据或重放未知状态 — 进一步Pod日志/只读SQL须确认后才执行。Kubernetes自动重启仍在继续，不手动删Pod/缩容。
 - Ruling: `/api/*`默认认证白名单必须明确呈现为开放入口风险，不能在“原配置”授权下静默改变hash绑定配置；不作为新增云入口门禁，后续具体修复单独审阅。详见[#77停止证据及下一步](2026-10-23-prod-pipeline-77-stopped.md)。60/74与73场景不变，原test/两个候选未访问。
+
+### 2026-10-24 获准只读诊断
+
+- 原Pod/namespace UID不变，仅利用既有tx6bh容器自然Running窗口做一次只读exec；7条SELECT在默认及显式只读事务完成，没有新Pod/S3请求/DB写。探针原硬编码计数8的错误已记录为7，不重写原始结果掩盖。
+- 一个Pod工作盘首异常明确S3 HeadBucket403；scope config/profile匹配，4条原实例均closed/retiring，原UID被注册拒绝是关闭后自动重启的继发结果，不再把当前冲突当首次失败。commands/tickets为0仅限release快照，不代表全业务空闲。
+- Ruling: 不清closed记录/放宽owner或重跑enroll — 保留真实安全边界和故障证据 — 先定位S3，再经授权正常替换故障实例；长期容器incarnation问题另审，不以随机ID热补绕过成员计量。
+- Ruling: 旧探针显式virtual与实际app auto不等价；相同SDK离线双模式请求证明auto走path，假凭据且发送层禁止，网络0 — 旧HEAD200不能替代真实启动配置验收 — COS403细码及当前virtual状态需单独两次只读HEAD授权，当前不发请求。见[详细证据](2026-10-24-prod-release-readonly-diagnosis.md)，任务仍60/74，未改代码/配置，未提交推送或打tag。
+
+### 2026-10-24 最新范围覆盖代码修复
+
+- 获准同Pod最多两次HEAD后实际auto/path403、virtual200，各1次、无重试写删；不作为新CI门禁。后续代码修复曾获得授权并完成本地TDD/870相关通过及一次fresh review（0 Critical/0 Important/1 Minor，账户测试隔离1 RED→3 GREEN），但**用户再明确禁止改代码，因此该补丁已撤回、不得交付**，不把历史测试当当前配置部署通过。
+- Ruling: 最新指令必须以现有test流水线微调、应用源码零修改、qcloud与CLB lb-ao2qcdid固定 — 优先于此前新版本代码修复授权 — 仅撤回执行者自己未提交的源码/测试/临时筛选，完整patch留忽略目录；原test与既有用户文件不动。
+- 原HEAD源码+假凭据+网络发送禁止的离线证明：AWS_CONFIG_FILE只读配置可使原SDK走virtual，显式WHITELIST_PATHS=/health有效，无需改应用。原prod输入render正确绑定qcloud/lb-ao2qcdid/HTTP9621/无K8s TLS；真实prod尚未修改。
+- Ruling: v1.5.10/f684…精确登记批准尚未执行，不能拿来写不同的仅配置hash — 防止旧批准漂移 — 草案标为SUPERSEDED_DO_NOT_EXECUTE，最终配置另算差异。任务第15节改为仅配置清单，当前62/80、18剩余、73场景。见[本轮边界及证据](2026-10-24-prod-config-only-scope.md)。未提交推送、打tag、构建或部署。
+
+
+### 2026-10-24 仅配置续部署准备
+
+既有manual工作流增加test式apply/rollout分支与4份静态prod配置，不修改应用/tests/test发布；复用原v1.5.9镜像和#76初始化。新hash eead…完整重算，policy/profile/manifest不变；原f684…计划作废。审查0C/2I/1M，GET错误误放行和PG实际main默认只读均真实RED→GREEN，入口状态输出按准确名称修正。mock shell14/14、隔离本地PG20/20、CI299 passed/1 skipped、六workflow strict lint及静态核验通过。当前64/80，16项剩余；精确单列登记写入仍待批准、流水线尚未触发，prod最新0/4Ready。详见[本轮范围/配置/实际状态](2026-10-24-prod-config-only-scope.md)。

@@ -437,3 +437,20 @@ Git 发布与生产放行分开：runtime/operator 引用、生产域名/TLS、�
 第14节本地14.1/14.2完成，当前**60/74，14项剩余**（原12项真实验收、13.6及14.3实际续部署），场景73项。唯一有效审查2 Important经8项RED→GREEN、API默认与创建前漂移正例补齐；相关717 passed/146 skipped/2既有warning。见[本轮记录](verification/2026-10-23-prod-app-resume-local.md)。仅既有prod kubeconfig扩manual事件，凭据值/其他Secret/test未变，尚未触发真实续部署，不提前认领成功。
 
 后续真实执行#77：仅manual/master应用续部署，原digest/tag/config及#76初始化结果复用；应用ConfigMap/Blue Deployment和4个Pod已创建，但0/4 Ready、release注册冲突，Service/Ingress未创建，已停止且未重试。交付器另有已证实的fieldRef/TKE ENI归一化缺陷，2 RED→GREEN、相关719 passed/146 skipped，仅本地修复；不等于注册冲突解决。默认`/api/*`认证白名单风险已记录，未擅改原配置；进一步Pod内只读诊断待确认。见[#77真实停止记录](verification/2026-10-23-prod-pipeline-77-stopped.md)。13.6/14.3继续未完成，60/74及未知参数不变。
+
+2026-10-24用户批准仅现有Pod首日志及release只读事务诊断：一次exec、7条显式SELECT，确认该Pod首异常S3 HeadBucket403，scope/config/profile匹配、4条原实例均closed/retiring，说明后续同Pod UID注册冲突；没有清登记或enroll。离线SDK/假凭据/网络禁止复现应用auto走path与旧探针virtual的差异，密钥与prod清单匹配；尚未发送新S3 HEAD，不把COS细码或修复成功写成已验。详见[本轮证据及下一步最小范围](verification/2026-10-24-prod-release-readonly-diagnosis.md)。保持60/74、73场景，13.6/14.3与未知参数不变。
+
+## 15. 最新约束：仅基于test流水线微调与配置部署（2026-10-24）
+
+用户最新明确：①必须以现有test流水线为基础微调，不得大改；②不允许任何应用代码调整；③prod Ingress必须qcloud，CLB为`lb-ao2qcdid`。该指令覆盖此前S3/认证代码修复和新版本计划，流水线不新增S3/CLB/EdgeOne校验。已将执行者此前未提交的两处应用修改、对应新测试和临时初始化tag限定完整备份到忽略目录并撤回，HEAD/原test不动，不提交这些代码改动；此前v1.5.10/f684…登记批准尚未执行，旧草案标为SUPERSEDED_DO_NOT_EXECUTE，不套用到不同配置。
+
+- [x] 15.1 只复用现有test源码归档/构建/产物验证/K8s部署结构，形成必要prod参数与overlay微调；不复制test的bootstrap/recover，不新增通用发布框架或修改原test入口。
+- [x] 15.2 用原HEAD应用源码离线验证配置路径：只读AWS SDK config的virtual addressing及显式WHITELIST_PATHS=/health，不改应用；SDK网络发送0，既有密钥不进入ConfigMap。
+- [x] 15.3 原prod配置本地渲染确认qcloud Ingress、准确CLB lb-ao2qcdid、域名llm-rag.eplus2.cn、HTTP后端9621和无K8s TLS；这是本地核验，不是已创建入口。
+- [x] 15.4 完成必要流水线/部署配置微调、已有检查和render；交付前确认应用源码与tests无变更，不增加S3/云入口CI门禁，保留prod/test配置和密钥隔离。
+- [ ] 15.5 为最终配置计算真实hash/挂载绑定，若需登记更新，明确新精确差异另批；不沿用已撤销代码修复草案的hash，不重跑migration/enroll或清旧实例记录。
+- [ ] 15.6 通过流水线部署原代码/获准配置的prod 4×1实例和qcloud HTTP入口，实际核验Pod状态/访问；失败即停，不动原test/两候选，不把构建或Pod创建认领完整可用。
+
+当前64/80，16项剩余，73场景；此前60/74为第15节前历史快照。最新范围与配置离线证据见[仅配置部署约束](verification/2026-10-24-prod-config-only-scope.md)。本地代码修复的历史870 passed/146 skipped和审查不计作当前配置方案的真实上线验收。
+
+本轮配置分支本地14/14、真实隔离PG 20/20（含main连接设置）、CI 299 passed/1 skipped、六workflow strict lint及静态hash/原digest/qcloud/无TLS检查通过。审查2 Important均复现并修正：GET失败状态传播、精确登记脚本连接默认只读。15.5精确eead…登记批准及15.6实际部署仍未完成；旧f684…批准不适用。见上述仅配置部署记录。

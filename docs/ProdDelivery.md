@@ -1,10 +1,18 @@
 # 生产蓝绿发布手册
 
+## 当前执行约束（2026-10-24，覆盖此前代码修复计划）
+
+只在现有test流水线基础上微调prod交付，**不修改应用代码**；原test和两个候选不动。prod入口固定`qcloud` Ingress、CLB **`lb-ao2qcdid`**，域名`llm-rag.eplus2.cn`，K8s仅HTTP且不做TLS。不新增流水线S3/CLB/EdgeOne校验，不复制test的bootstrap/recover或重跑已经成功的初始化。未提交的S3/认证代码修复及临时tag筛选已撤回，不能混入部署。
+
+原版应用已离线证明可通过只读AWS SDK ConfigMap的virtual addressing及显式`WHITELIST_PATHS=/health`配置解决对应问题，不需要改代码；静态配置及本地检查已准备，尚未应用到prod。原v1.5.10/f684…登记批准没有执行，不能套用到新的配置hash。当前精确方案仅更新scopes.config_hash为eead…、不变policy/epoch，仍待批准。既有manual续部署分支只用test式apply/rollout，不重新构建/打tag/初始化；qcloud共享CLB采用NodePort/group。详见[最新范围、HEAD证据与仅配置路径](../openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-24-prod-config-only-scope.md)。
+
 ## 实际首发结果（2026-10-23）
 
 正式v1.5.9 / 流水线#76：初始化Job成功，运行Secret已落地，但后续K8s编排失败，应用Deployment/Service/Ingress未创建，**prod尚未部署成功**。已停止并保留现场，未重跑迁移/流水线或换tag。见[实际证据与续部署边界](../openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-prod-pipeline-76-failure.md)。仅续部署应用必须复用原成功初始化回执、镜像digest和runtime，不重新构建或重放迁移；不能把整条重跑当默认修复。
 
 后续获准的manual流水线 **#77** 已实际创建原配置的`lightrag-blue`及4个Pod，但失败停止；截至北京时间23:50，**0/4 Ready，Service/Ingress未创建，prod仍不可用**。应用在release注册阶段报`ReleaseConflict`；另已定位交付器对API默认`fieldRef.apiVersion=v1`和TKE绑定Pod的单个ENI资源注入误判，后者仅本地修复，不代表启动冲突解决。保留现场，不自动重试、清登记或重跑初始化。还发现默认`WHITELIST_PATHS=/health,/api/*`会放行Ollama路由，不能按原配置直接开放入口；更改运行配置需单独审阅。见[#77停止记录与下一步](../openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-prod-pipeline-77-stopped.md)。
+
+2026-10-24获准只读诊断后确认：其中一个原Pod首异常是S3 `HeadBucket 403`；scope/config/profile均匹配，4条原Pod实例记录均closed/retiring，自动重启沿用Pod UID因此被注册保护拒绝。离线SDK复现表明应用auto实际走path-style，与此前200探针的显式virtual模式不同；未发新S3请求，不能把具体403细码写成已核验。见[首异常与注册冲突证据](../openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-24-prod-release-readonly-diagnosis.md)。不清记录、不重跑enroll，也不先重建Pod；S3对照和修复须按明确范围继续。
 
 ## 仅应用续部署（#76 已成功初始化，用户明确授权）
 

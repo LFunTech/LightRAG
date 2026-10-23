@@ -1,0 +1,38 @@
+{
+  "automatic_retries": false,
+  "completed": true,
+  "finished_at_utc": "2026-10-23T17:00:38.140615+00:00",
+  "http_sends": 2,
+  "pod_uid": "57c7d9e7-0289-4766-b3ac-9c514104d2d1",
+  "put_delete_calls": 0,
+  "record_kind": "prod_existing_pod_two_readonly_heads",
+  "results": [
+    {
+      "error": {
+        "code": "403",
+        "http_status": 403,
+        "type": "ClientError"
+      },
+      "mode": "approved_application_auto",
+      "request_host": "cos.ap-shanghai.myqcloud.com",
+      "request_path": "/lightrag-1302760640",
+      "sends": 1
+    },
+    {
+      "http_status": 200,
+      "mode": "explicit_virtual",
+      "request_host": "lightrag-1302760640.cos.ap-shanghai.myqcloud.com",
+      "request_id": "NmFkYjkyYjZfOGNkMGI0MDlfODdmOF8xZDlhZGU1YQ==",
+      "request_path": "/",
+      "sdk_retry_attempts": 0,
+      "sends": 1
+    }
+  ],
+  "started_at_utc": "2026-10-23T17:00:37.130823+00:00",
+  "versions": {
+    "aioboto3": "15.5.0",
+    "aiobotocore": "2.25.1",
+    "boto3": "1.40.61",
+    "botocore": "1.40.61"
+  }
+}
