@@ -110,3 +110,11 @@ K8s/CLB/入口 fake。真实 4/8 Pod、TKE/CLB、多节点存储、故障/容量
 | 场景 | 本地实现/证据 | 边界/未验证部分 |
 | --- | --- | --- |
 | An input attempts to enable application Kubernetes TLS | `tests/ci/test_prod_cloud_tls.py`：真实配置/schema/渲染/启动profile拒绝TLSSecret、SSL及证书路径；Blue/Green HTTP、无TLS Secret或证书挂载；云侧HTTPS/证书/流式门禁继续拒绝无效输入 | 本地RED→GREEN及相关目录结果见[引用核对与本地约束验证](2026-10-23-prod-reference-audit.md)；未部署，云侧CLB证书绑定/连接保持未验 |
+
+## prod-delivery 显式 EdgeOne 入口（新增3项，总计66场景）
+
+| 场景 | 本地实现/证据 | 边界/未验证部分 |
+| --- | --- | --- |
+| EdgeOne terminates public HTTPS without Kubernetes TLS | `tests/ci/test_prod_edgeone.py`：显式HTTP80 profile、无CLB证书/HTTPS注解、独立只读签名与observer接线；真实Transport拒绝TLS漂移 | EO域名/云证书/阿里云DNS/专属规则已实际配置，见[本轮记录](2026-10-23-edgeone-browser-delivery.md)；未部署app，不签署真实SSE/4+4 |
+| EdgeOne configuration is incomplete or drifts | 同文件：域名/源站/状态/证书、settings/rules hash漂移、分页/计数/返回类型、缺观察器拒绝；原qcloud全目标/健康验证保留 | 本地Mock通过；云API只读身份未补齐，不用截图冒充API hash或规则语义证明 |
+| Malformed ingress discriminators are rejected safely | 同文件：mode/protocol数组/对象/空值/bool/数值，先4 RED后10 GREEN，真实配置解析路径 | 只输出字段级ProdConfigError，不触发集群变更；不代表其他未知JSON字段获准 |

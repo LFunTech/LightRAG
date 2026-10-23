@@ -424,3 +424,13 @@
 - 用户要求最高规则和跑流水线，沿用本次必要Git发布/tag授权。Ruling: 最高持久规则写入当前仓库根AGENTS.md，不擅自修改其他仓库/用户全局文件；外部客户端HTTPS和控制面TLS不因“禁止应用K8s TLS”被关闭。
 - Ruling: 生产缺口未齐时，仅运行既有正式tag构建/产物校验，保持prod静态gate false — 跑流水线不能解释成豁免真实前置 — 不触发test tag、不改其他业务/candidate资源，不将CI通过当prod上线。已向用户明确该边界。
 - 提交前fresh相关回归405 passed/60 skipped/2既有warning（2.92s）；其余静态及基线结果见[流水线准备快照](2026-10-23-formal-pipeline-preparation.md)。该快照在Git写入前生成，tag/commit/pipeline实际回执另存执行记录，不伪造未完成阶段。
+
+## EdgeOne 与实际流水线部署增量（2026-10-23）
+
+- Ruling: 将用户已确认的 EdgeOne/正式域名和“继续通过流水线部署”落实为现有 OpenSpec 第12节的显式入口分支，不另起设计/计划或重复询问路线；保留原 direct profile 和全部权限/初始化门禁。
+- Ruling: 现有 Woodpecker CLI context 可正常认证，环境中没有 WOODPECKER_TOKEN 不代表没有 CI 凭据；不再将缺 Token 作为阻断。只读 secret metadata 确认尚无 prod 输入，不读取或改动 test Secret 值。
+- Ruling: EO settings/rules hash 只能证明与运维已审阅配置一致，不冒充自动解析规则语义或真实流式/容量验收；缺真实审查输入继续 fail-closed。独立 PG runtime/云观测权限仍未满足，不能用有连接密码代替。
+
+- 已按逐项批准通过浏览器实际完成EO专属域名/免费证书/缓存与120s空闲超时规则，并在阿里云仅新增llm-rag CNAME；权威/递归返回正确值，EO最终已生效/证书已部署。没有全站、参考域名、K8s/后端/test变更。真实app/SSE/容量未验，不以云配置保存冒充上线。
+- 新鲜EO补丁审查0 Critical/0 Important/1 Minor；补非字符串mode/protocol回归4 RED/6 GREEN后修复类型短路，10 GREEN；定向目录最终460 passed/60 skipped/2既有warning。原test/built阶段基线diff为空，scoped Ruff/format/strict workflow/shell/OpenSpec通过。详见[本轮证据及阻断](2026-10-23-edgeone-browser-delivery.md)。
+- Ruling: 首发无已运行Blue时，不能伪造enrollment或让普通升级器绕过实例核验；迁移、登记/enroll、首次4×1流水线串接仍须补齐，明确是实现待办而非让用户提供虚构基线。原权限/观测/ACL及真实验证门禁保持，47/59/12剩余不改。

@@ -347,3 +347,14 @@ PG 业务池、coordination 池/witness、HugeGraph 客户端池以及 LLM/embed
 - 只渲染独立人工触发初始化Job，固定image digest、backoffLimit=0、无app/入口资源、引用已有Secret而不生成Secret；不把DDL自动塞入普通蓝绿发布或原test workflow。未知预算/真实引用不填示例值为获准参数。
 - 真实release runtime必须核验迁移账本及当前PG结构；PG extension和图schema启动路径只读校验，即使maintenance也不借旧bootstrap补DDL。release关闭的test/local保留原行为。图当前结构仍由verify-only客户端校验，PG账本不能冒充图网络或ACL证明。
 - 本地覆盖空库、重复执行/并发、checksum/profile/结构漂移、非事务图中断/未知结果、目标/权限/确认拒绝、真实runtime准入和test不回归。真实生产迁移、隔离对象写入、4+4/CLB/性能验收仍独立授权。
+
+## 12. 已确认 EdgeOne 入口的交付适配（2026-10-23）
+
+用户确认正式域名 `llm-rag.eplus2.cn`、沿用 EdgeOne，并要求继续通过流水线实际部署。此路径采用显式 `ingress.mode=edgeone`：公网 HTTPS 在 EO 终止，qcloud CLB HTTP/80 直连 HTTP/9621 Pod。既有 `direct`/CLB HTTPS profile 保留，不用任意 HTTP 降级代替 EO 核验，不创建 K8s TLS Secret/证书挂载。
+
+- EO 配置严格绑定 zone、正式 host、与 Ingress 实际 VIP 一致的单个 IPv4 源站、HTTP/80 和原 host；不接受备用源站、未知域名状态或自动猜测站点。
+- 独立只读 EO 身份读取加速域名、七层全局配置及完整有界规则列表。域名固定字段、全局设置和有序规则分别与经运维审阅的 SHA256 比较；只输出 hash/请求ID，不保存可能含签名/鉴权配置的原始云响应。哈希只证明与已审阅配置一致，不代替 HTTP 回源、Host、API 缓存禁用、缓冲及长流超时的语义审查和真实验收。
+- 单独 `review_evidence_id` 与已有 streaming evidence 是首次接入的受控批准记录，缺实际审阅不得填写。未知 zone/hash/权限/资源预算继续为空，不用单测 fixture 当作生产配置。
+- 每次路由传播观测同时核对 EO 配置未漂移和 CLB 全部已知 Pod 目标/健康，公开 HTTPS 仍必须返回实际候选身份。EO/CLB 权限失败均 fail-closed，不借用 S3/COS key 或控制器凭据。
+- EO HTTP Ingress 不含 HTTPS/证书注解；CLB HTTPS 模式不因新增分支而放宽。原 test 流水线与运行配置不变。
+- 首次初始化和首次 Blue 4×1 仍必须由获准流水线使用独立身份执行；本地适配不等于这些真实操作已经完成。当前未预置合格 runtime/观测身份时不解除静态部署 gate，也不以反复打 tag 代替接入。

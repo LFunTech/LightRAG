@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Explicit production onboarding (not deployment configuration)",
-  "description": "No live defaults. Runtime validation also enforces identities, aggregate pools, budget inequalities, HTTPS/direct qcloud profile and enrollment evidence.",
+  "description": "No live defaults. Runtime validation enforces identities, aggregate pools, budgets, reviewed cloud HTTPS termination (CLB direct or EdgeOne HTTP origin) and enrollment evidence.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -139,7 +139,10 @@
           "type": "string"
         },
         "mode": {
-          "type": "string"
+          "enum": [
+            "direct",
+            "edgeone"
+          ]
         },
         "path": {
           "type": "string"
@@ -155,8 +158,104 @@
         },
         "streaming_evidence_id": {
           "type": "string"
+        },
+        "edgeone": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "zone_id",
+            "host",
+            "origin_address",
+            "origin_protocol",
+            "origin_port",
+            "origin_host",
+            "domain_hash",
+            "settings_hash",
+            "rules_hash",
+            "review_evidence_id"
+          ],
+          "properties": {
+            "zone_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "host": {
+              "type": "string",
+              "minLength": 1
+            },
+            "origin_address": {
+              "type": "string",
+              "minLength": 1
+            },
+            "origin_protocol": {
+              "const": "http"
+            },
+            "origin_port": {
+              "const": 80
+            },
+            "origin_host": {
+              "type": "string",
+              "minLength": 1
+            },
+            "domain_hash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "settings_hash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "rules_hash": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "review_evidence_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "edgeone"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "edgeone"
+            ],
+            "properties": {
+              "protocol": {
+                "const": "HTTP"
+              },
+              "certificate_id": {
+                "const": ""
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "protocol": {
+                "const": "HTTPS"
+              },
+              "certificate_id": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "not": {
+              "required": [
+                "edgeone"
+              ]
+            }
+          }
+        }
+      ]
     },
     "onboarding": {
       "type": "object",

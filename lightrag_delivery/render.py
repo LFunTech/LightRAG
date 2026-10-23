@@ -184,6 +184,31 @@ def render_slot(config, identity, slot, *, image, environment):
                             "labelSelector": {"matchLabels": labels(config, slot)},
                         }
                     ],
+                    "initContainers": [
+                        {
+                            "name": "prepare-working-directories",
+                            "image": container["image"],
+                            "command": [
+                                "python",
+                                "-I",
+                                "-c",
+                                "from pathlib import Path; import sys; "
+                                "[Path(p).mkdir(parents=True, exist_ok=True) for p in sys.argv[1:]]",
+                                "/app/data/logs",
+                                "/app/data/rag_storage",
+                                "/app/data/inputs",
+                                "/app/data/object-scratch",
+                            ],
+                            "resources": {
+                                "requests": {"cpu": "10m", "memory": "32Mi"},
+                                "limits": {"cpu": "100m", "memory": "128Mi"},
+                            },
+                            "securityContext": dict(container["securityContext"]),
+                            "volumeMounts": [
+                                {"name": "working", "mountPath": "/app/data"}
+                            ],
+                        }
+                    ],
                     "containers": [container],
                     "volumes": [
                         {
@@ -261,6 +286,12 @@ def render_entrypoint(config, slot):
             ]
         ),
     }
+    if config.ingress["mode"] == "edgeone":
+        annotations = ingress["metadata"]["annotations"]
+        annotations["kubernetes.io/ingress.http-rules"] = annotations.pop(
+            "ingress.cloud.tencent.com/https-rules"
+        )
+        del annotations["ingress.cloud.tencent.com/certificate"]
     return [svc, ingress]
 
 

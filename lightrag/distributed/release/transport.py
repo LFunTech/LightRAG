@@ -57,6 +57,8 @@ class ProductionTransport:
             raise ReleaseConflict(
                 "Explicit production entrypoint enrollment is required"
             )
+        if ingress["spec"].get("tls"):
+            raise ReleaseConflict("Application Kubernetes TLS is forbidden")
         annotations = ingress["metadata"].get("annotations", {})
         if (
             ingress["spec"].get("ingressClassName") != "qcloud"
@@ -82,10 +84,11 @@ class ProductionTransport:
         ]
         if (
             len(selected) != 1
-            or selected[0].get("Protocol") != "HTTPS"
-            or selected[0].get("Port") != 443
+            or selected[0].get("Protocol") != c.ingress["protocol"]
+            or selected[0].get("Port")
+            != (80 if c.ingress["mode"] == "edgeone" else 443)
         ):
-            raise ReleaseConflict("Enrolled HTTPS listener is missing")
+            raise ReleaseConflict("Enrolled cloud origin listener is missing")
         rules = [
             r
             for r in selected[0].get("Rules", [])
@@ -103,6 +106,18 @@ class ProductionTransport:
             raise ReleaseConflict(
                 "CLB rule is not the admitted direct HTTP backend profile"
             )
+        if c.ingress["mode"] == "edgeone":
+            actual_ips = {
+                item.get("ip")
+                for item in ingress.get("status", {})
+                .get("loadBalancer", {})
+                .get("ingress", [])
+            }
+            if actual_ips != {c.ingress["edgeone"]["origin_address"]}:
+                raise ReleaseConflict(
+                    "EdgeOne origin differs from the enrolled Ingress VIP"
+                )
+            await self.call(self.cloud.verify_edgeone, c.ingress)
         # Controller and streaming/timeout evidence are explicitly enrolled,
         # not guessed from the test cluster or from Pod Ready.
         return row

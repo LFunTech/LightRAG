@@ -1,0 +1,135 @@
+{
+  "observed_at": "2026-10-23T19:37:33.341253+08:00",
+  "status": "blocked_before_application_deployment",
+  "production_application_deployed": false,
+  "production_traffic_switched": false,
+  "production_workload_changes": 0,
+  "production_backend_mutations": 0,
+  "test_and_candidate_operations": 0,
+  "new_git_tags_or_pushes_this_attempt": 0,
+  "approved_host": "llm-rag.eplus2.cn",
+  "approved_public_entrypoint": "EdgeOne",
+  "kubernetes_application_tls": false,
+  "release": {
+    "tag": "v1.5.8",
+    "commit": "b79ba11e438076e58ebf05e06b4f436682a29e62",
+    "pipeline": 75,
+    "pipeline_status": "success",
+    "pipeline_url": "https://woodpecker.f123.pub/repos/57/pipeline/75",
+    "prod_workflow_selected": false,
+    "image_ref": "docker-hub.f123.pub/lfun/lightrag@sha256:9a01084b132ac015f6187239c8b99a541a8de2f3cff381e7ab7bc7c22203ace1",
+    "registry_digest_verified": true,
+    "tke_pull_verified": true
+  },
+  "readonly_backend_check": {
+    "record_kind": "prod_runtime_readonly",
+    "backend_mutations": 0,
+    "completed": true,
+    "queries": 5,
+    "postgres": {
+      "session": {
+        "username": "lightrag",
+        "database": "lightrag",
+        "version": "17.6",
+        "read_only": "on"
+      },
+      "current_role": {
+        "rolname": "lightrag",
+        "rolsuper": false,
+        "rolcreaterole": false,
+        "rolcreatedb": false,
+        "database_create": true,
+        "public_create": true
+      },
+      "app_role_candidates": [
+        {
+          "rolname": "lightrag",
+          "rolcanlogin": true,
+          "rolsuper": false,
+          "rolcreaterole": false,
+          "rolcreatedb": false,
+          "current_user_member": true,
+          "database_connect": true,
+          "database_create": true,
+          "public_create": true
+        }
+      ],
+      "schemas": [],
+      "tables": [],
+      "runtime_currently_eligible": false
+    },
+    "hugegraph": {
+      "username": "lightrag001",
+      "graphspace": "DEFAULT",
+      "graph": "lightrag001",
+      "schema_http_status": 200,
+      "schema_item_counts": {
+        "propertykeys": 0,
+        "vertexlabels": 0,
+        "edgelabels": 0,
+        "indexlabels": 0
+      }
+    }
+  },
+  "diagnostic_cleanup": {
+    "deleted": true,
+    "absence_verified": true,
+    "uid": "99df140b-ac42-4b66-9fbc-50a89fc60a94",
+    "observed_utc": "2026-10-23T11:35:20.909378+00:00"
+  },
+  "host_check": {
+    "host": "llm-rag.eplus2.cn",
+    "ingress_matches": [],
+    "observed_at": "2026-10-23T19:31:37.982109+08:00",
+    "dns": {
+      "CNAME": {
+        "exit_code": 0,
+        "answers": [
+          "3mji8qpltk7e.eplus2.cn.eo.dnse2.com."
+        ]
+      },
+      "A": {
+        "exit_code": 0,
+        "answers": [
+          "3mji8qpltk7e.eplus2.cn.eo.dnse2.com."
+        ]
+      },
+      "AAAA": {
+        "exit_code": 0,
+        "answers": [
+          "3mji8qpltk7e.eplus2.cn.eo.dnse2.com."
+        ]
+      }
+    }
+  },
+  "clb_latest_input_check": {
+    "action": "DescribeListeners",
+    "service": "clb",
+    "load_balancer_id": "lb-ao2qcdid",
+    "mutations": 0,
+    "raw_response_saved": false,
+    "source": ".secrets/prod.secrets",
+    "request_id": "92055448-4ee3-4f57-86bd-5a34e9ec72f0",
+    "success": false,
+    "error_code": "UnauthorizedOperation"
+  },
+  "edgeone_visible_zones_check": {
+    "action": "DescribeZones",
+    "service": "teo",
+    "scope": "first-ten-visible-zone-identifiers",
+    "mutations": 0,
+    "raw_response_saved": false,
+    "source": ".secrets/prod.secrets",
+    "request_id": "d9b9591a-f6e0-4670-9dc2-0d82a4f52017",
+    "success": true,
+    "total_count": 0,
+    "zones": []
+  },
+  "missing": {
+    "runtime_operator_separation": "not_satisfied_by_supplied_pg_identity",
+    "versioned_storage_initialization": "not_executed",
+    "edgeone_origin_and_certificate_configuration": "not_observable_with_supplied_identity",
+    "delivery_profile": "current_CLB_HTTPS_direct_only_not_yet_compatible_with_EdgeOne_entrypoint"
+  },
+  "sensitive_values_persisted": false
+}

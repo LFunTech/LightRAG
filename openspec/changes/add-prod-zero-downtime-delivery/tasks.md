@@ -12,6 +12,8 @@
 
 ## Global Constraints
 
+2026-10-23 最新实际部署推进：用户确认正式域名 `llm-rag.eplus2.cn`、沿用 EdgeOne。`v1.5.8` 的流水线 #75 已完成构建/校验且镜像可在目标 TKE 拉取，但**应用未部署、生产未切流**。最新 prod 凭据经 TKE 只读核验仍未满足 runtime/operator 分离；首次结构未初始化，云身份无目标 CLB 只读权限、EO 可见站点为 0；当前 CLB HTTPS/direct 发布 profile 与已确认的 EO 入口也尚未对齐，属于实现侧待补而非要求 K8s TLS。临时诊断 Pod 已删除，异常后暂停，未再打 tag 或解除门禁，原 12 项不勾选。详见[实际部署阻断与最小运维交接](verification/2026-10-23-prod-deployment-blockers.md)；该最新现场记录不覆盖下文历史验证快照。
+
 - prod 初始稳态 **4 Pod × 1 worker**，蓝绿 **4 + 4 = 8 个应用 Pod**；容量不足时保留 Blue，不自动 HPA。
 - test 的四个 workflow、部署脚本、五实例、配置、Secret 映射和 base/test overlay 保持不变；通用静态检查仅作增量扩展。
 - 发布协议默认关闭；未启用的 test/local 不新增发布元数据、迁移、接入或退出前置。
@@ -392,3 +394,9 @@ Git 发布与生产放行分开：runtime/operator 引用、生产域名/TLS、�
 ## 2026-10-23 最高规则与正式流水线授权
 
 用户再次明确要求将禁止应用K8s TLS写入最高规则，然后跑流水线。已将约束置于本仓库根`AGENTS.md`最前部署规则；不改仓库边界外的全局规则。按既有Git授权交付本轮必要代码/规则/验收记录，再选择未占用正式semver触发既有构建和产物校验链；**不推test tag、不修改test发布，prod静态gate继续false**。这不是对已有账号/域名/云入口阻断的豁免，不将跳过prod部署的流水线报告成已上线，不勾9.2–9.4。执行前核对见[本轮流水线准备快照](verification/2026-10-23-formal-pipeline-preparation.md)。
+
+## 2026-10-23 EdgeOne浏览器配置及阿里云DNS
+
+用户对准确域名、HTTP80回源、云侧免费证书、五项缓存/流式规则及阿里云单条CNAME分别明确批准。实际已完成域名已生效/证书已部署、精确HOST专属规则启用及DNS权威/递归核验；未改全站/参考域名、启用付费项或创建K8s TLS。实现侧补显式EO分支、prod源标签/工作目录及配置类型回归；定向460 passed/60 skipped/2既有warning。见[实际云配置及本地验证](verification/2026-10-23-edgeone-browser-delivery.md)。
+
+当前仍47/59、12项真实待办，capability共66场景。角色/观测身份、首次初始化及首发流水线串接、资源/ACL与真实端到端/SLO门禁未满足；EO配置不等于应用部署，不勾9.2–9.4，不以浏览器截图代替CI API证据，不再打只构建而不部署的tag。原test和两个候选保持不变。

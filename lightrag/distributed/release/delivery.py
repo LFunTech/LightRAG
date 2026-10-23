@@ -8,7 +8,7 @@ from pathlib import Path
 
 from lightrag_delivery.config import load_prod_config
 from lightrag_delivery.kubernetes import Kubernetes
-from lightrag_delivery.qcloud import QCloudObserver
+from lightrag_delivery.edgeone import cloud_observer
 from lightrag_delivery.render import content_hash, select_prod_release
 from .models import ReleaseConflict, ReleaseIdentity
 from .orchestrator import ReleaseOrchestrator
@@ -73,12 +73,7 @@ async def delivery_session(*, config_path, identity_path, environment_path, imag
             await runtime_check.close()
         store = ReleaseStore(connection)
         await store.verify_schema()
-        cloud = QCloudObserver(
-            region=config.ingress["region"],
-            secret_id=os.environ.get("LIGHTRAG_PROD_CLB_SECRET_ID", ""),
-            secret_key=os.environ.get("LIGHTRAG_PROD_CLB_SECRET_KEY", ""),
-            token=os.environ.get("LIGHTRAG_PROD_CLB_TOKEN"),
-        )
+        cloud = cloud_observer(config.ingress)
         transport = ProductionTransport(
             config=config,
             kubernetes=Kubernetes.in_cluster(config.target["namespace"]),

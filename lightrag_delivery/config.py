@@ -301,7 +301,7 @@ def secret_aliases(
         r"lightrag_(?:prod|test)(?:_[0-9]{2})?_api_key", api_key_alias
     ):
         raise ProdConfigError("environment or api_key_alias: unsupported")
-    return {
+    aliases = {
         "API KEY": "llm_api_key",
         "API Host": "llm_binding_host",
         "地域": "bailian_region",
@@ -331,6 +331,13 @@ def secret_aliases(
         "AWS_S3_FORCE_PATH_STYLE": "s3_force_path_style",
         api_key_alias: "api_key",
     }
+    if environment == "prod":
+        aliases.update(
+            S3_ENDPOINT_URL="s3_endpoint_url",
+            S3_BUCKET="s3_bucket",
+            S3_FORCE_PATH_STYLE="s3_force_path_style",
+        )
+    return aliases
 
 
 def _unquote(value: str, field: str) -> str:
@@ -464,22 +471,36 @@ def validate_delivery_profile(data):
 
     _keys(data["runtime"], RUNTIME_FIELDS, "runtime")
     _keys(data["onboarding"], ONBOARDING_FIELDS, "onboarding")
-    _keys(data["ingress"], INGRESS_FIELDS, "ingress")
+    ingress_fields = INGRESS_FIELDS
+    if isinstance(data["ingress"], dict) and data["ingress"].get("mode") == "edgeone":
+        ingress_fields = ingress_fields | {"edgeone"}
+    _keys(data["ingress"], ingress_fields, "ingress")
     _keys(data["network"], {"ingress_cidrs", "egress"}, "network")
     if data["target"]["ingress_class"] != "qcloud":
         raise ProdConfigError("target.ingress_class: qcloud required")
     i, o, r = data["ingress"], data["onboarding"], data["runtime"]
     if (
         i["provider"] != "qcloud"
-        or i["mode"] != "direct"
-        or i["protocol"] != "HTTPS"
+        or not isinstance(i["mode"], str)
+        or not isinstance(i["protocol"], str)
+        or (i["mode"], i["protocol"]) not in {("direct", "HTTPS"), ("edgeone", "HTTP")}
         or i["backend_port"] != 9621
         or i["path"] != "/"
         or i["force_close_disabled"] is not True
     ):
         raise ProdConfigError(
-            "ingress: explicit HTTPS/direct streaming contract required"
+            "ingress: explicit cloud HTTPS termination and direct HTTP backend contract required"
         )
+    if i["mode"] == "edgeone":
+        from .edgeone import validate_profile
+
+        validate_profile(i["edgeone"], host=data["target"]["host"])
+        if i["certificate_id"] != "":
+            raise ProdConfigError(
+                "ingress: EdgeOne HTTP origin must not configure CLB TLS"
+            )
+    else:
+        _text(i["certificate_id"], "ingress.certificate_id")
     for field, prefix in [
         ("load_balancer_id", "lb-"),
         ("listener_id", "lbl-"),
@@ -491,7 +512,6 @@ def validate_delivery_profile(data):
             raise ProdConfigError("ingress." + field + ": invalid identifier")
     for field in (
         "region",
-        "certificate_id",
         "controller_version",
         "streaming_evidence_id",
     ):
@@ -520,11 +540,21 @@ def validate_delivery_profile(data):
         )
     if r["EMBEDDING_ASYMMETRIC"] not in {"true", "false"}:
         raise ProdConfigError("runtime: explicit embedding asymmetry required")
-    for field in ("LIGHTRAG_QUERY_METRICS", "ENABLE_LLM_CACHE", "ENABLE_QUERY_ANSWER_CACHE", "ENABLE_LLM_CACHE_FOR_EXTRACT"):
+    for field in (
+        "LIGHTRAG_QUERY_METRICS",
+        "ENABLE_LLM_CACHE",
+        "ENABLE_QUERY_ANSWER_CACHE",
+        "ENABLE_LLM_CACHE_FOR_EXTRACT",
+    ):
         if r[field] not in {"true", "false"}:
             raise ProdConfigError("runtime." + field + ": explicit boolean required")
-    if r["ENABLE_QUERY_ANSWER_CACHE"] != "false" or r["ENABLE_LLM_CACHE_FOR_EXTRACT"] != "true":
-        raise ProdConfigError("runtime: answer reuse is unverified; preserve extraction recovery cache")
+    if (
+        r["ENABLE_QUERY_ANSWER_CACHE"] != "false"
+        or r["ENABLE_LLM_CACHE_FOR_EXTRACT"] != "true"
+    ):
+        raise ProdConfigError(
+            "runtime: answer reuse is unverified; preserve extraction recovery cache"
+        )
     if r["LIGHTRAG_QUERY_METRICS"] != "true":
         raise ProdConfigError("runtime: production query metrics are required")
     if r["EMBEDDING_ASYMMETRIC"] == "true" and not all(

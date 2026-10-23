@@ -72,6 +72,22 @@ prod SHALL 独立声明集群身份、namespace、域名/TLS、workspace、数�
 - **WHEN** 生产接入包含 `tls_secret`，或候选渲染/启动配置试图启用应用 SSL、服务端证书或私钥文件
 - **THEN** 在应用运行或集群变更前拒绝；合规产物只暴露 HTTP 后端且不含 TLS Secret/证书挂载，云侧 HTTPS 与路由验收门禁继续生效
 
+### Requirement: Verify an explicit EdgeOne HTTPS entry with HTTP origins
+
+用户选择 EdgeOne 时，交付 SHALL 使用显式 `ingress.mode=edgeone`，核对公网域名和云侧证书、正式 Host、与实际 Ingress VIP 一致的唯一 IPv4 源站及 HTTP/80 回源。该分支 MUST NOT 要求 CLB HTTPS 证书或 Kubernetes TLS；`direct` 分支 MUST 保留原 CLB HTTPS 门禁，MUST NOT 隐式降级至 HTTP。经审阅的域名、全局配置及完整有序规则快照 SHALL 分别绑定 hash 和审阅证据；hash 相等 MUST NOT 被描述为自动证明缓存/流式语义。每次切流 SHALL 同时核对 EO 未漂移、精确 CLB 后端及真实公网候选身份，观测身份 MUST 显式配置并与应用对象存储身份隔离。
+
+#### Scenario: EdgeOne terminates public HTTPS without Kubernetes TLS
+- **WHEN** 获准的 EdgeOne profile 使用 HTTP/80 回源到明确的 qcloud Ingress
+- **THEN** 渲染仅有 HTTP 后端与路由元数据，不创建 TLS Secret、不填假 CLB certificate ID，保留公网 HTTPS、云配置及全部健康后端验证
+
+#### Scenario: EdgeOne configuration is incomplete or drifts
+- **WHEN** 域名/源站/证书状态不匹配、规则分页不完整、审阅 hash 缺失或改变，或 EO/CLB 只读身份无权限
+- **THEN** 停止发布，不以空规则、浏览器截图、Pod Ready 或已保存配置代替自动化入口证据，不借用其他业务或应用 S3 凭据绕过
+
+#### Scenario: Malformed ingress discriminators are rejected safely
+- **WHEN** JSON 中 `mode` 或 `protocol` 为非字符串，或未声明支持的协议组合
+- **THEN** 返回不含输入值/凭据的配置错误，不触发集群变更或 HTTP 降级，不泄露非预期类型异常
+
 ### Requirement: Require an initialized compatible production baseline
 
 生产普通升级 SHALL 仅接收已初始化并接入发布协议的环境，以及存储、协调协议、命令格式、API 和新旧查询数据格式均兼容的候选版本。日常发布 MUST NOT 自动执行业务 bootstrap、故障 recover、不兼容 schema 迁移或 embedding 模型/维度切换。首次空环境初始化及已有环境协议接入 SHALL 是独立授权步骤，不改变 test 的初始化合同。
@@ -92,7 +108,7 @@ prod SHALL 独立声明集群身份、namespace、域名/TLS、workspace、数�
 
 生产发布 SHALL 先保持 Blue 服务并启动 Green 待命，通过兼容及业务验收后再切换稳定入口。切换过程中 MUST 保持可用查询端点，MUST NOT 暂停全部查询路由、缩容全部服务到零或仅凭资源更新成功报告切流成功。已有流式连接 SHALL 由原实例完成。
 
-当前入口 SHALL 为显式接入的腾讯云 qcloud HTTPS/直连 Pod profile，MUST 先扩展到两个已验证 slot、确认 EndpointSlice 与 CLB 全部健康后端后再收窄，并通过 CLB 目标/健康及真实 HTTPS 候选身份确认传播。每阶段 MUST 核验精确 digest/config/profile 与实际 imageID，不得仅以相同 slot/Pod Ready 证明版本。真实入口参数和连接保持能力仍须隔离演练后才启用。
+当前入口 SHALL 为显式接入的腾讯云 qcloud 直连 Pod profile：公网采用 CLB HTTPS，或已核验的 EdgeOne HTTPS 加 CLB HTTP/80 回源。MUST 先扩展到两个已验证 slot、确认 EndpointSlice 与 CLB 全部健康后端后再收窄，并通过 CLB 目标/健康及真实 HTTPS 候选身份确认传播。每阶段 MUST 核验精确 digest/config/profile 与实际 imageID，不得仅以相同 slot/Pod Ready 证明版本。真实入口参数和连接保持能力仍须隔离演练后才启用。
 
 #### Scenario: The standby version is not ready
 - **WHEN** Green 启动、兼容性或私有验收失败

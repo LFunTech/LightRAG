@@ -1,0 +1,143 @@
+{
+  "observed_at": "2026-10-23T20:29:25.730775+08:00",
+  "host": "llm-rag.eplus2.cn",
+  "reference_host": "agent-base.eplus2.cn",
+  "zone_id": "zone-3mezyvnyozb0",
+  "edgeone": {
+    "domain_status_ui": "已生效",
+    "certificate_status_ui": "已部署",
+    "certificate_type": "免费证书",
+    "certificate_expires_beijing": "2027-01-02 15:26:07",
+    "certificate_auto_renew_days_before_expiry": 15,
+    "origin_address": "1.15.197.243",
+    "origin_protocol": "HTTP",
+    "origin_port": 80,
+    "origin_host": "llm-rag.eplus2.cn",
+    "rule_name": "llm-rag-API-no-cache-stream",
+    "rule_list_count_before": 20,
+    "rule_list_count_after": 21,
+    "rule_enabled": true,
+    "rule_match": {
+      "HOST_equals": [
+        "llm-rag.eplus2.cn"
+      ]
+    },
+    "node_cache": "no-cache",
+    "browser_cache": "no-cache",
+    "offline_cache": false,
+    "brotli": false,
+    "gzip": false,
+    "origin_response_idle_timeout_seconds": 120
+  },
+  "dns": {
+    "provider": "aliyun",
+    "explicit_host_records_before": 0,
+    "explicit_host_records_after": 1,
+    "record_type": "CNAME",
+    "rr": "llm-rag",
+    "value": "llm-rag.eplus2.cn.eo.dnse2.com",
+    "ttl_seconds": 600,
+    "line": "default",
+    "enabled": true,
+    "created_at_beijing": "2026-10-23 20:27:16",
+    "checks": {
+      "authoritative_nameservers": [
+        "dns25.hichina.com.",
+        "dns26.hichina.com."
+      ],
+      "recursive_cname": [
+        "llm-rag.eplus2.cn.eo.dnse2.com."
+      ],
+      "authoritative_cname": [
+        "llm-rag.eplus2.cn.eo.dnse2.com."
+      ],
+      "assigned_edge_a": [
+        "36.25.245.118",
+        "61.170.82.62"
+      ]
+    }
+  },
+  "boundaries": {
+    "global_settings_changed": false,
+    "reference_domain_changed": false,
+    "paid_addons_enabled": false,
+    "kubernetes_tls_created": false,
+    "prod_application_deployed": false,
+    "prod_migration_executed": false,
+    "prod_credentials_imported": false,
+    "test_or_candidates_accessed": false,
+    "end_to_end_stream_test_passed": false,
+    "capacity_test_passed": false
+  },
+  "local_verification": {
+    "directories": [
+      "tests/ci",
+      "tests/distributed/release",
+      "tests/provisioning",
+      "tests/api/config"
+    ],
+    "passed": 460,
+    "skipped": 60,
+    "warnings": 2,
+    "failed": 0,
+    "ingress_type_regression_red_failed": 4,
+    "ingress_type_regression_green_passed": 10,
+    "woodpecker_strict_lint": "passed",
+    "test_delivery_diff_from_b79ba11": "empty"
+  },
+  "browser_evidence": {
+    "domain-effective.jpg": {
+      "sha256": "b3855936fe66ae4b53ee76baf5548a96db3705a8cdf0c9b6334b947495cb12b3",
+      "storage": "ignored local temp/prod-edgeone-browser-20261023/; not committed or uploaded"
+    },
+    "deployed-cloud-certificate.jpg": {
+      "sha256": "fc015914de8ef0d93e6aa8b758b50a3f9fcfface7bf51f7b6f2edcebbc62bdad",
+      "storage": "ignored local temp/prod-edgeone-browser-20261023/; not committed or uploaded"
+    },
+    "published-domain-rule.jpg": {
+      "sha256": "8d99e73d7d33285c2db48e6440b9fdafb199f1db90e4679d3319e759152bd69f",
+      "storage": "ignored local temp/prod-edgeone-browser-20261023/; not committed or uploaded"
+    },
+    "aliyun-cname-created.jpg": {
+      "sha256": "921504927da983d3d60e9cc95b4c651f5db52b6d892803659339d1e673623879",
+      "storage": "ignored local temp/prod-edgeone-browser-20261023/; not committed or uploaded"
+    },
+    "saved-http-origin.jpg": {
+      "sha256": "031ad168410ac60cb6edae8dab8235698bb7afcc279052954c2c66c1f9367189",
+      "storage": "ignored local temp/prod-edgeone-browser-20261023/; not committed or uploaded"
+    }
+  },
+  "public_tls": {
+    "host": "llm-rag.eplus2.cn",
+    "verified": false,
+    "error_type": "gaierror"
+  },
+  "local_packages": [
+    {
+      "name": "lightrag_hku-1.5.8-py3-none-any.whl",
+      "sha256": "3fd57d03f7dc7fada75ac3b2e5d82a48989dfc778c9076705eaa2067701445ad",
+      "verified_files": [
+        "lightrag_delivery/edgeone.py",
+        "lightrag_delivery/config.py",
+        "lightrag_delivery/qcloud.py",
+        "lightrag_delivery/render.py",
+        "lightrag/distributed/release/delivery.py",
+        "lightrag/distributed/release/transport.py"
+      ],
+      "forbidden_paths": 0
+    },
+    {
+      "name": "lightrag_hku-1.5.8.tar.gz",
+      "sha256": "4e061c10530b7b2191be2638938df113f4492da77cc3ce02c0ebda3f9ad9da1b",
+      "verified_files": [
+        "lightrag_delivery/edgeone.py",
+        "lightrag_delivery/config.py",
+        "lightrag_delivery/qcloud.py",
+        "lightrag_delivery/render.py",
+        "lightrag/distributed/release/delivery.py",
+        "lightrag/distributed/release/transport.py"
+      ],
+      "forbidden_paths": 0
+    }
+  ]
+}
