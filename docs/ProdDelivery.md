@@ -4,6 +4,8 @@
 
 正式v1.5.9 / 流水线#76：初始化Job成功，运行Secret已落地，但后续K8s编排失败，应用Deployment/Service/Ingress未创建，**prod尚未部署成功**。已停止并保留现场，未重跑迁移/流水线或换tag。见[实际证据与续部署边界](../openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-prod-pipeline-76-failure.md)。仅续部署应用必须复用原成功初始化回执、镜像digest和runtime，不重新构建或重放迁移；不能把整条重跑当默认修复。
 
+后续获准的manual流水线 **#77** 已实际创建原配置的`lightrag-blue`及4个Pod，但失败停止；截至北京时间23:50，**0/4 Ready，Service/Ingress未创建，prod仍不可用**。应用在release注册阶段报`ReleaseConflict`；另已定位交付器对API默认`fieldRef.apiVersion=v1`和TKE绑定Pod的单个ENI资源注入误判，后者仅本地修复，不代表启动冲突解决。保留现场，不自动重试、清登记或重跑初始化。还发现默认`WHITELIST_PATHS=/health,/api/*`会放行Ollama路由，不能按原配置直接开放入口；更改运行配置需单独审阅。见[#77停止记录与下一步](../openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-prod-pipeline-77-stopped.md)。
+
 ## 仅应用续部署（#76 已成功初始化，用户明确授权）
 
 使用独立 `.woodpecker/resume-prod-app.yml` 的manual/master事件，不重启原tag流水线。该工作流只检出精确CI runner commit、读取原初始化成功回执及immutable输入；镜像/业务源码仍为原v1.5.9，executor commit另记。明确confirmation需等于`app-resume-76.json`中的approval_id。既有prod kubeconfig允许manual/tag，仅用于K8s；不注入operator或模型凭据，不执行构建/迁移/enroll/云入口检查。

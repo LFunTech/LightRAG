@@ -405,9 +405,11 @@ def main(argv=None):
         print(json.dumps(result, sort_keys=True))
         return 0
     except Exception as error:
+        detail = (
+            str(error) if isinstance(error, ProdConfigError) else type(error).__name__
+        )
         print(
-            type(error).__name__
-            + ": application resume stopped; resources retained without retry",
+            detail + ": application resume stopped; resources retained without retry",
             file=sys.stderr,
         )
         return 2

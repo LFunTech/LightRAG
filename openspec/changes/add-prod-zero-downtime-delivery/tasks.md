@@ -435,3 +435,5 @@ Git 发布与生产放行分开：runtime/operator 引用、生产域名/TLS、�
 - [ ] 14.3 精确提交推送必要修复，不创建或覆盖tag；核对CI事件/原test不变后单次手动触发，仅K8s就绪时报告成功，异常立即停。
 
 第14节本地14.1/14.2完成，当前**60/74，14项剩余**（原12项真实验收、13.6及14.3实际续部署），场景73项。唯一有效审查2 Important经8项RED→GREEN、API默认与创建前漂移正例补齐；相关717 passed/146 skipped/2既有warning。见[本轮记录](verification/2026-10-23-prod-app-resume-local.md)。仅既有prod kubeconfig扩manual事件，凭据值/其他Secret/test未变，尚未触发真实续部署，不提前认领成功。
+
+后续真实执行#77：仅manual/master应用续部署，原digest/tag/config及#76初始化结果复用；应用ConfigMap/Blue Deployment和4个Pod已创建，但0/4 Ready、release注册冲突，Service/Ingress未创建，已停止且未重试。交付器另有已证实的fieldRef/TKE ENI归一化缺陷，2 RED→GREEN、相关719 passed/146 skipped，仅本地修复；不等于注册冲突解决。默认`/api/*`认证白名单风险已记录，未擅改原配置；进一步Pod内只读诊断待确认。见[#77真实停止记录](verification/2026-10-23-prod-pipeline-77-stopped.md)。13.6/14.3继续未完成，60/74及未知参数不变。

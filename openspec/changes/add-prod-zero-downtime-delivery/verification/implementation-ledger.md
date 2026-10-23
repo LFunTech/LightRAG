@@ -474,3 +474,10 @@
 - Final review: 用户中断前的review取消且无报告，不计为完成；唯一有效fresh报告对应SHA256 15cb1e8426f4065eeca9b91e1312bd88ac2b2b188d549d1352878c52e9d7fb95，0 Critical/2 Important/0 Minor。子集漂移和未绑定Pod完整runtime/owner链均确认可达；8 RED→一次fix pass→8 GREEN，增加明确API默认归一化、创建前同规则复核、逐Pod spec及RS→Deployment UID链。API默认正例/创建前漂移补测后相关717 passed/146 skipped/2既有warning，静态检查通过，无复审。
 - Final: Ruling: 真实生产就绪必须由真实续部署证明；云入口/业务API/容量/ACL不加为pipeline gate — reviewer禁止访问且用户明确收窄边界 — 代价是K8s结果不代表这些能力通过，仍报告未验。
 - 已按授权仅给既有prod kubeconfig增加manual事件，值不变、无新增Secret，其他CI元数据逐项一致；原test/候选未访问，尚无prod资源或后端写。Tasks14.1/14.2完成，当前60/74，13.6/14.3实际执行待办；见本轮本地记录。
+
+### #77真实执行后的停止状态
+
+- 4e7b16205已按授权提交推送；单次#77只选manual应用续部署，保留v1.5.9原digest/config及成功初始化结果。ConfigMap/Blue Deployment/4 Pod创建后失败，0/4 Ready，无Service/Ingress，未认领prod可用。正常启动可能写协调元数据，不声称后端零写。
+- Ruling: 严格比对仅归一化实际观察的fieldRef v1和绑定TKE Pod的requests/limits均为1的ENI资源 — 平台注入不代表原运行配置漂移 — 自定义数量、Deployment模板ENI及额外运行行为仍拒绝；2 RED→GREEN，相关719 passed/146 skipped/2既有warning。只是本地工具修复，不重试部署。
+- Ruling: ReleaseConflict的P0001隐藏了profile/config与instance/owner/closed两个分支，不能凭后续自动重启日志决定清登记或enroll — 防止破坏最初故障证据或重放未知状态 — 进一步Pod日志/只读SQL须确认后才执行。Kubernetes自动重启仍在继续，不手动删Pod/缩容。
+- Ruling: `/api/*`默认认证白名单必须明确呈现为开放入口风险，不能在“原配置”授权下静默改变hash绑定配置；不作为新增云入口门禁，后续具体修复单独审阅。详见[#77停止证据及下一步](2026-10-23-prod-pipeline-77-stopped.md)。60/74与73场景不变，原test/两个候选未访问。

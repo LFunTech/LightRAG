@@ -141,3 +141,5 @@ K8s/CLB/入口 fake。真实 4/8 Pod、TKE/CLB、多节点存储、故障/容量
 | --- | --- | --- |
 | Only the Kubernetes application remains undeployed | `tests/ci/test_prod_app_resume.py`：receipt/固定digest/runtime与config复用、成功仅创建ConfigMap/Deployment/Service/Ingress、已有同spec仅观察、manual/master及显式执行确认；实际原Job/Pod/runtime只读核验通过 | 未重跑迁移/enroll、未构建镜像或改tag；真实续部署结果另记 |
 | Resume evidence or existing resources drift | 同文件：Job/Pod UID/spec/owner/digest/restarts/termination、claim/runtime/config/settings/appSecret/Green/foreign Deployment/Ingress绑定漂移副作用前拒绝；未知ACK停发保留、Pod异常停止入口创建 | 无prod故障注入；未将有限本地测试认领外部入口/4+4/容量通过 |
+
+后续实际[#77](2026-10-23-prod-pipeline-77-stopped.md)复用了#76成功初始化与原产物，创建Blue4 Pod后失败停止，无Service/Ingress且0/4 Ready；应用release注册冲突尚未确诊。实际fieldRef/TKE ENI快照暴露严格比对兼容缺陷，2 RED→GREEN及719相关测试仅证明本地交付工具修正，不将该正例声称为真实KUBERNETES_READY。任务与73场景计数不变。

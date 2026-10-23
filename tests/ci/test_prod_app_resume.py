@@ -498,3 +498,60 @@ def test_creation_recheck_rejects_a_newly_drifted_deployment(tmp_path, monkeypat
     with pytest.raises(ValueError):
         mod.execute_resume(kube, a, confirm=a["approval_id"])
     assert kube.created == ["ConfigMap"]
+
+
+def test_observed_tke_defaults_preserve_the_approved_pod_runtime(tmp_path, monkeypatch):
+    mod, kube, a, job, pods, c, i, e, s, slot = fixture(tmp_path, monkeypatch)
+    from scripts.ci.prod_app_contract import application_matches, pod_spec
+
+    observed = deepcopy(slot[2])
+    spec = observed["spec"]["template"]["spec"]
+    for variable in spec["containers"][0]["env"]:
+        if "fieldRef" in variable.get("valueFrom", {}):
+            variable["valueFrom"]["fieldRef"]["apiVersion"] = "v1"
+    assert application_matches(observed, slot[2])
+    bound = deepcopy(spec)
+    for kind in ["requests", "limits"]:
+        bound["containers"][0]["resources"][kind]["tke.cloud.tencent.com/eni-ip"] = "1"
+    assert pod_spec(bound, bound=True) == pod_spec(slot[2]["spec"]["template"]["spec"])
+    bound["containers"][0]["resources"]["limits"]["tke.cloud.tencent.com/eni-ip"] = "2"
+    assert pod_spec(bound, bound=True) != pod_spec(slot[2]["spec"]["template"]["spec"])
+
+
+def test_cli_reports_safe_validation_reason_but_not_arbitrary_exception(
+    tmp_path, monkeypatch, capsys
+):
+    mod = module()
+    from lightrag_delivery.config import ProdConfigError
+
+    a = json.loads(
+        Path(
+            "k8s-deploy/lightrag-kustomize/overlays/prod/app-resume-76.json"
+        ).read_text()
+    )
+    for key, value in dict(
+        CI_PIPELINE_EVENT="manual",
+        CI_COMMIT_BRANCH="master",
+        CI_REPO="LFunTech/LightRAG",
+        CI_COMMIT_SHA="c" * 40,
+        LIGHTRAG_PROD_APP_RESUME_CONFIRM=a["approval_id"],
+    ).items():
+        monkeypatch.setenv(key, value)
+    path = tmp_path / "approval.json"
+    path.write_text(json.dumps(a))
+    monkeypatch.setattr(mod, "Kubectl", lambda *a: object())
+    for error, expected in [
+        (
+            ProdConfigError("Observed application Deployment differs"),
+            "Observed application Deployment differs",
+        ),
+        (RuntimeError("synthetic-private-error-do-not-log"), "RuntimeError"),
+    ]:
+
+        def execute(*args, **kwargs):
+            raise error
+
+        monkeypatch.setattr(mod, "execute_resume", execute)
+        assert mod.main(["--kubeconfig", "unused", "--approval", str(path)]) == 2
+        output = capsys.readouterr().err
+        assert expected in output and "synthetic-private-error-do-not-log" not in output

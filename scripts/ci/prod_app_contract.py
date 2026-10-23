@@ -33,6 +33,18 @@ def pod_spec(spec, *, bound=False):
                 terminationMessagePolicy="File",
             ),
         )
+        for variable in container.get("env", []):
+            reference = variable.get("valueFrom", {}).get("fieldRef")
+            if reference is not None:
+                drop_defaults(reference, {"apiVersion": "v1"})
+        if bound:
+            resources = container.get("resources", {})
+            requests = resources.get("requests", {})
+            limits = resources.get("limits", {})
+            eni = "tke.cloud.tencent.com/eni-ip"
+            if requests.get(eni) == limits.get(eni) == "1":
+                requests.pop(eni)
+                limits.pop(eni)
         for port in container.get("ports", []):
             drop_defaults(port, dict(protocol="TCP", hostPort=0, hostIP=""))
         for mount in container.get("volumeMounts", []):
