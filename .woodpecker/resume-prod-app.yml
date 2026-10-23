@@ -1,0 +1,39 @@
+labels:
+  platform: linux/amd64
+
+workspace:
+  base: /woodpecker
+  path: src
+
+skip_clone: true
+
+when:
+  - event: manual
+    branch: master
+
+steps:
+  resume-prod-app:
+    image: docker-hub.f123.pub/base/ci-tools:alpine-3.22.4
+    commands:
+      - |
+        set -eu
+        : "$${LIGHTRAG_PROD_APP_RESUME_CONFIRM:?explicit app-only approval is required}"
+        : "$${LIGHTRAG_PROD_KUBECONFIG:?existing prod kubeconfig is required}"
+        test "$CI_REPO" = LFunTech/LightRAG
+        test "$CI_PIPELINE_EVENT" = manual
+        test "$CI_COMMIT_BRANCH" = master
+        export GIT_TERMINAL_PROMPT=0
+        umask 077
+        SOURCE_DIR="$(mktemp -d /tmp/lightrag-app-resume.XXXXXX)"
+        trap 'rm -rf "$SOURCE_DIR"' EXIT
+        git init "$SOURCE_DIR"
+        git -C "$SOURCE_DIR" remote add origin "https://github.com/LFunTech/LightRAG.git"
+        git -C "$SOURCE_DIR" fetch --depth 1 origin "$CI_COMMIT_SHA"
+        git -C "$SOURCE_DIR" checkout --detach FETCH_HEAD
+        test "$(git -C "$SOURCE_DIR" rev-parse HEAD)" = "$CI_COMMIT_SHA"
+        printf '%s' "$LIGHTRAG_PROD_KUBECONFIG" > "$SOURCE_DIR/prod-kubeconfig"
+        cd "$SOURCE_DIR"
+        python3 -m scripts.ci.prod_app_resume --kubeconfig "$SOURCE_DIR/prod-kubeconfig" --approval k8s-deploy/lightrag-kustomize/overlays/prod/app-resume-76.json
+    environment:
+      LIGHTRAG_PROD_KUBECONFIG:
+        from_secret: lightrag_prod_kubeconfig

@@ -299,3 +299,15 @@ Embedding输入预处理 SHALL 不阻塞事件循环并在取消时join；同次
 #### Scenario: Production objects are durable outside the Pod
 - **WHEN** K8s-only S3 profile明确选择无StorageClass
 - **THEN** 工作目录使用每Pod有界scratch且不创建PVC，拒绝本地文件入库/文件型存储；持久业务仍在既有PG、图和S3，不改变原test存储路径
+
+### Requirement: Resume only application resources after proven initial success
+
+用户明确批准的首发应用续部署 SHALL 使用独立manual流水线和版本化确认，复用原初始化Job成功证据、原tag/commit/digest及配置，MUST NOT 重跑migration/register/enroll、构建镜像、覆盖tag或调用云入口校验。失败 MUST 停止并保留现场。
+
+#### Scenario: Only the Kubernetes application remains undeployed
+- **WHEN** 原Job/唯一Pod UID、成功回执、实际digest、immutable配置与execution claim均匹配批准，目标集群未漂移
+- **THEN** 流水线仅创建缺失且原配置下的应用资源并等待4×1 Ready，不修改成功初始化Job/账本/operator Secret，不执行任何后端初始化或镜像构建
+
+#### Scenario: Resume evidence or existing resources drift
+- **WHEN** 确认缺失、原digest/配置/Job或Pod UID漂移、Job未成功、出现Green或不同spec/实例、请求失败或预算耗尽
+- **THEN** 拒绝或停止后续创建，不自动替换/重启/recover/重放，不泄露原始stderr或运行凭据，真实结果未通过时不认领上线

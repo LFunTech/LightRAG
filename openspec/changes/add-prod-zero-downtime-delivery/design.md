@@ -380,3 +380,9 @@ PG 业务池、coordination 池/witness、HugeGraph 客户端池以及 LLM/embed
 本模式中的容量配置仅为所申请Pod的连接/并发上限，不声明供应商已给额度；isolation中未实测ACL必须诚实保留false，不伪造“已验收”。环境身份、数据域显式性、可信产物、版本化migration和实际运行权限仍保留；外部ACL/入口/SLO结果另记，不混入K8s部署成功条件。普通升级和4+4自动退休不因首发模式而获准，仍需独立方案/授权，避免把K8s EndpointSlice当CLB全连接传播证明。
 
 首发防重放按scope固定Job名和immutable execution claim，而非pipeline编号；不同输入/Job缺失必须停下审计。kubectl单请求/子进程有上限，各阶段读写共享剩余时间预算，观察超时不杀远端Job也不允许迟到成功触发下一阶段。K8s-only profile显式空network表示不创建新NetworkPolicy、保留namespace既有策略，不猜CLB源网段或用宽CIDR替代未知值。
+
+## 15. #76 成功初始化后的仅应用续部署（2026-10-23 用户明确授权）
+
+沿用第13节K8s-only边界，不整条重跑#76：独立manual/master工作流，仅检出本次CI精确commit的交付脚本，无构建/registry push/tag/PG图迁移或enroll调用。执行确认必须等于版本化非敏感approval ID，输入绑定#76原tag/commit/digest/config、初始化Job UID/spec hash、唯一成功Pod UID、immutable初始化配置和execution claim。只读加载原Job的immutable config/runtime；核验成功termination回执及真实imageID、原配置/profile/hash和目标集群UID；不读取operator Secret、不请求PG/图/S3/模型/云入口。
+
+通过后只核对既有app SA/pull引用，复用已创建且逐字段一致的runtime Secret，只创建缺失的应用ConfigMap、4×1 Blue、HTTP Service/Ingress；已有同spec资源仅观察，漂移/Green/不同Pod拒绝，不替换、不restart、不recover。K8s单请求60秒且受原startup观察总预算约束，GET/POST共享剩余预算，不把原任意15秒上限当生产延迟承诺；错误输出仅固定脱敏字段。失败立即停止保留成功初始化及所有已受理资源，不自动重试。manual事件只向该步骤提供既有prod kubeconfig，原test发布和其他workflow不改；凭据值/应用配置不变。成功仍只称KUBERNETES_READY，不认领云入口/查询/SLO/4+4通过。

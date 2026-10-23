@@ -4,6 +4,12 @@
 
 正式v1.5.9 / 流水线#76：初始化Job成功，运行Secret已落地，但后续K8s编排失败，应用Deployment/Service/Ingress未创建，**prod尚未部署成功**。已停止并保留现场，未重跑迁移/流水线或换tag。见[实际证据与续部署边界](../openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-prod-pipeline-76-failure.md)。仅续部署应用必须复用原成功初始化回执、镜像digest和runtime，不重新构建或重放迁移；不能把整条重跑当默认修复。
 
+## 仅应用续部署（#76 已成功初始化，用户明确授权）
+
+使用独立 `.woodpecker/resume-prod-app.yml` 的manual/master事件，不重启原tag流水线。该工作流只检出精确CI runner commit、读取原初始化成功回执及immutable输入；镜像/业务源码仍为原v1.5.9，executor commit另记。明确confirmation需等于`app-resume-76.json`中的approval_id。既有prod kubeconfig允许manual/tag，仅用于K8s；不注入operator或模型凭据，不执行构建/迁移/enroll/云入口检查。
+
+创建范围仅缺失的应用ConfigMap/4×1 Blue/HTTP Service/Ingress；原runtime Secret及其他输入必须已存在且相同。只允许明确K8s API默认差异，额外args/livenessProbe/卷或env漂移拒绝；逐Pod验证原spec与ReplicaSet→Deployment UID链。任何错误/未知ACK停发保留，不自动重试或清理；请求60秒且原startup总预算不变。真实结果与本地能力分开，见[续部署验证](../openspec/changes/add-prod-zero-downtime-delivery/verification/2026-10-23-prod-app-resume-local.md)。
+
 ## 当前首发边界：仅 Kubernetes（用户明确要求，2026-10-23）
 
 本节覆盖下文历史云入口门禁对本次首发的要求。流水线只负责指定K8s资源与4×1 Pod就绪，不调用或要求CLB/EdgeOne API、云身份、listener/location/certificate、EO hash、公网HTTPS/流式或性能报告。用户已授权启用正式tag的prod部署；`-test/-pre`仍排除，运行器仍要求enabled配置及显式initial settings。K8s只提供HTTP，不创建TLS Secret或挂载证书；云侧TLS最高规则不变。

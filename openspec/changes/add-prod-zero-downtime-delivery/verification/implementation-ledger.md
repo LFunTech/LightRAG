@@ -462,3 +462,15 @@
 
 - 实际正式tag v1.5.9/commit18df4f5c3/流水线76：构建及产物链成功，prod初始化Job exit0/INITIALIZED/epoch1，运行Secret与批准runtime一致，但deploy-prod失败，后续ConfigMap/Deployment/Service/Ingress未创建。未认领prod上线，13.6仍未勾选。失败后仅只读核对并保留现场，无重跑迁移/Job/流水线、新tag或recover。原prod业务UID/spec不变，原test/两候选未访问。
 - Ruling: 不从统一ProdConfigError推断真实kubectl原因，不把15s预算假设写成根因；先修复已证实的日志隐藏缺陷 — 仅记录固定脱敏字段/白名单原因，不输出原始stderr或Secret — 2 RED→2 GREEN，定向680 passed/146 skipped/2既有warning，日志修复不等于真实失败已解决。详见[实际失败及续部署边界](2026-10-23-prod-pipeline-76-failure.md)。
+
+## 2026-10-23 #76 仅应用续部署授权
+
+- 用户明确允许通过流水线复用#76已成功初始化回执、v1.5.9原digest及配置，仅续部署应用；不migration/enroll、不重建镜像/覆盖tag，原test/两候选及禁止K8s TLS边界保持。新的只读Job/Pod复核UID与成功状态一致，尚无Blue。
+- Ruling: 新增独立manual/master应用续部署工作流，而非重跑整个#76或伪造新tag/旧镜像revision — 原pipeline start会重建镜像，违反本次授权 — 成本是新增一条只消费现有immutable证据与K8s凭据的交付入口；不新增cloud gate/后端请求。使用已批准OpenSpec第14节，不另起计划。
+- Ruling: 请求预算显式60秒且受原startup总deadline约束，不沿用未获环境时延证明的任意15秒组合上限；这不是对#76底层原因的追认。复用原runtime/identity，不把新runner commit冒充应用源码commit。
+- 第14节TDD：18 RED后首次17 GREEN/1夹具KeyError修正为18 GREEN；最初image验证误把仓库路径当普通标识符，先修复再重新运行全部负例避免假阳性。fail-fast三项删除行为后3 RED→3 GREEN；Ingress已有绑定漂移1 RED→GREEN。完整本轮706 passed/146 skipped/2既有warning（5.29s），原tag-only全局测试仅为新manual入口加入显式例外，原四workflow及发布脚本/overlay/迁移SQL不变。
+- 新真实只读核验通过：原初始化Job/Pod/hash及runtime Secret与批准一致；无K8s/后端写。只加载原immutable输入，不读取operator Secret。stdlib-only实际approval、4文件Ruff/format、6workflow strict、shell及OpenSpec通过。真实续部署尚未触发，不提前认领成功。
+
+- Final review: 用户中断前的review取消且无报告，不计为完成；唯一有效fresh报告对应SHA256 15cb1e8426f4065eeca9b91e1312bd88ac2b2b188d549d1352878c52e9d7fb95，0 Critical/2 Important/0 Minor。子集漂移和未绑定Pod完整runtime/owner链均确认可达；8 RED→一次fix pass→8 GREEN，增加明确API默认归一化、创建前同规则复核、逐Pod spec及RS→Deployment UID链。API默认正例/创建前漂移补测后相关717 passed/146 skipped/2既有warning，静态检查通过，无复审。
+- Final: Ruling: 真实生产就绪必须由真实续部署证明；云入口/业务API/容量/ACL不加为pipeline gate — reviewer禁止访问且用户明确收窄边界 — 代价是K8s结果不代表这些能力通过，仍报告未验。
+- 已按授权仅给既有prod kubeconfig增加manual事件，值不变、无新增Secret，其他CI元数据逐项一致；原test/候选未访问，尚无prod资源或后端写。Tasks14.1/14.2完成，当前60/74，13.6/14.3实际执行待办；见本轮本地记录。

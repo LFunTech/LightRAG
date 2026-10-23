@@ -134,3 +134,10 @@ K8s/CLB/入口 fake。真实 4/8 Pod、TKE/CLB、多节点存储、故障/容量
 | The first target has no running Blue | `tests/ci/test_prod_initial.py`：实际CLI初次分支、产物/目标校验、4×1创建顺序、固定digest、无云API/应用TLS；`tests/provisioning/test_initial.py`：隔离PG实际apply→verify→register→enroll及持久首发批准 | 图服务为MockHTTP，真实TKE结果另列；不认领公网入口/模型额度/容量 |
 | Initial deployment has an uncertain or failed result | 同CI测试：scope固定Job/immutable claim，不同pipeline/输入/缺失Job拒绝重放；阶段失败、错误digest、kubectl读写预算/迟到成功均停止，保留远端现场 | 没有自动recover/rollback/重启，真实网络未知故障未注入 |
 | Production objects are durable outside the Pod | 同CI测试：null storage只允许S3+PG/图，拒绝文件storage/local ingestion；有界emptyDir、不造PVC；实际输入JSONSchema独立校验 | 不宣称S3真实ACL/写入已验；原RWX/test配置不改 |
+
+## prod-delivery #76 仅应用续部署（新增2项，总计73场景）
+
+| 场景 | 本地实现/证据 | 边界/未验证部分 |
+| --- | --- | --- |
+| Only the Kubernetes application remains undeployed | `tests/ci/test_prod_app_resume.py`：receipt/固定digest/runtime与config复用、成功仅创建ConfigMap/Deployment/Service/Ingress、已有同spec仅观察、manual/master及显式执行确认；实际原Job/Pod/runtime只读核验通过 | 未重跑迁移/enroll、未构建镜像或改tag；真实续部署结果另记 |
+| Resume evidence or existing resources drift | 同文件：Job/Pod UID/spec/owner/digest/restarts/termination、claim/runtime/config/settings/appSecret/Green/foreign Deployment/Ingress绑定漂移副作用前拒绝；未知ACK停发保留、Pod异常停止入口创建 | 无prod故障注入；未将有限本地测试认领外部入口/4+4/容量通过 |

@@ -11,7 +11,7 @@ KANIKO_IMAGE = (
     "docker-hub.f123.pub/devops/kaniko:v1.14.0-debug"
     "@sha256:1b282be1c4467618e9122d2ae457ffa3776a7caa52d7539e329123283bc71f79"
 )
-SOURCE_ARTIFACT_PREFIX = 'lightrag/ci-source/$CI_COMMIT_SHA/$CI_PIPELINE_NUMBER'
+SOURCE_ARTIFACT_PREFIX = "lightrag/ci-source/$CI_COMMIT_SHA/$CI_PIPELINE_NUMBER"
 
 
 def load(name):
@@ -74,7 +74,9 @@ def test_build_image_uses_haier_style_kaniko_builder_for_streamed_logs():
     assert step["environment"]["HOME"] == "/kaniko"
     assert step["environment"]["REGISTRY"] == "docker-hub.f123.pub"
     assert step["environment"]["LIGHTRAG_IMAGE_REPOSITORY"] == "lfun/lightrag"
-    assert step["environment"]["LIGHTRAG_IMAGE_CACHE_REPOSITORY"] == "lfun/cache-lightrag"
+    assert (
+        step["environment"]["LIGHTRAG_IMAGE_CACHE_REPOSITORY"] == "lfun/cache-lightrag"
+    )
     command_text = "\n".join(step["commands"])
     assert 'LIGHTRAG_BUILD_CONTEXT_DIR="$SOURCE_DIR"' in command_text
     assert "sh scripts/ci/build-image.sh" in command_text
@@ -114,10 +116,22 @@ def test_release_source_workflow_runs_static_validation_and_uploads_source_once(
     assert "source.tar.gz" in command_text
     assert "source.tar.gz.sha256" in command_text
     assert "source-record.json" in command_text
-    assert source["environment"]["STORAGE_ENDPOINT"]["from_secret"] == "lightrag_cos_storage_endpoint"
-    assert source["environment"]["STORAGE_BUCKET"]["from_secret"] == "lightrag_cos_storage_bucket"
-    assert source["environment"]["STORAGE_ACCESS_KEY"]["from_secret"] == "lightrag_cos_storage_secret_id"
-    assert source["environment"]["STORAGE_SECRET_KEY"]["from_secret"] == "lightrag_cos_storage_secret_key"
+    assert (
+        source["environment"]["STORAGE_ENDPOINT"]["from_secret"]
+        == "lightrag_cos_storage_endpoint"
+    )
+    assert (
+        source["environment"]["STORAGE_BUCKET"]["from_secret"]
+        == "lightrag_cos_storage_bucket"
+    )
+    assert (
+        source["environment"]["STORAGE_ACCESS_KEY"]["from_secret"]
+        == "lightrag_cos_storage_secret_id"
+    )
+    assert (
+        source["environment"]["STORAGE_SECRET_KEY"]["from_secret"]
+        == "lightrag_cos_storage_secret_key"
+    )
     text = (WOODPECKER / "validate-release.yml").read_text()
     for forbidden in (
         "KUBECONFIG",
@@ -147,12 +161,18 @@ def test_release_source_clone_uses_container_local_temp_dir_not_nfs_workspace():
     workflow = load("validate-release.yml")
     assert list(workflow["steps"]) == ["release-source"]
     command_text = "\n".join(workflow["steps"]["release-source"]["commands"])
-    assert 'CLONE_DIR="$${LIGHTRAG_RELEASE_CLONE_DIR:-/tmp/lightrag-release-source}"' in command_text
+    assert (
+        'CLONE_DIR="$${LIGHTRAG_RELEASE_CLONE_DIR:-/tmp/lightrag-release-source}"'
+        in command_text
+    )
     assert 'git init --object-format sha1 "$CLONE_DIR"' in command_text
     assert 'cd "$CLONE_DIR"' in command_text
     assert 'git reset --hard -q "$${CI_COMMIT_SHA}"' in command_text
     assert "git init --object-format sha1 ." not in command_text
-    assert 'git config --global --replace-all safe.directory "$${workspace_dir}"' not in command_text
+    assert (
+        'git config --global --replace-all safe.directory "$${workspace_dir}"'
+        not in command_text
+    )
 
 
 def test_source_artifact_bootstrap_escapes_shell_parameter_expansion():
@@ -174,10 +194,13 @@ def test_woodpecker_workflows_are_not_triggered_by_master_updates():
         text = path.read_text()
         assert "pull_request" not in text
         assert "push" not in text
-        assert "branch:" not in text
+        if path.name == "resume-prod-app.yml":
+            assert load(path.name)["when"] == [{"event": "manual", "branch": "master"}]
+        else:
+            assert "branch:" not in text
 
 
-def test_release_source_workflow_is_the_only_manual_clone_step():
+def test_only_release_source_and_explicit_app_resume_clone_delivery_code():
     workflows = {path.name: load(path.name) for path in WOODPECKER.glob("*.yml")}
     assert all(workflow.get("skip_clone") is True for workflow in workflows.values())
     assert all("clone" not in workflow for workflow in workflows.values())
@@ -186,9 +209,15 @@ def test_release_source_workflow_is_the_only_manual_clone_step():
     for name, workflow in workflows.items():
         for step_name, step in workflow["steps"].items():
             command_text = "\n".join(step.get("commands") or [])
-            if "git fetch --no-tags --depth=1" in command_text:
+            if (
+                "git fetch --no-tags --depth=1" in command_text
+                or 'git -C "$SOURCE_DIR" fetch' in command_text
+            ):
                 manual_clone_steps.append((name, step_name))
-    assert manual_clone_steps == [("validate-release.yml", "release-source")]
+    assert sorted(manual_clone_steps) == [
+        ("resume-prod-app.yml", "resume-prod-app"),
+        ("validate-release.yml", "release-source"),
+    ]
 
 
 def test_downstream_workflows_skip_clone_and_download_source_from_minio():
@@ -198,10 +227,22 @@ def test_downstream_workflows_skip_clone_and_download_source_from_minio():
         assert "download-source" in workflow["steps"]
         download = workflow["steps"]["download-source"]
         assert download["image"] == CI_TOOLS_IMAGE
-        assert download["environment"]["STORAGE_ENDPOINT"]["from_secret"] == "lightrag_cos_storage_endpoint"
-        assert download["environment"]["STORAGE_BUCKET"]["from_secret"] == "lightrag_cos_storage_bucket"
-        assert download["environment"]["STORAGE_ACCESS_KEY"]["from_secret"] == "lightrag_cos_storage_secret_id"
-        assert download["environment"]["STORAGE_SECRET_KEY"]["from_secret"] == "lightrag_cos_storage_secret_key"
+        assert (
+            download["environment"]["STORAGE_ENDPOINT"]["from_secret"]
+            == "lightrag_cos_storage_endpoint"
+        )
+        assert (
+            download["environment"]["STORAGE_BUCKET"]["from_secret"]
+            == "lightrag_cos_storage_bucket"
+        )
+        assert (
+            download["environment"]["STORAGE_ACCESS_KEY"]["from_secret"]
+            == "lightrag_cos_storage_secret_id"
+        )
+        assert (
+            download["environment"]["STORAGE_SECRET_KEY"]["from_secret"]
+            == "lightrag_cos_storage_secret_key"
+        )
         command_text = "\n".join(download["commands"])
         assert ". scripts/ci/source-artifact.sh" not in command_text
         assert "resolve_storage_endpoint() {" in command_text
@@ -209,8 +250,14 @@ def test_downstream_workflows_skip_clone_and_download_source_from_minio():
         assert "mc cp" in command_text
         assert SOURCE_ARTIFACT_PREFIX in command_text
         assert "sha256sum -c source.tar.gz.sha256" in command_text
-        assert 'SOURCE_ARCHIVE_DIR="$${LIGHTRAG_SOURCE_ARCHIVE_DIR:-build/source-artifact}"' in command_text
-        assert 'mc cp "deploy/$STORAGE_BUCKET/$ARTIFACT_PREFIX/source.tar.gz" "$SOURCE_ARCHIVE_DIR/source.tar.gz"' in command_text
+        assert (
+            'SOURCE_ARCHIVE_DIR="$${LIGHTRAG_SOURCE_ARCHIVE_DIR:-build/source-artifact}"'
+            in command_text
+        )
+        assert (
+            'mc cp "deploy/$STORAGE_BUCKET/$ARTIFACT_PREFIX/source.tar.gz" "$SOURCE_ARCHIVE_DIR/source.tar.gz"'
+            in command_text
+        )
         assert "find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +" not in command_text
         assert "tar -xzf /tmp/lightrag-source/source.tar.gz -C ." not in command_text
 
@@ -234,17 +281,29 @@ def test_downstream_source_extraction_stays_off_nfs_workspace():
         assert "find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +" not in all_commands
         for step_name, source_dir in consumer_steps.items():
             command_text = "\n".join(workflow["steps"][step_name]["commands"])
-            assert 'SOURCE_ARCHIVE_DIR="$${LIGHTRAG_SOURCE_ARCHIVE_DIR:-build/source-artifact}"' in command_text
-            assert f'SOURCE_DIR="$${{LIGHTRAG_SOURCE_DIR:-{source_dir}}}"' in command_text
-            assert 'tar -xzf "$SOURCE_ARCHIVE_DIR/source.tar.gz" -C "$SOURCE_DIR"' in command_text
+            assert (
+                'SOURCE_ARCHIVE_DIR="$${LIGHTRAG_SOURCE_ARCHIVE_DIR:-build/source-artifact}"'
+                in command_text
+            )
+            assert (
+                f'SOURCE_DIR="$${{LIGHTRAG_SOURCE_DIR:-{source_dir}}}"' in command_text
+            )
+            assert (
+                'tar -xzf "$SOURCE_ARCHIVE_DIR/source.tar.gz" -C "$SOURCE_DIR"'
+                in command_text
+            )
             assert 'cd "$SOURCE_DIR"' in command_text
 
 
 def test_kaniko_build_context_uses_preserved_local_dir_not_tmp():
     build = load("build-image.yml")
     command_text = "\n".join(build["steps"]["build-image"]["commands"])
-    assert 'SOURCE_DIR="$${LIGHTRAG_SOURCE_DIR:-/kaniko/lightrag-source}"' in command_text
-    assert 'SOURCE_DIR="$${LIGHTRAG_SOURCE_DIR:-/tmp/lightrag-source}"' not in command_text
+    assert (
+        'SOURCE_DIR="$${LIGHTRAG_SOURCE_DIR:-/kaniko/lightrag-source}"' in command_text
+    )
+    assert (
+        'SOURCE_DIR="$${LIGHTRAG_SOURCE_DIR:-/tmp/lightrag-source}"' not in command_text
+    )
 
 
 def test_release_workflows_are_tag_only_and_ordered_from_source_artifact():
@@ -346,13 +405,21 @@ def test_tag_delivery_workflows_are_self_contained_not_static_only():
     assert pre["steps"]["verify-image"].get("depends_on") == ["download-source"]
     pre_command = "\n".join(pre["steps"]["verify-image"]["commands"])
     assert "resolve-image" in pre_command
-    assert "--record-output /woodpecker/src/build/release/image-record.json" in pre_command
-    assert "LIGHTRAG_IMAGE_DIGEST" not in pre["steps"]["verify-image"].get("environment", {})
+    assert (
+        "--record-output /woodpecker/src/build/release/image-record.json" in pre_command
+    )
+    assert "LIGHTRAG_IMAGE_DIGEST" not in pre["steps"]["verify-image"].get(
+        "environment", {}
+    )
 
     assert set(deploy["steps"]) == {"download-source", "resolve-image", "deploy-test"}
     assert deploy["steps"]["resolve-image"].get("depends_on") == ["download-source"]
-    assert deploy["steps"]["resolve-image"]["image"].startswith("docker-hub.f123.pub/base/uv:")
-    assert deploy["steps"]["deploy-test"]["image"].startswith("docker-hub.f123.pub/base/ci-tools:")
+    assert deploy["steps"]["resolve-image"]["image"].startswith(
+        "docker-hub.f123.pub/base/uv:"
+    )
+    assert deploy["steps"]["deploy-test"]["image"].startswith(
+        "docker-hub.f123.pub/base/ci-tools:"
+    )
     assert deploy["steps"]["deploy-test"].get("depends_on") == ["resolve-image"]
     resolve_command = "\n".join(deploy["steps"]["resolve-image"]["commands"])
     assert "--env-output /woodpecker/src/build/release/image.env" in resolve_command
@@ -411,8 +478,11 @@ def test_deploy_test_script_bootstraps_namespace_secrets_migration_and_snapshot_
     assert "bootstrap_storage_profile()" in script
     assert "apply_environment_snapshot()" in script
     assert "make_coordination_dsn()" in script
-    assert "--from-literal=LIGHTRAG_COORDINATION_DSN=\"$LIGHTRAG_COORDINATION_DSN\"" in script
-    assert "kubectl get namespace \"$NAMESPACE\" >/dev/null" not in script
+    assert (
+        '--from-literal=LIGHTRAG_COORDINATION_DSN="$LIGHTRAG_COORDINATION_DSN"'
+        in script
+    )
+    assert 'kubectl get namespace "$NAMESPACE" >/dev/null' not in script
     assert "create secret docker-registry lightrag-registry-pull" in script
     assert "create secret generic lightrag-runtime" in script
     assert "kind: Job" in script
@@ -455,24 +525,41 @@ def test_deploy_test_script_recovers_fenced_workspace_before_bootstrap():
 
 def test_deploy_test_script_allows_cold_image_pull_during_rollout():
     script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
-    assert 'DEPLOYMENT_ROLLOUT_TIMEOUT_SECONDS="${LIGHTRAG_TEST_ROLLOUT_TIMEOUT_SECONDS:-1200}"' in script
-    assert '--timeout=${DEPLOYMENT_ROLLOUT_TIMEOUT_SECONDS}s' in script
+    assert (
+        'DEPLOYMENT_ROLLOUT_TIMEOUT_SECONDS="${LIGHTRAG_TEST_ROLLOUT_TIMEOUT_SECONDS:-1200}"'
+        in script
+    )
+    assert "--timeout=${DEPLOYMENT_ROLLOUT_TIMEOUT_SECONDS}s" in script
     deploy_body = script.split("deploy_one_instance() {", 1)[1]
-    assert 'rollout status "deployment/$DEPLOYMENT" --timeout=${DEPLOYMENT_ROLLOUT_TIMEOUT_SECONDS}s' in deploy_body
-    assert 'wait --for=condition=Ready pod -l "$LABEL_SELECTOR" --timeout=${DEPLOYMENT_ROLLOUT_TIMEOUT_SECONDS}s' in deploy_body
+    assert (
+        'rollout status "deployment/$DEPLOYMENT" --timeout=${DEPLOYMENT_ROLLOUT_TIMEOUT_SECONDS}s'
+        in deploy_body
+    )
+    assert (
+        'wait --for=condition=Ready pod -l "$LABEL_SELECTOR" --timeout=${DEPLOYMENT_ROLLOUT_TIMEOUT_SECONDS}s'
+        in deploy_body
+    )
 
 
 def test_deploy_test_script_loops_over_configurable_numbered_instances():
     script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
-    assert 'LIGHTRAG_TEST_INSTANCES="${LIGHTRAG_TEST_INSTANCES:-01,02,03,04,05}"' in script
+    assert (
+        'LIGHTRAG_TEST_INSTANCES="${LIGHTRAG_TEST_INSTANCES:-01,02,03,04,05}"' in script
+    )
     assert "deploy_all_instances()" in script
     assert "deploy_one_instance()" in script
     assert "configure_instance()" in script
     assert 'NAMESPACE="lightrag-test-$INSTANCE_ID"' in script
     assert 'LIGHTRAG_INSTANCE_WORKSPACE="lightrag_test_$INSTANCE_ID"' in script
     assert 'LIGHTRAG_TEST_DOMAIN="${LIGHTRAG_TEST_DOMAIN:-f123.pub}"' in script
-    assert 'LIGHTRAG_TEST_PUBLIC_HOST="rag-test-$INSTANCE_ID.$LIGHTRAG_TEST_DOMAIN"' in script
-    assert 'LIGHTRAG_INSTANCE_S3_OBJECT_PREFIX="lightrag/test-$INSTANCE_ID/object-ingestion"' in script
+    assert (
+        'LIGHTRAG_TEST_PUBLIC_HOST="rag-test-$INSTANCE_ID.$LIGHTRAG_TEST_DOMAIN"'
+        in script
+    )
+    assert (
+        'LIGHTRAG_INSTANCE_S3_OBJECT_PREFIX="lightrag/test-$INSTANCE_ID/object-ingestion"'
+        in script
+    )
     assert 'api_key_var="LIGHTRAG_TEST_${INSTANCE_ID}_API_KEY"' in script
 
 
@@ -495,7 +582,10 @@ def test_deploy_test_script_generates_per_instance_kustomize_overlay_profile():
 def test_deploy_test_script_derives_hugegraph_auth_method_from_credentials():
     script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
     assert "require_env LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD" not in script
-    assert 'HUGEGRAPH_AUTH_METHOD="${LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD:-basic}"' in script
+    assert (
+        'HUGEGRAPH_AUTH_METHOD="${LIGHTRAG_TEST_HUGEGRAPH_AUTH_METHOD:-basic}"'
+        in script
+    )
     assert '--from-literal=HUGEGRAPH_AUTH_METHOD="$HUGEGRAPH_AUTH_METHOD"' in script
 
 
@@ -509,7 +599,7 @@ def test_deploy_test_script_normalizes_openai_compatible_binding_hosts(tmp_path)
     probe.write_text(
         "#!/usr/bin/env sh\n"
         "set -eu\n"
-        "cd \"$(dirname \"$0\")\"\n"
+        'cd "$(dirname "$0")"\n'
         f"{helper}\n"
         "LIGHTRAG_TEST_LLM_BINDING_HOST=llm.example.test\n"
         "LIGHTRAG_TEST_EMBEDDING_BINDING_HOST=https://embedding.example.test/v1\n"
@@ -543,8 +633,8 @@ def test_deploy_test_script_normalizes_openai_compatible_binding_hosts(tmp_path)
 
 def test_deploy_test_script_reports_failed_jobs_without_waiting_for_timeout():
     script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
-    assert 'jsonpath=\'{.status.conditions[?(@.type=="Complete")].status}\'' in script
-    assert 'jsonpath=\'{.status.conditions[?(@.type=="Failed")].status}\'' in script
+    assert "jsonpath='{.status.conditions[?(@.type==\"Complete\")].status}'" in script
+    assert "jsonpath='{.status.conditions[?(@.type==\"Failed\")].status}'" in script
     assert "completed" in script
     assert "${label} ${reason}; recent non-secret logs follow" in script
     assert '"failed"' in script
@@ -557,10 +647,10 @@ def test_deploy_test_script_preflights_storage_before_draining_service():
     script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
     main_body = script.split('kubectl -n "$NAMESPACE" delete job \\', 1)[1]
     assert main_body.index("preflight_storage_profile") < main_body.index(
-        "patch service \"$SERVICE\""
+        'patch service "$SERVICE"'
     )
     assert main_body.index("preflight_storage_profile") < main_body.index(
-        "scale \"deployment/$DEPLOYMENT\" --replicas=0"
+        'scale "deployment/$DEPLOYMENT" --replicas=0'
     )
     assert main_body.index("preflight_storage_profile") < main_body.index(
         "migrate_coordination_schema"
@@ -612,7 +702,7 @@ def test_deploy_test_script_avoids_business_acceptance_calls():
 def test_deploy_test_restores_routing_after_deployment_health_check_only():
     script = (ROOT / "scripts/ci/deploy-test.sh").read_text()
     instance_body = script.split("POD_IMAGES=", 1)[1]
-    assert instance_body.index("patch service \"$SERVICE\"") < instance_body.index(
+    assert instance_body.index('patch service "$SERVICE"') < instance_body.index(
         "verify_public_ingress"
     )
     assert instance_body.index("verify_public_ingress") < instance_body.index(

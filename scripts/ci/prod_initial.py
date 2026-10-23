@@ -220,13 +220,13 @@ def managed_equal(actual, expected):
     return actual == expected
 
 
-def remaining_timeout(deadline):
+def remaining_timeout(deadline, request_budget=15):
     remaining = deadline - time.monotonic()
     if remaining <= 0.01:
         raise ProdConfigError(
             "Initial observation budget exhausted; remote resources retained"
         )
-    return min(15, remaining)
+    return min(request_budget, remaining)
 
 
 def claim_execution(kube, marker, job):
@@ -243,8 +243,12 @@ def claim_execution(kube, marker, job):
         )
 
 
-def create_exact(kube, resource, *, deadline=None):
-    timeout = remaining_timeout(deadline) if deadline is not None else 30
+def create_exact(
+    kube, resource, *, deadline=None, request_budget=15, resource_check=None
+):
+    timeout = (
+        remaining_timeout(deadline, request_budget) if deadline is not None else 30
+    )
     old = kube.get(resource["kind"], resource["metadata"]["name"], timeout=timeout)
     if old is None:
         kube.run(
@@ -252,11 +256,26 @@ def create_exact(kube, resource, *, deadline=None):
             "-f",
             "-",
             body=resource,
-            timeout=remaining_timeout(deadline) if deadline is not None else 30,
+            timeout=remaining_timeout(deadline, request_budget)
+            if deadline is not None
+            else 30,
         )
-    elif not managed_equal(old.get("spec", {}), resource.get("spec", {})) or (
-        resource["kind"] == "ServiceAccount"
-        and old.get("automountServiceAccountToken") is not False
+    elif resource_check is not None:
+        if not resource_check(old, resource):
+            raise ProdConfigError(
+                "Existing application resource differs; no replacement"
+            )
+    elif (
+        not managed_equal(old.get("spec", {}), resource.get("spec", {}))
+        or not managed_equal(
+            old.get("metadata", {}).get("annotations", {}),
+            resource.get("metadata", {}).get("annotations", {}),
+        )
+        or (resource["kind"] == "Ingress" and old.get("spec", {}).get("tls"))
+        or (
+            resource["kind"] == "ServiceAccount"
+            and old.get("automountServiceAccountToken") is not False
+        )
     ):
         raise ProdConfigError(
             "Existing initial resource differs; no replacement allowed"
@@ -326,7 +345,18 @@ def wait_initialized(kube, job, identity, settings, config, *, deadline=None):
         time.sleep(2)
 
 
-def wait_ready(kube, config, identity, settings, *, image, deadline=None):
+def wait_ready(
+    kube,
+    config,
+    identity,
+    settings,
+    *,
+    image,
+    deadline=None,
+    request_budget=15,
+    fail_fast=False,
+    snapshot_check=None,
+):
     end = (
         deadline
         if deadline is not None
@@ -336,9 +366,11 @@ def wait_ready(kube, config, identity, settings, *, image, deadline=None):
     expected_image = image + "@" + identity["digest"]
     while True:
         deployment = kube.get(
-            "Deployment", "lightrag-blue", timeout=remaining_timeout(end)
+            "Deployment",
+            "lightrag-blue",
+            timeout=remaining_timeout(end, request_budget),
         )
-        remaining_timeout(end)
+        remaining_timeout(end, request_budget)
         if deployment is None:
             raise ProdConfigError("Initial deployment disappeared")
         pods = json.loads(
@@ -349,10 +381,37 @@ def wait_ready(kube, config, identity, settings, *, image, deadline=None):
                 selector,
                 "-o",
                 "json",
-                timeout=remaining_timeout(end),
+                timeout=remaining_timeout(end, request_budget),
             )
         )["items"]
-        remaining_timeout(end)
+        remaining_timeout(end, request_budget)
+        if snapshot_check is not None:
+            snapshot_check(deployment, pods, end)
+            remaining_timeout(end, request_budget)
+        if fail_fast:
+            for pod in pods:
+                statuses = pod.get("status", {}).get("containerStatuses", []) + pod.get(
+                    "status", {}
+                ).get("initContainerStatuses", [])
+                if pod.get("status", {}).get("phase") == "Failed" or any(
+                    item.get("restartCount", 0) > 0
+                    or item.get("state", {}).get("waiting", {}).get("reason")
+                    in {
+                        "CrashLoopBackOff",
+                        "ErrImagePull",
+                        "ImagePullBackOff",
+                        "CreateContainerConfigError",
+                        "CreateContainerError",
+                        "RunContainerError",
+                        "InvalidImageName",
+                    }
+                    or item.get("state", {}).get("terminated", {}).get("exitCode", 0)
+                    != 0
+                    for item in statuses
+                ):
+                    raise ProdConfigError(
+                        "Application Pod failed; resume stopped without restart"
+                    )
         ready = True
         for pod in pods:
             containers = pod["spec"].get("containers", [])
@@ -385,7 +444,7 @@ def wait_ready(kube, config, identity, settings, *, image, deadline=None):
             and state.get("updatedReplicas") == config.replicas
             and state.get("availableReplicas") == config.replicas
         ):
-            remaining_timeout(end)
+            remaining_timeout(end, request_budget)
             return [p["metadata"]["uid"] for p in pods]
         if time.monotonic() >= end:
             raise ProdConfigError(
