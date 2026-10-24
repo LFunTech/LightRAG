@@ -1,0 +1,13 @@
+{
+  "apiVersion": "v1",
+  "kind": "ConfigMap",
+  "metadata": {
+    "name": "lightrag-blue-config-096d41e047488f272879a199",
+    "namespace": "prod"
+  },
+  "immutable": true,
+  "data": {
+    "identity.json": "{\"commit\": \"18df4f5c389d8f5e5fbd258f5f42316a4ec06421\", \"config_hash\": \"eead1664412b7738eeedfc28e229b7e735d02cac80b2457830aa5ef9cea6b1ae\", \"digest\": \"sha256:496b46a29266d62895842d09d7ce132be9c4a326699e32095467bebc13b8d4db\", \"protocol_version\": 1, \"release_id\": \"prod-v1.5.9-18df4f5c389d\", \"scope\": \"lightrag_prod/lightrag_prod\", \"tag\": \"v1.5.9\"}",
+    "aws-config": "[default]\nregion = ap-shanghai\ns3 =\n    addressing_style = virtual\n"
+  }
+}

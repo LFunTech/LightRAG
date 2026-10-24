@@ -1,5 +1,13 @@
 # 生产蓝绿发布手册
 
+## 当前常规生产配置发布（2026-10-24）
+
+当前用户要求以test微调prod且不增加校验。正式生产tag仍使用原`validate-release → build-image → pre-deploy → deploy-prod`链；prod部署步骤改为与test相同的Kustomize apply/rollout，不调用初始化/migration/enroll/recover，不注入operator凭据，不查询后端或云API。原test与应用代码不变，删除此前manual续部署工作流。
+
+生产配置在`k8s-deploy/lightrag-kustomize/overlays/prod/kubernetes/`；qcloud绑定`lb-ao2qcdid`，域名`llm-rag.eplus2.cn`，4Pod/每Pod1worker、HTTP/无K8s TLS，沿用现有prod Secret。应用镜像由release-image.json独立固定为v1.5.9原digest和commit，runtime/config_hash/policy保持此前已批准状态。此次新正式tag仅标识配置发布；正常构建阶段产生的同tag镜像不作为本次应用升级，也不伪称其已经部署。以后若升级应用镜像，需同步版本与运行协议，不能只移动镜像tag。
+
+#78 manual历史上已成功部署4Pod与入口，但不是常规tag链；额外观察已按用户要求中止，未认领5分钟或性能验收。正式tag执行结果见本次实际发布记录。以下为历史背景及更完整协议的设计，不自动增加到本次流水线。
+
 ## 当前执行约束（2026-10-24，覆盖此前代码修复计划）
 
 只在现有test流水线基础上微调prod交付，**不修改应用代码**；原test和两个候选不动。prod入口固定`qcloud` Ingress、CLB **`lb-ao2qcdid`**，域名`llm-rag.eplus2.cn`，K8s仅HTTP且不做TLS。不新增流水线S3/CLB/EdgeOne校验，不复制test的bootstrap/recover或重跑已经成功的初始化。未提交的S3/认证代码修复及临时tag筛选已撤回，不能混入部署。

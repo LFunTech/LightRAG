@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: prod
+resources:
+  - deployment.json
+  - configmap.json
+  - service.json
+  - ingress.json
+  - release-image.json
+replacements:
+  - source:
+      kind: ConfigMap
+      name: lightrag-prod-release-image
+      fieldPath: data.digest
+    targets:
+      - select:
+          kind: Deployment
+          name: lightrag-blue
+        fieldPaths:
+          - spec.template.spec.containers.[name=lightrag].image
+        options:
+          delimiter: "@"
+          index: 1

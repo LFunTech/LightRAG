@@ -1,0 +1,13 @@
+{
+  "apiVersion": "v1",
+  "kind": "ConfigMap",
+  "metadata": {
+    "name": "lightrag-prod-release-image",
+    "namespace": "prod"
+  },
+  "data": {
+    "tag": "v1.5.9",
+    "commit": "18df4f5c389d8f5e5fbd258f5f42316a4ec06421",
+    "digest": "sha256:496b46a29266d62895842d09d7ce132be9c4a326699e32095467bebc13b8d4db"
+  }
+}

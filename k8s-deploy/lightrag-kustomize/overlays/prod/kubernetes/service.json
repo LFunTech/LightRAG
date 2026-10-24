@@ -1,0 +1,22 @@
+{
+  "apiVersion": "v1",
+  "kind": "Service",
+  "metadata": {
+    "name": "lightrag",
+    "namespace": "prod"
+  },
+  "spec": {
+    "selector": {
+      "lightrag.io/deployment": "lightrag_prod",
+      "lightrag.io/slot": "blue"
+    },
+    "ports": [
+      {
+        "name": "http",
+        "port": 9621,
+        "targetPort": 9621
+      }
+    ],
+    "type": "NodePort"
+  }
+}

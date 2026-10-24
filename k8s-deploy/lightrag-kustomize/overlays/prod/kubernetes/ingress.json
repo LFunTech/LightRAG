@@ -1,0 +1,37 @@
+{
+  "apiVersion": "networking.k8s.io/v1",
+  "kind": "Ingress",
+  "metadata": {
+    "name": "lightrag",
+    "namespace": "prod",
+    "annotations": {
+      "kubernetes.io/ingress.class": "qcloud",
+      "kubernetes.io/ingress.existLbId": "lb-ao2qcdid",
+      "ingress.cloud.tencent.com/enable-group": "true"
+    }
+  },
+  "spec": {
+    "ingressClassName": "qcloud",
+    "rules": [
+      {
+        "host": "llm-rag.eplus2.cn",
+        "http": {
+          "paths": [
+            {
+              "path": "/",
+              "pathType": "Prefix",
+              "backend": {
+                "service": {
+                  "name": "lightrag",
+                  "port": {
+                    "number": 9621
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

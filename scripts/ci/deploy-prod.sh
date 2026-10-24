@@ -2,25 +2,20 @@
 set -eu
 if (set -o pipefail) 2>/dev/null; then set -o pipefail; fi
 umask 077
-: "${LIGHTRAG_PROD_KUBECONFIG:?explicit prod kubeconfig is required}"
-: "${LIGHTRAG_PROD_ONBOARDING_JSON:?approved prod onboarding is required}"
-: "${CI_COMMIT_TAG:?formal release tag is required}"
-: "${CI_COMMIT_SHA:?commit is required}"
-# Initial schema phases require separate explicit settings; ordinary upgrades never migrate.
-# No bootstrap/recover or automatic undo in the trap.
-TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP_DIR"' EXIT
-printf '%s' "$LIGHTRAG_PROD_KUBECONFIG" > "$TMP_DIR/kubeconfig"
-printf '%s' "$LIGHTRAG_PROD_ONBOARDING_JSON" > "$TMP_DIR/config.json"
-set --
-if [ -n "${LIGHTRAG_PROD_INITIAL_RELEASE_JSON:-}" ]; then
-  printf '%s' "$LIGHTRAG_PROD_INITIAL_RELEASE_JSON" > "$TMP_DIR/initial.json"
-  set -- --initial-settings "$TMP_DIR/initial.json"
-fi
-python3 -m scripts.ci.prod_deploy \
-  --config "$TMP_DIR/config.json" \
-  --kubeconfig "$TMP_DIR/kubeconfig" \
-  --image-record /woodpecker/src/build/release/image-record.json \
-  --source-archive /woodpecker/src/build/source-artifact/source.tar.gz \
-  --source-record /woodpecker/src/build/source-artifact/source-record.json \
-  --execute "$@"
+: "${LIGHTRAG_PROD_KUBECONFIG:?LIGHTRAG_PROD_KUBECONFIG is required}"
+: "${CI_COMMIT_TAG:?CI_COMMIT_TAG is required}"
+: "${LIGHTRAG_IMAGE_REF:?LIGHTRAG_IMAGE_REF is required}"
+
+# Follow test's Kustomize apply/rollout path; provisioned backends stay untouched.
+OVERLAY=k8s-deploy/lightrag-kustomize/overlays/prod/kubernetes
+KUBECONFIG_FILE="$(mktemp /tmp/lightrag-prod-kubeconfig.XXXXXX)"
+trap 'rm -f "$KUBECONFIG_FILE"' EXIT
+printf '%s' "$LIGHTRAG_PROD_KUBECONFIG" > "$KUBECONFIG_FILE"
+export KUBECONFIG="$KUBECONFIG_FILE"
+
+kubectl --namespace prod apply -k "$OVERLAY"
+kubectl --namespace prod rollout status deployment/lightrag-blue --timeout=900s
+kubectl --namespace prod get deployment/lightrag-blue
+kubectl --namespace prod get pods -l lightrag.io/deployment=lightrag_prod -o wide
+kubectl --namespace prod get service,ingress lightrag -o wide
+printf 'Production configuration release: %s; application image: %s\n' "$CI_COMMIT_TAG" "$LIGHTRAG_IMAGE_REF"

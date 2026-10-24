@@ -1,0 +1,35 @@
+{
+  "pod": "lightrag-blue-74576c58f9-cr98v",
+  "pod_uid": "18e5846a-f399-4b6e-ab38-a5c46bcad138",
+  "result": {
+    "applied": true,
+    "new_config_hash": "eead1664412b7738eeedfc28e229b7e735d02cac80b2457830aa5ef9cea6b1ae",
+    "observed_at_utc": "2026-10-24T01:11:43.222982+00:00",
+    "old_config_hash": "e5da9efed3c2cfbb4ad614209cf349f7598b3715d5c76b7f525a7dd55ee1a049",
+    "old_instances_retained": 4,
+    "other_scope_columns_unchanged": true,
+    "scope": "lightrag_prod/lightrag_prod",
+    "transaction_committed": true,
+    "unfinished_counts": {
+      "claims": 0,
+      "commands": 0,
+      "operations": 0,
+      "pending_documents": 0,
+      "pending_mutations": 0,
+      "pipeline_requests": 0,
+      "resource_locks": 0,
+      "tickets": 0
+    }
+  },
+  "exec_attempts": 1,
+  "record_kind": "approved_prod_config_hash_only_update",
+  "user_approval": "2026-10-24 explicit exact single-column approval",
+  "database_columns_updated": [
+    "lightrag_release.scopes.config_hash"
+  ],
+  "migration_calls": 0,
+  "enroll_calls": 0,
+  "policy_changes": 0,
+  "business_data_changes": 0,
+  "old_instance_records_deleted": 0
+}

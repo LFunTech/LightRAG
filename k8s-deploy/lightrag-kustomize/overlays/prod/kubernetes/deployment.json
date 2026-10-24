@@ -1,0 +1,271 @@
+{
+  "apiVersion": "apps/v1",
+  "kind": "Deployment",
+  "metadata": {
+    "name": "lightrag-blue",
+    "namespace": "prod"
+  },
+  "spec": {
+    "progressDeadlineSeconds": 600,
+    "replicas": 4,
+    "revisionHistoryLimit": 10,
+    "selector": {
+      "matchLabels": {
+        "lightrag.io/deployment": "lightrag_prod",
+        "lightrag.io/slot": "blue"
+      }
+    },
+    "strategy": {
+      "type": "Recreate"
+    },
+    "template": {
+      "metadata": {
+        "labels": {
+          "lightrag.io/deployment": "lightrag_prod",
+          "lightrag.io/slot": "blue"
+        }
+      },
+      "spec": {
+        "automountServiceAccountToken": false,
+        "containers": [
+          {
+            "command": [
+              "lightrag-server"
+            ],
+            "env": [
+              {
+                "name": "HOST",
+                "value": "0.0.0.0"
+              },
+              {
+                "name": "PORT",
+                "value": "9621"
+              },
+              {
+                "name": "WORKERS",
+                "value": "1"
+              },
+              {
+                "name": "SSL",
+                "value": "false"
+              },
+              {
+                "name": "LIGHTRAG_RELEASE_ENABLED",
+                "value": "true"
+              },
+              {
+                "name": "LIGHTRAG_RELEASE_SLOT",
+                "value": "blue"
+              },
+              {
+                "name": "LIGHTRAG_RELEASE_CONFIG_HASH",
+                "value": "eead1664412b7738eeedfc28e229b7e735d02cac80b2457830aa5ef9cea6b1ae"
+              },
+              {
+                "name": "WORKING_DIR",
+                "value": "/app/data/rag_storage"
+              },
+              {
+                "name": "INPUT_DIR",
+                "value": "/app/data/inputs"
+              },
+              {
+                "name": "LIGHTRAG_RELEASE_INSTANCE_ID",
+                "valueFrom": {
+                  "fieldRef": {
+                    "apiVersion": "v1",
+                    "fieldPath": "metadata.uid"
+                  }
+                }
+              },
+              {
+                "name": "LIGHTRAG_USAGE_FINAL_PATH",
+                "value": "/dev/termination-log"
+              },
+              {
+                "name": "AWS_CONFIG_FILE",
+                "value": "/app/release/aws-config"
+              },
+              {
+                "name": "WHITELIST_PATHS",
+                "value": "/health"
+              },
+              {
+                "name": "LIGHTRAG_DEPLOYMENT_CONFIG_SHA256",
+                "value": "0bc3c89d359752b500de10b67ff009a0004ab1e9a89fc80ed1be7fed80121d7a"
+              }
+            ],
+            "envFrom": [
+              {
+                "secretRef": {
+                  "name": "lightrag-blue-e5da9efed3c2cfbb4ad61420"
+                }
+              }
+            ],
+            "image": "docker-hub.f123.pub/lfun/lightrag@sha256:496b46a29266d62895842d09d7ce132be9c4a326699e32095467bebc13b8d4db",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "lightrag",
+            "ports": [
+              {
+                "containerPort": 9621,
+                "name": "http",
+                "protocol": "TCP"
+              }
+            ],
+            "readinessProbe": {
+              "failureThreshold": 1,
+              "httpGet": {
+                "path": "/ready",
+                "port": "http",
+                "scheme": "HTTP"
+              },
+              "periodSeconds": 3,
+              "successThreshold": 1,
+              "timeoutSeconds": 2
+            },
+            "resources": {
+              "limits": {
+                "cpu": "2",
+                "memory": "4Gi"
+              },
+              "requests": {
+                "cpu": "1",
+                "memory": "2Gi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true
+            },
+            "startupProbe": {
+              "failureThreshold": 120,
+              "httpGet": {
+                "path": "/ready",
+                "port": "http",
+                "scheme": "HTTP"
+              },
+              "periodSeconds": 5,
+              "successThreshold": 1,
+              "timeoutSeconds": 1
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "volumeMounts": [
+              {
+                "mountPath": "/app/data",
+                "name": "working"
+              },
+              {
+                "mountPath": "/tmp",
+                "name": "tmp"
+              },
+              {
+                "mountPath": "/app/release",
+                "name": "release",
+                "readOnly": true
+              }
+            ]
+          }
+        ],
+        "dnsPolicy": "ClusterFirst",
+        "imagePullSecrets": [
+          {
+            "name": "lfun"
+          }
+        ],
+        "initContainers": [
+          {
+            "command": [
+              "python",
+              "-I",
+              "-c",
+              "from pathlib import Path; import sys; [Path(p).mkdir(parents=True, exist_ok=True) for p in sys.argv[1:]]",
+              "/app/data/logs",
+              "/app/data/rag_storage",
+              "/app/data/inputs",
+              "/app/data/object-scratch"
+            ],
+            "image": "docker-hub.f123.pub/lfun/lightrag@sha256:496b46a29266d62895842d09d7ce132be9c4a326699e32095467bebc13b8d4db",
+            "imagePullPolicy": "IfNotPresent",
+            "name": "prepare-working-directories",
+            "resources": {
+              "limits": {
+                "cpu": "100m",
+                "memory": "128Mi"
+              },
+              "requests": {
+                "cpu": "10m",
+                "memory": "32Mi"
+              }
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "capabilities": {
+                "drop": [
+                  "ALL"
+                ]
+              },
+              "readOnlyRootFilesystem": true
+            },
+            "terminationMessagePath": "/dev/termination-log",
+            "terminationMessagePolicy": "File",
+            "volumeMounts": [
+              {
+                "mountPath": "/app/data",
+                "name": "working"
+              }
+            ]
+          }
+        ],
+        "restartPolicy": "Always",
+        "schedulerName": "default-scheduler",
+        "securityContext": {
+          "fsGroup": 1000,
+          "runAsGroup": 1000,
+          "runAsNonRoot": true,
+          "runAsUser": 1000
+        },
+        "serviceAccount": "lightrag-prod-app",
+        "serviceAccountName": "lightrag-prod-app",
+        "terminationGracePeriodSeconds": 420,
+        "topologySpreadConstraints": [
+          {
+            "labelSelector": {
+              "matchLabels": {
+                "lightrag.io/deployment": "lightrag_prod",
+                "lightrag.io/slot": "blue"
+              }
+            },
+            "maxSkew": 1,
+            "topologyKey": "kubernetes.io/hostname",
+            "whenUnsatisfiable": "DoNotSchedule"
+          }
+        ],
+        "volumes": [
+          {
+            "emptyDir": {
+              "sizeLimit": "10Gi"
+            },
+            "name": "working"
+          },
+          {
+            "emptyDir": {},
+            "name": "tmp"
+          },
+          {
+            "configMap": {
+              "defaultMode": 420,
+              "name": "lightrag-blue-config-096d41e047488f272879a199"
+            },
+            "name": "release"
+          }
+        ]
+      }
+    }
+  }
+}

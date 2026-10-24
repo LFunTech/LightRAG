@@ -422,7 +422,7 @@ Git 发布与生产放行分开：runtime/operator 引用、生产域名/TLS、�
 - [x] 13.3 串接已有migration apply→verify→register→enroll，准确绑定scope/profile/计划/tag/目标；未知结果即停，不自动recover/重放/rollback。
 - [x] 13.4 CI依次部署初始化Job、Blue4×1与HTTP Service/Ingress，确认K8s Pod就绪；既有应用拒绝替换，Job观察超时保留现场，不调用CLB/EO或公网入口。
 - [x] 13.5 补对应反例/正例、真实隔离PG联合、原test非回归、静态/包/OpenSpec检查及一次新鲜审查；区分本地与真实结果。
-- [ ] 13.6 按已获授权准备仅prod输入、必要commit/push和真实首发流水线；仅通过本次K8s边界后报告部署，失败立即停并保存实际证据，不认领外部入口/容量验收。
+- [x] 13.6 按已获授权准备仅prod输入、必要commit/push和真实首发流水线；仅通过本次K8s边界后报告部署，失败立即停并保存实际证据，不认领外部入口/容量验收。
 
 第13节本地13.1–13.5完成：**58/71，13项剩余**（原12项真实验收及13.6真实部署），capability共71场景。见[本轮验证](verification/2026-10-23-kubernetes-initial-local.md)及[唯一审查修复](verification/2026-10-23-kubernetes-initial-review.md)。本轮已按授权准备23项prod-only CI输入，实际commit/tag/流水线/Pod结果另列，不将本地模拟或镜像构建当部署。
 
@@ -432,7 +432,7 @@ Git 发布与生产放行分开：runtime/operator 引用、生产域名/TLS、�
 
 - [x] 14.1 补receipt-bound版本化批准与manual/master工作流，复用既有prod kubeconfig，仅创建应用资源；无构建/tag/后端迁移或enroll调用。
 - [x] 14.2 TDD覆盖成功回执、Job/Pod/digest/config/目标漂移、已有资源拒绝、未知ACK/预算与无敏感日志；完成定向/static/OpenSpec及一次新鲜审查。
-- [ ] 14.3 精确提交推送必要修复，不创建或覆盖tag；核对CI事件/原test不变后单次手动触发，仅K8s就绪时报告成功，异常立即停。
+- [x] 14.3 精确提交推送必要修复，不创建或覆盖tag；核对CI事件/原test不变后单次手动触发，仅K8s就绪时报告成功，异常立即停。
 
 第14节本地14.1/14.2完成，当前**60/74，14项剩余**（原12项真实验收、13.6及14.3实际续部署），场景73项。唯一有效审查2 Important经8项RED→GREEN、API默认与创建前漂移正例补齐；相关717 passed/146 skipped/2既有warning。见[本轮记录](verification/2026-10-23-prod-app-resume-local.md)。仅既有prod kubeconfig扩manual事件，凭据值/其他Secret/test未变，尚未触发真实续部署，不提前认领成功。
 
@@ -448,9 +448,22 @@ Git 发布与生产放行分开：runtime/operator 引用、生产域名/TLS、�
 - [x] 15.2 用原HEAD应用源码离线验证配置路径：只读AWS SDK config的virtual addressing及显式WHITELIST_PATHS=/health，不改应用；SDK网络发送0，既有密钥不进入ConfigMap。
 - [x] 15.3 原prod配置本地渲染确认qcloud Ingress、准确CLB lb-ao2qcdid、域名llm-rag.eplus2.cn、HTTP后端9621和无K8s TLS；这是本地核验，不是已创建入口。
 - [x] 15.4 完成必要流水线/部署配置微调、已有检查和render；交付前确认应用源码与tests无变更，不增加S3/云入口CI门禁，保留prod/test配置和密钥隔离。
-- [ ] 15.5 为最终配置计算真实hash/挂载绑定，若需登记更新，明确新精确差异另批；不沿用已撤销代码修复草案的hash，不重跑migration/enroll或清旧实例记录。
-- [ ] 15.6 通过流水线部署原代码/获准配置的prod 4×1实例和qcloud HTTP入口，实际核验Pod状态/访问；失败即停，不动原test/两候选，不把构建或Pod创建认领完整可用。
+- [x] 15.5 为最终配置计算真实hash/挂载绑定，若需登记更新，明确新精确差异另批；不沿用已撤销代码修复草案的hash，不重跑migration/enroll或清旧实例记录。
+- [x] 15.6 通过流水线部署原代码/获准配置的prod 4×1实例和qcloud HTTP入口，实际核验Pod状态/访问；失败即停，不动原test/两候选，不把构建或Pod创建认领完整可用。
 
 当前64/80，16项剩余，73场景；此前60/74为第15节前历史快照。最新范围与配置离线证据见[仅配置部署约束](verification/2026-10-24-prod-config-only-scope.md)。本地代码修复的历史870 passed/146 skipped和审查不计作当前配置方案的真实上线验收。
 
 本轮配置分支本地14/14、真实隔离PG 20/20（含main连接设置）、CI 299 passed/1 skipped、六workflow strict lint及静态hash/原digest/qcloud/无TLS检查通过。审查2 Important均复现并修正：GET失败状态传播、精确登记脚本连接默认只读。15.5精确eead…登记批准及15.6实际部署仍未完成；旧f684…批准不适用。见上述仅配置部署记录。
+
+2026-10-24北京时间09:11，用户精确批准eead…后，单次在原Pod自然Running窗口执行受控事务：待办/operation/锁/claim/mutation/队列均0，仅config_hash更新成功并收到COMMIT确认，policy/epoch/其他列不变、旧4条closed实例保留；无migration/enroll。15.5完成，当前65/80、15项剩余。随后仅触发一次manual应用流水线#78，执行commit f20ceb0c8；真实部署结果继续观察，不提前勾选15.6。见[登记回执](verification/2026-10-24-prod-config-binding-applied.json)。
+
+
+## 16. 用户要求的常规生产配置发布（2026-10-24）
+
+用户要求正式生产流水线、沿用test、不增加校验/临时续部署，不改应用代码、不重跑初始化。#78成功仅是历史manual续部署，不视为常规发布链。额外稳定性观察已按用户要求中止，不能认领5分钟验收。现有4Pod Ready、qcloud ingress Success与单次精确登记COMMIT为已观察事实；原test及两候选未动。
+
+- [x] 16.1 将现有deploy-prod部署步骤收敛为test式Kustomize apply/rollout，保留原源码归档→构建→pre-deploy→prod正式tag链；删除manual续部署入口，移除部署步骤的初始化/operator凭据，不增加后端/云API门禁。仅做shell语法、既有workflow lint和本地render，不新增或运行测试套件。
+- [ ] 16.2 提交推送仅prod交付配置/文档，以新的正式tag触发一次正常生产配置发布；应用仍复用原v1.5.9 digest及已批准runtime/config，正式tag版本只标识本次配置发布，不伪称新构建镜像已部署。
+- [ ] 16.3 保存该正式流水线的可访问链接、全部步骤实际结果及最终Pod/Ingress状态；只确认部署结果，不追加PG/图/S3/CLB/EO、模型、压测或长时观察，不影响原test和两个候选。
+
+本节前完成68/80，新增3项、其中16.1完成，当前69/83；真实正式流水线结果尚未完成，原12项容量/零停机等未验项目仍保留。

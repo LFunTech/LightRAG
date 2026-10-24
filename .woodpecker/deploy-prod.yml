@@ -5,8 +5,7 @@ workspace:
   base: /woodpecker
   path: src
 
-# Production activation explicitly authorized for Kubernetes-only initial delivery.
-# The runner still requires enabled onboarding, formal tag and explicit initial settings.
+# Use the test artifact chain and Kustomize deployment; no backend initialization.
 when:
   - event: tag
     ref:
@@ -95,7 +94,10 @@ steps:
         tar -xzf "$SOURCE_ARCHIVE_DIR/source.tar.gz" -C "$SOURCE_DIR"
         test -f "$SOURCE_DIR/scripts/ci/delivery.py"
         cd "$SOURCE_DIR"
-        python -m scripts.ci.delivery resolve-image --tag "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA" --image "docker-hub.f123.pub/lfun/lightrag" --record-output /woodpecker/src/build/release/image-record.json --env-output /woodpecker/src/build/release/image.env
+        # Application version is pinned independently of configuration-only release tags.
+        IMAGE_TAG="$(python -c 'import json; print(json.load(open("k8s-deploy/lightrag-kustomize/overlays/prod/kubernetes/release-image.json"))["data"]["tag"])')"
+        IMAGE_COMMIT="$(python -c 'import json; print(json.load(open("k8s-deploy/lightrag-kustomize/overlays/prod/kubernetes/release-image.json"))["data"]["commit"])')"
+        python -m scripts.ci.delivery resolve-image --tag "$IMAGE_TAG" --commit "$IMAGE_COMMIT" --image "docker-hub.f123.pub/lfun/lightrag" --record-output /woodpecker/src/build/release/image-record.json --env-output /woodpecker/src/build/release/image.env
     environment:
       DOCKER_USERNAME:
         from_secret: DOCKER_USERNAME
@@ -129,47 +131,3 @@ steps:
     environment:
       LIGHTRAG_PROD_KUBECONFIG:
         from_secret: lightrag_prod_kubeconfig
-      LIGHTRAG_PROD_ONBOARDING_JSON:
-        from_secret: lightrag_prod_onboarding_json
-      LIGHTRAG_PROD_INITIAL_RELEASE_JSON:
-        from_secret: lightrag_prod_initial_release_json
-      LIGHTRAG_PROD_OPERATOR_JSON:
-        from_secret: lightrag_prod_operator_json
-      LIGHTRAG_PROD_API_KEY:
-        from_secret: lightrag_prod_api_key
-      LIGHTRAG_PROD_LLM_API_KEY:
-        from_secret: lightrag_prod_llm_api_key
-      LIGHTRAG_PROD_LLM_BINDING_HOST:
-        from_secret: lightrag_prod_llm_binding_host
-      LIGHTRAG_PROD_POSTGRES_HOST:
-        from_secret: lightrag_prod_postgres_host
-      LIGHTRAG_PROD_POSTGRES_PORT:
-        from_secret: lightrag_prod_postgres_port
-      LIGHTRAG_PROD_POSTGRES_USER:
-        from_secret: lightrag_prod_postgres_user
-      LIGHTRAG_PROD_POSTGRES_DATABASE:
-        from_secret: lightrag_prod_postgres_database
-      LIGHTRAG_PROD_POSTGRES_PASSWORD:
-        from_secret: lightrag_prod_postgres_password
-      LIGHTRAG_PROD_HUGEGRAPH_URI:
-        from_secret: lightrag_prod_hugegraph_uri
-      LIGHTRAG_PROD_HUGEGRAPH_GRAPHSPACE:
-        from_secret: lightrag_prod_hugegraph_graphspace
-      LIGHTRAG_PROD_HUGEGRAPH_GRAPH:
-        from_secret: lightrag_prod_hugegraph_graph
-      LIGHTRAG_PROD_HUGEGRAPH_USERNAME:
-        from_secret: lightrag_prod_hugegraph_username
-      LIGHTRAG_PROD_HUGEGRAPH_PASSWORD:
-        from_secret: lightrag_prod_hugegraph_password
-      LIGHTRAG_PROD_HUGEGRAPH_GREMLIN:
-        from_secret: lightrag_prod_hugegraph_gremlin
-      LIGHTRAG_PROD_S3_ACCESS_KEY_ID:
-        from_secret: lightrag_prod_s3_access_key_id
-      LIGHTRAG_PROD_S3_SECRET_ACCESS_KEY:
-        from_secret: lightrag_prod_s3_secret_access_key
-      LIGHTRAG_PROD_S3_ENDPOINT_URL:
-        from_secret: lightrag_prod_s3_endpoint_url
-      LIGHTRAG_PROD_S3_BUCKET:
-        from_secret: lightrag_prod_s3_bucket
-      LIGHTRAG_PROD_S3_FORCE_PATH_STYLE:
-        from_secret: lightrag_prod_s3_force_path_style

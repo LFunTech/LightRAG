@@ -401,3 +401,8 @@ PG 业务池、coordination 池/witness、HugeGraph 客户端池以及 LLM/embed
 只在既有manual/master app-resume步骤分支中采用test已验证的apply/rollout方式，复用v1.5.9原digest及#76初始化结果；不新建workflow/通用发布器、不改应用代码。immutable AWS ConfigMap复用原release挂载，JSONPatch以旧UID和完整spec原子核对，仅env与ConfigMap引用变化。入口参照目标TKE既有共享CLB的NodePort/group声明，固定qcloud和lb-ao2qcdid，HTTP/无TLS。修正既有检查的GET失败传播，不新增S3或云API门禁。
 
 新runtime hash为eead1664412b7738eeedfc28e229b7e735d02cac80b2457830aa5ef9cea6b1ae，SDK配置内容SHA通过显式环境计入hash；原profile/物理manifest/首发v1.5.9 policy不变。scopes.config_hash单列更新仍单独待批，不复用f684…旧批准或通过migration/enroll绕过。原失败4Pod为0Ready，Recreate仅适用本次首发补全，不认领在线零停机。具体配置与本地/真实状态见[本轮记录](verification/2026-10-24-prod-config-only-scope.md)。
+
+
+### 常规生产配置发布收敛（2026-10-24最新用户要求）
+
+不再使用manual app-resume或生产初始化runner。沿用test的正式tag源码归档/构建/产物阶段，既有deploy-prod最后一步只做生产overlay的apply -k与rollout；初始化/operator/runtime注入均移出部署步骤，既有K8s Secret直接引用。应用代码不变；应用镜像独立固定v1.5.9原digest及commit，正式新tag为生产配置发布版本，不把新构建而未选择的镜像认作线上应用。保持已批准config_hash/policy/物理数据，避免任何登记更新或初始化。无新增后端/云API校验、测试或长时观察；只记录正式流水线和K8s部署结果。旧manual工作流删除，历史批准/产物作为证据保留。
