@@ -1,0 +1,78 @@
+{
+  "production_configuration_tag": "v1.5.11",
+  "pipeline": {
+    "number": 80,
+    "status": "success",
+    "event": "tag",
+    "commit": "05e8e8efbdf142685816d22bed95b51e6f869ef9",
+    "ref": "refs/tags/v1.5.11",
+    "started": 1792807560,
+    "finished": 1792808187,
+    "steps": [],
+    "url": "https://woodpecker.f123.pub/repos/57/pipeline/80"
+  },
+  "steps": [
+    {
+      "step": "build-image > download-source (#5):",
+      "state": "success"
+    },
+    {
+      "step": "build-image > build-image (#6):",
+      "state": "success"
+    },
+    {
+      "step": "deploy-prod > download-source (#7):",
+      "state": "success"
+    },
+    {
+      "step": "deploy-prod > resolve-image (#8):",
+      "state": "success"
+    },
+    {
+      "step": "deploy-prod > deploy-prod (#9):",
+      "state": "success"
+    },
+    {
+      "step": "pre-deploy > download-source (#10):",
+      "state": "success"
+    },
+    {
+      "step": "pre-deploy > verify-image (#11):",
+      "state": "success"
+    },
+    {
+      "step": "validate-release > release-source (#12):",
+      "state": "success"
+    }
+  ],
+  "production": {
+    "deployment": "prod/lightrag-blue",
+    "ready": 4,
+    "desired": 4,
+    "available": 4,
+    "application_image": "docker-hub.f123.pub/lfun/lightrag@sha256:496b46a29266d62895842d09d7ce132be9c4a326699e32095467bebc13b8d4db",
+    "ingress_class": "qcloud",
+    "load_balancer_id": "lb-ao2qcdid",
+    "host": "llm-rag.eplus2.cn",
+    "kubernetes_tls": false,
+    "ingress_conditions": [
+      {
+        "type": "Ready",
+        "status": "True",
+        "lastTransitionTime": "2026-10-24T01:13:59Z",
+        "reason": "Success",
+        "message": ""
+      }
+    ]
+  },
+  "application_version": "v1.5.9",
+  "build_output_not_selected_for_application": {
+    "tag": "v1.5.11",
+    "digest": "sha256:1cb7148e3528f40737f9960f25767844e8eb1dba290158adf517e1b5dde63ad7"
+  },
+  "initialization_rerun": false,
+  "application_source_changed": false,
+  "existing_test_deployment_changed": false,
+  "candidate_scenes_changed": false,
+  "new_backend_or_cloud_checks": false
+}

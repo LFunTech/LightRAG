@@ -463,9 +463,11 @@ Git 发布与生产放行分开：runtime/operator 引用、生产域名/TLS、�
 用户要求正式生产流水线、沿用test、不增加校验/临时续部署，不改应用代码、不重跑初始化。#78成功仅是历史manual续部署，不视为常规发布链。额外稳定性观察已按用户要求中止，不能认领5分钟验收。现有4Pod Ready、qcloud ingress Success与单次精确登记COMMIT为已观察事实；原test及两候选未动。
 
 - [x] 16.1 将现有deploy-prod部署步骤收敛为test式Kustomize apply/rollout，保留原源码归档→构建→pre-deploy→prod正式tag链；删除manual续部署入口，移除部署步骤的初始化/operator凭据，不增加后端/云API门禁。仅做shell语法、既有workflow lint和本地render，不新增或运行测试套件。
-- [ ] 16.2 提交推送仅prod交付配置/文档，以新的正式tag触发一次正常生产配置发布；应用仍复用原v1.5.9 digest及已批准runtime/config，正式tag版本只标识本次配置发布，不伪称新构建镜像已部署。
-- [ ] 16.3 保存该正式流水线的可访问链接、全部步骤实际结果及最终Pod/Ingress状态；只确认部署结果，不追加PG/图/S3/CLB/EO、模型、压测或长时观察，不影响原test和两个候选。
+- [x] 16.2 提交推送仅prod交付配置/文档，以新的正式tag触发一次正常生产配置发布；应用仍复用原v1.5.9 digest及已批准runtime/config，正式tag版本只标识本次配置发布，不伪称新构建镜像已部署。
+- [x] 16.3 保存该正式流水线的可访问链接、全部步骤实际结果及最终Pod/Ingress状态；只确认部署结果，不追加PG/图/S3/CLB/EO、模型、压测或长时观察，不影响原test和两个候选。
 
 本节前完成68/80，新增3项、其中16.1完成，当前69/83；真实正式流水线结果尚未完成，原12项容量/零停机等未验项目仍保留。
 
 #79于用户要求后已取消，未进入构建/prod部署。根因是首次浅克隆之后verify-source再次unshallow全历史且无执行超时。仅正式prod分支改用已有有界GitHub API证明，test/pre默认git行为不变；应用无改动。定点3项离线/既有8项/strict lint通过，待v1.5.11正式配置tag重跑，不把#79取消记为部署成功。见[阻塞与修复](verification/2026-10-24-prod-source-history-block.md)。
+
+最终正式tag v1.5.11 / [#80](https://woodpecker.f123.pub/repos/57/pipeline/80) 全8步success，prod实际4/4Ready、qcloud/lb-ao2qcdid/无K8s TLS。应用仍为v1.5.9原镜像，本次配置发布无初始化和应用改动；未认领新构建镜像上线。16.2/16.3完成，当前71/83，原12项真实容量/连续性等验收保留。见[正式发布实际结果](verification/2026-10-24-prod-standard-pipeline-80-result.md)。
