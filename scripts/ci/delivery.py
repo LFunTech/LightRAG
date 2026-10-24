@@ -173,25 +173,33 @@ def verify_release_source(
     git: Callable[[list[str]], str] | None = None,
     remote_verifier: Callable[..., None] | None = None,
     pipeline_id: str | None = None,
+    source_mode: str = "git",
 ) -> ReleaseIdentity:
     parsed = parse_release_tag(tag)
     if repo != allowed_repo:
         raise ReleaseIdentityError(f"repository {repo!r} is not allowed")
-    git = git or _run_git
-    try:
-        _fetch_release_tag(git, tag)
-        _fetch_master_history(git)
-        tag_commit = git(["rev-parse", f"{tag}^{{commit}}"]).strip()
-        if tag_commit != event_commit:
-            raise ReleaseIdentityError(
-                f"tag commit {tag_commit} does not match event commit {event_commit}"
-            )
-        git(["merge-base", "--is-ancestor", tag_commit, "origin/master"])
-    except FileNotFoundError:
+    if source_mode not in {"git", "github"}:
+        raise ReleaseIdentityError("Unsupported source verification mode")
+    if source_mode == "github":
+        # Reuse the bounded API proof without downloading repository history.
         verifier = remote_verifier or _verify_release_source_via_github
         verifier(repo=repo, tag=tag, commit=event_commit)
-    except subprocess.CalledProcessError as exc:
-        raise ReleaseIdentityError("cannot prove tag belongs to origin/master") from exc
+    else:
+        git = git or _run_git
+        try:
+            _fetch_release_tag(git, tag)
+            _fetch_master_history(git)
+            tag_commit = git(["rev-parse", f"{tag}^{{commit}}"]).strip()
+            if tag_commit != event_commit:
+                raise ReleaseIdentityError(
+                    f"tag commit {tag_commit} does not match event commit {event_commit}"
+                )
+            git(["merge-base", "--is-ancestor", tag_commit, "origin/master"])
+        except FileNotFoundError:
+            verifier = remote_verifier or _verify_release_source_via_github
+            verifier(repo=repo, tag=tag, commit=event_commit)
+        except subprocess.CalledProcessError as exc:
+            raise ReleaseIdentityError("cannot prove tag belongs to origin/master") from exc
     return ReleaseIdentity(
         repo=repo,
         tag=tag,
@@ -618,6 +626,7 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--repo", required=True)
     v.add_argument("--allowed-repo", required=True)
     v.add_argument("--pipeline-id", required=True)
+    v.add_argument("--source-mode", choices=("git", "github"), default="git")
 
     archive = sub.add_parser("archive-source")
     archive.add_argument("--repo", type=Path, default=Path("."))
@@ -659,6 +668,7 @@ def main(argv: list[str] | None = None) -> int:
             repo=args.repo,
             allowed_repo=args.allowed_repo,
             pipeline_id=args.pipeline_id,
+            source_mode=args.source_mode,
         )
         print(json.dumps(asdict(ident), sort_keys=True))
     elif args.cmd == "archive-source":

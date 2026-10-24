@@ -467,3 +467,5 @@ Git 发布与生产放行分开：runtime/operator 引用、生产域名/TLS、�
 - [ ] 16.3 保存该正式流水线的可访问链接、全部步骤实际结果及最终Pod/Ingress状态；只确认部署结果，不追加PG/图/S3/CLB/EO、模型、压测或长时观察，不影响原test和两个候选。
 
 本节前完成68/80，新增3项、其中16.1完成，当前69/83；真实正式流水线结果尚未完成，原12项容量/零停机等未验项目仍保留。
+
+#79于用户要求后已取消，未进入构建/prod部署。根因是首次浅克隆之后verify-source再次unshallow全历史且无执行超时。仅正式prod分支改用已有有界GitHub API证明，test/pre默认git行为不变；应用无改动。定点3项离线/既有8项/strict lint通过，待v1.5.11正式配置tag重跑，不把#79取消记为部署成功。见[阻塞与修复](verification/2026-10-24-prod-source-history-block.md)。

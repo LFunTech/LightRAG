@@ -74,7 +74,13 @@ steps:
         scripts/ci/delivery-check.sh
 
         mkdir -p build/release
-        python3 -m scripts.ci.delivery verify-source --tag "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA" --repo "$CI_REPO" --allowed-repo "LFunTech/LightRAG" --pipeline-id "$CI_PIPELINE_NUMBER" > build/release/release-identity.json
+        set --
+        case "$CI_COMMIT_TAG" in
+          *-test|*-pre) ;;
+          *) set -- --source-mode github ;;
+        esac
+        echo 'Preparing release identity (production uses bounded GitHub metadata, not full Git history)'
+        python3 -m scripts.ci.delivery verify-source --tag "$CI_COMMIT_TAG" --commit "$CI_COMMIT_SHA" --repo "$CI_REPO" --allowed-repo "LFunTech/LightRAG" --pipeline-id "$CI_PIPELINE_NUMBER" "$@" > build/release/release-identity.json
         python3 -m scripts.ci.delivery archive-source --repo . --output build/release/source.tar.gz --identity build/release/release-identity.json --record-output build/release/source-record.json
         python3 -m scripts.ci.delivery verify-archive --archive build/release/source.tar.gz --record build/release/source-record.json --identity build/release/release-identity.json --extract-to build/release/extracted-source
 
